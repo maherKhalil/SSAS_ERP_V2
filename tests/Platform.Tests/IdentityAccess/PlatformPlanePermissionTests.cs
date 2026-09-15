@@ -47,6 +47,21 @@ public sealed class PlatformPlanePermissionTests
   }
 
   [Fact]
+  [Trait("Criterion", "AC-TEN-0044")]
+  // `AC-TEN-0044`'s CLAIM HALF, and this is the load-bearing one of the two claim tests. ⚠ **It plants a
+  // CORRUPT assignment — a platform-scoped permission already sitting on a tenant role — which is the state
+  // a wrong implementation would emit from.** `Claim_filter_drops_known_platform_support_permissions` proves
+  // the filter drops what it is given; this proves the filter is reached even when the data should not
+  // exist. ***GIVE THE FIXTURE THE THING THAT WOULD LET A WRONG IMPLEMENTATION PASS.***
+  //
+  // ⚠⚠⚠ AND THAT IS EXACTLY WHY THIS FIXTURE NEEDS THE NOTE: **THE ARRANGEMENT LOOKS LIKE A MISTAKE.** A
+  // platform-scoped permission sitting on a tenant role is invalid data — precisely the thing a tidy-up
+  // removes, because it is wrong, it is confusing, and **the test still passes without it.** What is lost is
+  // silent: the assertion stops proving the filter is REACHED and starts proving only that the filter drops
+  // what it is handed, which its sibling already covers.
+  //
+  // ***AN ADVERSARIAL FIXTURE CARRIES THE DISCRIMINATION IN ITS ARRANGEMENT, HAS NO SELF-DESCRIPTION, AND
+  // ADDITIONALLY LOOKS WRONG — SO IT IS THE FIXTURE MOST LIKELY TO BE "CORRECTED" BY A COMPETENT READER.***
   public void Corrupt_platform_support_assignment_never_becomes_a_tenant_token_claim()
   {
     // AC-TEN-0030 / TS-TEN-0054: even if stored role-permission data is corrupted to contain a
@@ -63,6 +78,15 @@ public sealed class PlatformPlanePermissionTests
   }
 
   [Fact]
+  [Trait("Criterion", "AC-TEN-0044")]
+  // `AC-TEN-0044`'s FIRST HALF — *"`Platform.Support.Administer` NEVER APPEARS IN THE TENANT-FACING
+  // PERMISSION CATALOG LISTING."* The claim half is `Claim_filter_drops_known_platform_support_permissions`
+  // and `Corrupt_platform_support_assignment_never_becomes_a_tenant_token_claim`, same trait.
+  //
+  // ⚠ THE TWO HALVES ARE DIFFERENT SURFACES AND NEITHER IMPLIES THE OTHER: a permission can be hidden from
+  // the catalog a tenant administrator browses and still reach a token through a corrupt assignment row, or
+  // be filtered from tokens while remaining visible in the picker. **The criterion names both because they
+  // fail independently.**
   public async Task Tenant_facing_catalog_query_excludes_platform_support_permissions()
   {
     var handler = new ListPermissionCatalogQueryHandler(
@@ -101,7 +125,6 @@ public sealed class PlatformPlanePermissionTests
     public string? UserId { get; } = userId;
     public string? UserName => null;
     public string? Email => null;
-    public Guid? CompanyId => null;
     public string? SessionId => null;
     public string? TokenId => null;
     public IReadOnlyCollection<string> Roles => [];

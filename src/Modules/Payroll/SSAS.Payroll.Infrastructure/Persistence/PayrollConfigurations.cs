@@ -19,6 +19,10 @@ public sealed class PayElementConfiguration : IEntityTypeConfiguration<PayElemen
 
     builder.ToTable("PayrollElements", PayrollPersistenceConstants.TenantSchema);
     builder.HasKey(element => element.Id);
+    
+    // The key is assigned in the constructor, so the store generates nothing (see the guard
+    // `Every_constructor_keyed_entity_declares_its_key_value_generated_never`).
+    builder.Property(element => element.Id).ValueGeneratedNever();
 
     builder.Property(element => element.TenantId).IsRequired();
     builder.Property(element => element.CompanyId).IsRequired();
@@ -84,6 +88,64 @@ public sealed class PayElementConfiguration : IEntityTypeConfiguration<PayElemen
   }
 }
 
+// ---- ONE-OFF PAY INSTRUCTIONS (T-110).
+public sealed class OneOffPaymentConfiguration : IEntityTypeConfiguration<OneOffPayment>
+{
+  public void Configure(EntityTypeBuilder<OneOffPayment> builder)
+  {
+    ArgumentNullException.ThrowIfNull(builder);
+
+    builder.ToTable("PayrollOneOffPayments", PayrollPersistenceConstants.TenantSchema);
+    builder.HasKey(payment => payment.Id);
+
+    // ---- THE KEY IS ASSIGNED IN THE CONSTRUCTOR (T-113).
+    //
+    // `OneOffPayment.Create` calls `new(Guid.NewGuid(), ...)`, and EF's convention for a `Guid` primary key
+    // is `ValueGeneratedOnAdd`. **A store-generated key holding a non-default value, found while fixing up a
+    // tracked graph, is classified Modified rather than Added** — so `ApplyPersistenceRules` never stamps
+    // `TenantId`, and the write boundary refuses the save.
+    //
+    // **T-110 shipped this entity without it, and no test could have caught it**: its tests are in-memory
+    // domain tests and stubbed API tests, and nothing in the product executed a one-off against SQL Server.
+    // `ConstructorKeyedEntityModelTests` found it on its first run.
+    builder.Property(payment => payment.Id).ValueGeneratedNever();
+
+    builder.Property(payment => payment.TenantId).IsRequired();
+    builder.Property(payment => payment.CompanyId).IsRequired();
+
+    // The HR employee by identifier only — no foreign key and no navigation, as everywhere else in this
+    // module. `ADR-012` keeps the modules apart and a database-level key would couple their migrations.
+    builder.Property(payment => payment.EmployeeId).IsRequired();
+
+    builder.Property(payment => payment.PayrollPeriodId).IsRequired();
+    builder.Property(payment => payment.PayElementId).IsRequired();
+
+    builder.Property(payment => payment.Amount)
+      .HasPrecision(PayrollPersistenceConstants.MoneyPrecision, PayrollPersistenceConstants.MoneyScale)
+      .IsRequired();
+
+    builder.Property(payment => payment.Reason)
+      .HasMaxLength(PayrollPersistenceConstants.ObservationMaximumLength);
+
+    // ---- NULLABLE, AND THE NULL IS THE UNCONSUMED STATE.
+    //
+    // No separate flag: `IsConsumed` is derived from this being present, so there is exactly one fact and it
+    // names the run. A boolean beside it would be a second answer to the same question.
+    builder.Property(payment => payment.ConsumedByPayrollRunId);
+
+    // The query the run makes: unconsumed instructions for one company and period.
+    builder.HasIndex(payment => new
+    {
+      payment.TenantId, payment.CompanyId, payment.PayrollPeriodId, payment.ConsumedByPayrollRunId
+    });
+
+    builder.Property(payment => payment.CreatedUtc).IsRequired();
+    builder.Property(payment => payment.ModifiedUtc).IsRequired();
+    builder.Property(payment => payment.CreatedBy).HasMaxLength(PayrollPersistenceConstants.ActorMaximumLength);
+    builder.Property(payment => payment.ModifiedBy).HasMaxLength(PayrollPersistenceConstants.ActorMaximumLength);
+  }
+}
+
 public sealed class EmployeeCompensationConfiguration : IEntityTypeConfiguration<EmployeeCompensation>
 {
   public void Configure(EntityTypeBuilder<EmployeeCompensation> builder)
@@ -92,6 +154,10 @@ public sealed class EmployeeCompensationConfiguration : IEntityTypeConfiguration
 
     builder.ToTable("PayrollEmployeeCompensation", PayrollPersistenceConstants.TenantSchema);
     builder.HasKey(record => record.Id);
+    
+    // The key is assigned in the constructor, so the store generates nothing (see the guard
+    // `Every_constructor_keyed_entity_declares_its_key_value_generated_never`).
+    builder.Property(record => record.Id).ValueGeneratedNever();
 
     builder.Property(record => record.TenantId).IsRequired();
     builder.Property(record => record.CompanyId).IsRequired();
@@ -105,6 +171,13 @@ public sealed class EmployeeCompensationConfiguration : IEntityTypeConfiguration
     builder.Property(record => record.BaseAmount)
       .HasPrecision(PayrollPersistenceConstants.MoneyPrecision, PayrollPersistenceConstants.MoneyScale)
       .IsRequired();
+
+    // ---- SALARY TYPE (T-107). Stored as the enum's int, and 0 IS Monthly.
+    //
+    // Every row written before this column existed reads back as 0, which is `SalaryType.Monthly` — the
+    // value they already were. That is why the enum's zero is Monthly rather than alphabetical or
+    // "unspecified": an unspecified default would have made every historical row refuse to calculate.
+    builder.Property(record => record.SalaryType).IsRequired();
 
     builder.Property(record => record.WasOutsideGradeBand).IsRequired();
     builder.Property(record => record.GradeBandObservation)
@@ -125,6 +198,21 @@ public sealed class EmployeeCompensationConfiguration : IEntityTypeConfiguration
     // A history row is never updated, so there is no concurrent update for a version to detect. Adding one
     // would advertise an update path that does not exist.
 
+    // ================================================================================================
+    // THE CONFIGURED CASCADE BELOW IS OVERRIDDEN BY THE PLATFORM. READ BEFORE RELYING ON IT.
+    // ================================================================================================
+    //
+    // `PersistenceDbContext.OnModelCreating` ends by setting EVERY foreign key in the composed model to
+    // `DeleteBehavior.Restrict`, and it runs AFTER the module contributors — deliberate platform policy,
+    // no silent cascades anywhere in a multi-tenant model, and `TenantDbContext` names it where the
+    // contributors are applied.
+    //
+    // So this declaration expresses INTENT and does not take effect. It is kept because the intent is real
+    // and a reader should see it; the removal that actually happens is EXPLICIT, in the repository, and the
+    // handler orders it.
+    //
+    // Believing this line cost two shipped defects (FP-013): payroll recalculation and journal-draft
+    // update both failed against a real database on orphans nothing deleted.
     builder.HasMany(record => record.Assignments)
       .WithOne()
       .HasForeignKey(assignment => assignment.EmployeeCompensationId)
@@ -144,6 +232,10 @@ public sealed class PayElementAssignmentConfiguration : IEntityTypeConfiguration
 
     builder.ToTable("PayrollElementAssignments", PayrollPersistenceConstants.TenantSchema);
     builder.HasKey(assignment => assignment.Id);
+    
+    // The key is assigned in the constructor, so the store generates nothing (see the guard
+    // `Every_constructor_keyed_entity_declares_its_key_value_generated_never`).
+    builder.Property(assignment => assignment.Id).ValueGeneratedNever();
 
     builder.Property(assignment => assignment.TenantId).IsRequired();
     builder.Property(assignment => assignment.EmployeeCompensationId).IsRequired();
@@ -170,6 +262,10 @@ public sealed class PayrollPeriodConfiguration : IEntityTypeConfiguration<Payrol
 
     builder.ToTable("PayrollPeriods", PayrollPersistenceConstants.TenantSchema);
     builder.HasKey(period => period.Id);
+    
+    // The key is assigned in the constructor, so the store generates nothing (see the guard
+    // `Every_constructor_keyed_entity_declares_its_key_value_generated_never`).
+    builder.Property(period => period.Id).ValueGeneratedNever();
 
     builder.Property(period => period.TenantId).IsRequired();
     builder.Property(period => period.CompanyId).IsRequired();
@@ -208,6 +304,10 @@ public sealed class PayrollRunConfiguration : IEntityTypeConfiguration<PayrollRu
 
     builder.ToTable("PayrollRuns", PayrollPersistenceConstants.TenantSchema);
     builder.HasKey(run => run.Id);
+    
+    // The key is assigned in the constructor, so the store generates nothing (see the guard
+    // `Every_constructor_keyed_entity_declares_its_key_value_generated_never`).
+    builder.Property(run => run.Id).ValueGeneratedNever();
 
     builder.Property(run => run.TenantId).IsRequired();
     builder.Property(run => run.CompanyId).IsRequired();
@@ -227,11 +327,33 @@ public sealed class PayrollRunConfiguration : IEntityTypeConfiguration<PayrollRu
     builder.Property(run => run.CreatedBy).HasMaxLength(PayrollPersistenceConstants.ActorMaximumLength);
     builder.Property(run => run.ModifiedBy).HasMaxLength(PayrollPersistenceConstants.ActorMaximumLength);
 
-    // One run per company per period. `OD-PAY-0011` ruled correction by reverse-and-rerun rather than by
-    // superseding runs, so two runs claiming one period is never legitimate — and had superseding been ruled
-    // instead, this index could not exist. The lifecycle decision and the schema constraint are the same
-    // decision seen twice.
-    builder.HasIndex(run => new { run.TenantId, run.CompanyId, run.PayrollPeriodId }).IsUnique();
+    // ---- ONE **UNREVERSED** RUN PER COMPANY PER PERIOD (T-112).
+    //
+    // ---- THE INFERENCE THIS COMMENT USED TO MAKE, AND WHY IT WAS WRONG.
+    //
+    // It read: *"`OD-PAY-0011` ruled correction by reverse-and-rerun rather than by superseding runs, so two
+    // runs claiming one period is never legitimate."* **The conclusion does not follow from the premise, and
+    // the option table it cites says so.**
+    //
+    // Option 3 (supersede) was rejected because *"two runs claiming the same period need a rule for which is
+    // authoritative in every read."* **Option 1 — reverse and RUN AGAIN — also produces two runs for the
+    // period.** The difference between the accepted option and the rejected one was never the COUNT of runs;
+    // it is that under option 1 only one of them is LIVE, because the other was reversed.
+    //
+    // **Collapsing "not superseding" into "not two runs" made this constraint enforce the REJECTED option's
+    // prohibition instead of the ACCEPTED option's rule** — and it refused the rerun half of reverse-and-rerun
+    // outright.
+    //
+    // ---- THE FILTER IS THE MISSING RULE.
+    //
+    // *The unreversed run is the authoritative one.* That is the rule option 3 lacked and option 1 has, and
+    // it is now stated to SQL Server rather than assumed. **Superseding stays rejected exactly as ruled:**
+    // two UNREVERSED runs for one period remain impossible.
+    builder.HasIndex(run => new { run.TenantId, run.CompanyId, run.PayrollPeriodId })
+      .IsUnique()
+      .HasFilter("[ReversedUtc] IS NULL");
+
+    builder.Property(run => run.ReversedUtc);
 
     builder.HasMany(run => run.DraftLines)
       .WithOne()
@@ -264,6 +386,10 @@ public sealed class PayrollRunDraftLineConfiguration : IEntityTypeConfiguration<
 
     builder.ToTable("PayrollRunDraftLines", PayrollPersistenceConstants.TenantSchema);
     builder.HasKey(line => line.Id);
+    
+    // The key is assigned in the constructor, so the store generates nothing (see the guard
+    // `Every_constructor_keyed_entity_declares_its_key_value_generated_never`).
+    builder.Property(line => line.Id).ValueGeneratedNever();
 
     builder.Property(line => line.TenantId).IsRequired();
     builder.Property(line => line.PayrollRunId).IsRequired();
@@ -290,6 +416,10 @@ public sealed class PayrollRunLineConfiguration : IEntityTypeConfiguration<Payro
 
     builder.ToTable("PayrollRunLines", PayrollPersistenceConstants.TenantSchema);
     builder.HasKey(line => line.Id);
+    
+    // The key is assigned in the constructor, so the store generates nothing (see the guard
+    // `Every_constructor_keyed_entity_declares_its_key_value_generated_never`).
+    builder.Property(line => line.Id).ValueGeneratedNever();
 
     builder.Property(line => line.TenantId).IsRequired();
     builder.Property(line => line.PayrollRunId).IsRequired();

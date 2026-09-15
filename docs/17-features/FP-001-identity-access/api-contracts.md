@@ -19,17 +19,53 @@ version: 1.0
 - Concurrency conflicts return 409 or the project-standard equivalent.
 - No user deletion endpoint exists.
 
+> **Reconciled 2026-08-29 (T-160). Of the twenty-two routes below, THREE are built, one is served by a
+> different route, and eighteen are not routed.** This document had never been compared to the code.
+> **Every row is marked inline with its actual state**, and the states are not interchangeable.
+>
+> | State | Rows | Meaning |
+> |---|---|---|
+> | `[BUILT]` | 1 | `GET /api/platform/roles` — exists exactly as documented |
+> | `[BUILT as ...]` | 3 | exists under a **different path**: the two user lifecycle routes are `/tenant-users/{id}/deactivation` and `/reactivation`, and tenant selection is `POST /api/platform/auth/select-tenant` |
+> | `[SERVED BY ...]` | 1 | `GET /me/tenant-memberships` has no route; the list comes back on the **login response** as `TenantMembershipResponse` |
+> | `[NOT ROUTED - handler: X]` | 16 | the handler **exists and is registered**; nothing maps a route to it |
+> | `[BUILT ...]` | 1 | the permission-catalogue read, routed 2026-08-29 — the only row of this package that needed no owner decision. **Deliberately not written as a method and path here: a legend that names one is parsed as a contract row.** |
+>
+> ---- ⚠ THIS IS THE "HANDLERS BUILT, TRANSPORT MISSING" SHAPE, AND IT IS THE ONLY DOCUMENT THAT IS.
+>
+> **Twenty-seven role and tenant-user handlers exist** — `CreateCustomRole`, `UpdateCustomRole`,
+> `RetireRole`, `RequestRoleRetirement`, `AssignPermissionToRole`, `RemovePermissionFromRole`,
+> `ListRoles`, `GetRoleById`, `IssueTenantUserInvitation`, `CompleteInvitation`, `AssignRoleToTenantUser`,
+> `RemoveRoleFromTenantUser`, `ListTenantUsers`, `GetTenantUserById`, `UpdateTenantUserProfile` and more.
+> **The live transport is one route plus four tenant-user lifecycle routes.**
+>
+> **FP-014 was described the same way and it was wrong there** (`T-159`: its domain and read path exist, but
+> there are no write handlers, no permissions and no `Invoice` type at all). **Here the description holds.**
+>
+> ---- ⚠ FOUR ROWS ARE BUILT, AND MARKING THEM "ABSENT" WOULD HAVE BEEN THE WORSE ERROR.
+>
+> A sweep matching documented paths against live paths reports all four as missing, because the code uses
+> `tenant-users` where this document says `users`, and puts tenant selection under `auth` rather than `me`.
+> **They are naming divergences, not gaps** — the capability shipped. `DEC-L-085` cuts both ways: an
+> unverified row inherits authority it never earned, and a row whose capability moved looks unbuilt to any
+> instrument comparing spellings.
+>
+> **Marked inline rather than in an added column** (`DEC-L-086`, and the FP-007 lesson): a correction in a
+> fifth column is invisible to a sweep reading the first.
+>
+> **Nothing here is deleted and nothing is a proposal to build it.**
+
 ## Tenant users
 
 ```http
-GET /api/platform/users
-GET /api/platform/users/{userId}
-POST /api/platform/users/invitations
-PUT /api/platform/users/{userId}
-POST /api/platform/users/{userId}/deactivate
-POST /api/platform/users/{userId}/reactivate
-POST /api/platform/users/{userId}/roles
-DELETE /api/platform/users/{userId}/roles/{roleId}
+GET /api/platform/users   [NOT ROUTED - handler: ListTenantUsersQueryHandler]
+GET /api/platform/users/{userId}   [NOT ROUTED - handler: GetTenantUserByIdQueryHandler]
+POST /api/platform/users/invitations   [NOT ROUTED - handler: IssueTenantUserInvitationCommandHandler]
+PUT /api/platform/users/{userId}   [NOT ROUTED - handler: UpdateTenantUserProfileCommandHandler]
+POST /api/platform/users/{userId}/deactivate   [BUILT as POST /api/platform/tenant-users/{tenantUserId}/deactivation]
+POST /api/platform/users/{userId}/reactivate   [BUILT as POST /api/platform/tenant-users/{tenantUserId}/reactivation]
+POST /api/platform/users/{userId}/roles   Platform.UserRoles.Assign
+POST /api/platform/users/{userId}/roles/{roleId}/remove   Platform.UserRoles.Remove
 ```
 
 Invitation draft:
@@ -50,8 +86,8 @@ Inviting an already active membership is rejected. A deactivated membership is r
 These contracts belong jointly with the authentication feature:
 
 ```http
-GET /api/platform/me/tenant-memberships
-POST /api/platform/me/select-tenant
+GET /api/platform/me/tenant-memberships   [SERVED BY THE LOGIN RESPONSE - TenantMembershipResponse]
+POST /api/platform/me/select-tenant   [BUILT as POST /api/platform/auth/select-tenant]
 ```
 
 Selection request:
@@ -69,14 +105,14 @@ When exactly one active membership exists, the client bypasses the selection vie
 ## Roles
 
 ```http
-GET /api/platform/roles
-GET /api/platform/roles/{roleId}
-POST /api/platform/roles
-PUT /api/platform/roles/{roleId}
-POST /api/platform/roles/{roleId}/request-retirement
-POST /api/platform/roles/{roleId}/retire
-POST /api/platform/roles/{roleId}/permissions
-DELETE /api/platform/roles/{roleId}/permissions/{permission}
+GET /api/platform/roles   [BUILT]
+GET /api/platform/roles/{roleId}   Platform.Roles.View
+POST /api/platform/roles   Platform.Roles.Create
+PUT /api/platform/roles/{roleId}   Platform.Roles.Update
+POST /api/platform/roles/{roleId}/request-retirement   Platform.Roles.RequestRetirement
+POST /api/platform/roles/{roleId}/retire   Platform.Roles.Retire
+POST /api/platform/roles/{roleId}/permissions   Platform.RolePermissions.Assign
+POST /api/platform/roles/{roleId}/permissions/{permission}/remove   Platform.RolePermissions.Remove
 ```
 
 Retirement fails while active-user assignments exist.
@@ -84,7 +120,7 @@ Retirement fails while active-user assignments exist.
 ## Permission catalog
 
 ```http
-GET /api/platform/permissions
+GET /api/platform/permissions   Platform.Permissions.View   [BUILT 2026-08-29, T-203]
 ```
 
 ## Platform support
@@ -92,9 +128,9 @@ GET /api/platform/permissions
 Proposed support routes:
 
 ```http
-GET /api/platform/support/tenants/{tenantId}/users
-POST /api/platform/support/tenants/{tenantId}/users/invitations
-POST /api/platform/support/tenants/{tenantId}/users/{userId}/deactivate
+GET /api/platform/support/tenants/{tenantId}/users   Platform.Support.Administer
+POST /api/platform/support/tenants/{tenantId}/users/invitations   Platform.Support.Administer
+POST /api/platform/support/tenants/{tenantId}/users/{userId}/deactivate   Platform.Support.Administer
 ```
 
 Each operation requires explicit platform-support permission, validates the target tenant through trusted server-side logic, and produces an audit record.

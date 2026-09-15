@@ -17,6 +17,18 @@ milestone: Milestone 1
 
 Creating a valid Employee generates a nonempty Guid `EmployeeId`, adopts the trusted current `TenantId`, adopts the trusted `CompanyId` from the validated company context, receives a server-stamped `BranchId` from the trusted branch execution context, stores the normalized employee number and trimmed name, and begins in `Active`.
 
+⚠ **THIS CRITERION IS A ROLL-UP, NOT AN INDEPENDENT CLAIM (noted 2026-08-31, architect).** Every clause in
+it — the identifier, the trusted tenant, the trusted company, the server-stamped branch, the normalized
+number, the initial state — **is specified again, on its own, in a criterion below.** It exists to state the
+creation outcome as one sentence, and it asserts nothing that those criteria do not.
+
+**So it is deliberately left uncited by the citation sweep, and that is the correct disposal rather than a
+gap.** Citing it on any one test would present a summary as a single assertion; citing it on all of them
+would repeat what the clause-level criteria already say. ⚠ **A criterion that indexes other criteria is
+verified by verifying them.** **The clause-by-clause mapping as at 2026-08-31 is in the B18 pass-12 result
+file; it is not repeated here, because a list of test names in a specification goes stale the first time
+somebody renames one.**
+
 ### AC-EMP-0002 — Trusted tenant only
 
 `TenantId` is never accepted from the route, body, header, claim, or query string. A persisted Employee whose `TenantId` does not match the trusted current tenant is rejected, and a post-creation `TenantId` change is rejected.
@@ -230,4 +242,8 @@ An Employee can be created, retrieved, updated, transferred, and terminated with
 
 ### AC-EMP-0047 — Excluded operations are absent
 
-No route, command, handler, permission, or table exists for rehire, employee documents, import, or export.
+FP-006 introduces no route, command, handler, permission, or table for rehire, employee documents, import, or export.
+
+**Scope corrected 2026-08-31 (architect), from `DEC-EMP-0032`, which this criterion implements.** The sentence previously read *"No route, command, handler, permission, or table **exists**"* — an unqualified product-wide absence, where its own governing decision defers the three requirements **"whole and outside the Employee core slice"** and goes on to describe the obligations **a future import and export must satisfy**. ⚠ **An unscoped ban would have been falsified rather than violated the day FP-009 shipped employee import/export**, and `AC-EMP-0045` and `AC-EMP-0046` — the two criteria immediately above, deferring the same way — both already say *"FP-006 introduces no…"*. The criterion was the odd one out in its own section and stricter than the decision it cites; the scope is restored, not narrowed.
+
+**What asserts it: `No_rehire_operation_exists` (`EmployeeArchitectureTests`) covers the REHIRE clause only.** The documents, import and export clauses are unasserted here **by design** — documents belong to the closed FP-010 and import/export to FP-009, so the guard that would catch a violation belongs with whichever package builds the subject, not with this one.

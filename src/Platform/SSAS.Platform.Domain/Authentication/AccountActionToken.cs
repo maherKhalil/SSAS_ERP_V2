@@ -196,6 +196,14 @@ public sealed class AccountActionToken : AggregateRoot<long>, IAuditableEntity
       throw new ArgumentException("The action token values are invalid.");
     }
 
+    // ⚠ THIS BINDING HOLDS UP A UNIQUE INDEX (items 180, 181). `AccountActionTokenConfiguration`'s index
+    // on `(Purpose, TenantId, TenantUserId)` is filtered on `[TenantUserId] IS NOT NULL` and never
+    // mentions `TenantId`, which is nullable. That index is correct ONLY because these two are set
+    // together or not at all -- so admitting a mismatch makes a unique index over a nullable column
+    // unfiltered, and the second such row is refused at insert.
+    //
+    // The check below is a backstop: the public factories make a mismatch unconstructible, and
+    // `AccountActionTokenBindingArchitectureTests` guards those signatures.
     var invitationBindingIsValid = purpose == AccountActionTokenPurpose.Invitation &&
       tenantId is { } invitationTenantId && invitationTenantId != Guid.Empty && tenantUserId is > 0;
     var resetBindingIsValid = purpose == AccountActionTokenPurpose.PasswordReset && tenantId is null && tenantUserId is null;

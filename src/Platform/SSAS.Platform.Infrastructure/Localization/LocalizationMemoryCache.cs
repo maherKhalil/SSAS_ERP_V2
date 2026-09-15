@@ -54,6 +54,15 @@ public sealed class LocalizationMemoryCache : ILocalizationTenantCache, IDisposa
           .SetAbsoluteExpiration(AbsoluteLifetime));
         return new TenantLocalizationVersionState(version, TenantLocalizationCacheTrust.Trusted);
       }
+      // ⚠ THE DISCARD IS DELIBERATE AND THE THREE OUTCOMES BELOW ARE WHY.
+      //
+      // Cancellation rethrows. Everything else is a validation failure whose CAUSE does not change what
+      // this cache can do: within the grace window the last known-good version is served as `Grace`, and
+      // outside it the entries are evicted and the answer is marked `Degraded`. **The choice between those
+      // is made by the CLOCK, not by the exception**, so keeping the exception would not inform it.
+      //
+      // What matters is that neither outcome silently claims to be `Trusted`: the trust level travels with
+      // the answer, so a caller can tell a validated catalogue from a stale one without seeing the failure.
       catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
       {
         throw;

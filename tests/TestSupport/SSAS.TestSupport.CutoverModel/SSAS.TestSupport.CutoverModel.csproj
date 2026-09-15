@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <IsPackable>false</IsPackable>
+    <IsTestProject>false</IsTestProject>
+
+    <!-- TEST SUPPORT ONLY. Nothing ships this. It exists because the contributor set below is consumed by
+         BOTH Integration.Tests and Architecture.Tests, and it must exist exactly once: the cutover manifest
+         tests DERIVE their expected sets from it, so a second copy would not be a duplicate but a quietly
+         different answer. -->
+    <AssemblyName>SSAS.TestSupport.CutoverModel</AssemblyName>
+    <RootNamespace>SSAS.TestSupport.CutoverModel</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\Platform\SSAS.Platform.Infrastructure\SSAS.Platform.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\src\Modules\HR\SSAS.HR.Infrastructure\SSAS.HR.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\src\Modules\Finance\SSAS.GL.Infrastructure\SSAS.GL.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\src\Modules\Payroll\SSAS.Payroll.Infrastructure\SSAS.Payroll.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\src\Modules\Attendance\SSAS.Attendance.Infrastructure\SSAS.Attendance.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- ⚠ THE TYPE STAYS INTERNAL, AND THAT IS FORCED RATHER THAN CHOSEN. `ITenantModelSource` is internal
+         to `SSAS.Platform.Infrastructure`, so a public `CutoverTenantModel` cannot expose it. Making the
+         interface public to suit a test helper would widen a production surface for a test's convenience;
+         granting the two consumers access does not. -->
+    <InternalsVisibleTo Include="SSAS.Integration.Tests" />
+    <InternalsVisibleTo Include="SSAS.Architecture.Tests" />
+  </ItemGroup>
+
+</Project>

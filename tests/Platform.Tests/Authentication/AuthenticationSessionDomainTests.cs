@@ -12,14 +12,44 @@ namespace SSAS.Platform.Tests.Authentication;
 [Trait("Scenario", "TS-AUTH-0082")]
 [Trait("Scenario", "TS-AUTH-0084")]
 [Trait("Scenario", "TS-AUTH-0089")]
-[Trait("Acceptance", "AC-AUTH-0029")]
+// ---- ⚠⚠⚠ `AC-AUTH-0031` STAYS CLASS-SCOPED ON PURPOSE, AND THE REASON IS THE POINT.
+//
+// `AC-AUTH-0029` moved down to the two methods whose assertions carry it (see each). **`AC-AUTH-0031` did
+// not, because no method in this file witnesses it.** *"Verified reuse compromises **only** the owning
+// session, revokes **every** unconsumed descendant, remains detectable from retained ancestors, and permits
+// no grace window **or second concurrent success**"* — `Rotation_consumes_predecessor_...` proves the
+// detection and one revoked descendant on a **single-session, single-descendant fixture**, so the two
+// universals and the concurrency clause are witnessed by nothing here.
+//
+// **Narrowing it to that method would move a claim about five clauses onto a test that carries two**, which
+// is the `AC-AUTH-0047` shape — a real id on a method that says less than it promises. ***A CLASS-SCOPED
+// TRAIT OVER-CLAIMS ACROSS METHODS; A METHOD-SCOPED ONE OVER-CLAIMS ACROSS CLAUSES. WHERE BOTH WOULD LIE,
+// THE HONEST RECORD IS THE ONE THAT LIES WHERE A READER CAN SEE IT*** — the class trait at least sends the
+// reader to a file, and this paragraph is here so the reader arrives knowing what to distrust.
+//
+// ⚠ It is not repairable by tagging the siblings either: a method proving clause 4 alone, tagged with the
+// criterion id, reads as a whole-criterion witness. **The trait has no clause field, and that is the
+// convention decision this file cannot make for itself.**
 [Trait("Acceptance", "AC-AUTH-0031")]
 public sealed class AuthenticationSessionDomainTests
 {
   private static readonly DateTimeOffset Now = new(2026, 8, 1, 9, 0, 0, TimeSpan.Zero);
   private static readonly AuthenticationClientId Client = AuthenticationClientId.Create(AuthenticationClientId.V1Web).Value;
 
+  // `AC-AUTH-0029`'s FORMAT CLAUSE — *"A refresh token uses the canonical 76-character selector/secret
+  // format"*. `Assert.Equal(76, …Length)` and `Assert.Equal('.', reveal.Value[32])` pin both halves: a
+  // length alone would pass for any 76 characters, and the separator position is what makes it
+  // selector-plus-secret rather than one opaque string.
+  //
+  // ⚠ **Moved here from a class-level trait.** The trait previously sat on the type and so claimed all seven
+  // methods witnessed this criterion, including three about migrations and query filters.
+  //
+  // ⚠⚠ **NOT WITNESSED HERE: *"persists no raw secret"*.** This is generation, not persistence — and note
+  // the shape of the evidence that does exist: `CreateInitialRefreshToken` takes a `byte[32]`, so the
+  // aggregate never receives a raw secret to persist. **That is an argument from the signature and nothing
+  // in this file asserts it**, which is worth knowing before anyone reads the trait as covering it.
   [Fact]
+  [Trait("Acceptance", "AC-AUTH-0029")]
   public void Refresh_token_is_exactly_formatted_reveal_once_and_redacted()
   {
     var service = new AuthenticationTokenService();
@@ -93,7 +123,113 @@ public sealed class AuthenticationSessionDomainTests
     Assert.Contains(transaction.DomainEvents, domainEvent => domainEvent is TenantMembershipSelected);
   }
 
+  // Hoisted because CA1861 is enforced as an error by the gate: an inline array argument in an assertion
+  // trips it. Both lists are the SUBJECT of their assertions, not incidental data.
+  private static readonly string[] ApprovedSessionStatuses = ["Active", "Compromised", "Revoked"];
+
+  private static readonly string[] ApprovedSessionOperations =
+  [
+    "ClearBranch", "CreateInitialRefreshToken", "FindRefreshToken", "IsUsable",
+    "MarkCompromised", "Revoke", "Rotate", "SelectBranch"
+  ];
+
   [Fact]
+  [Trait("Acceptance", "AC-AUTH-0026")]
+  // ==================================================================================================
+  // `AC-AUTH-0026` — *"A session is IMMUTABLY BOUND to one Identity, membership, Tenant, ClientId, and
+  // token family and PERSISTS ONLY Active, Revoked, or Compromised status."* TWO claims, and the second is
+  // a claim about a COMPLEMENT.
+  // ==================================================================================================
+  //
+  // ⚠ *PERSISTS ONLY …* IS AN ENUM-VOCABULARY CLAIM AND NOTHING PINNED IT. Every test that touches
+  // `AuthenticationSessionStatus` asserts a session HAS one of the three; **a fourth member added tomorrow
+  // satisfies all of them and violates the criterion.** A presence assertion cannot carry an *only*; the
+  // arity pin is the whole content of the word, and this is the same idiom
+  // `Status_and_reason_vocabularies_are_exact` uses for tenants.
+  //
+  // ⚠⚠ AND THE *IMMUTABLY BOUND* HALF CANNOT BE A "NO PUBLIC SETTER" CHECK, WHICH IS THE OBVIOUS TEST AND
+  // THE WRONG ONE. **Every property on this aggregate is `private set`, including `Status`, `RevokedUtc`
+  // and `IdleExpiresUtc`, which the aggregate mutates on purpose** — so that assertion passes for all
+  // twenty-one and discriminates none of them. *Immutable* here means NO OPERATION CHANGES THEM, so the
+  // test drives the operations.
+  //
+  // ⚠⚠⚠ AND IT PINS THE MUTATOR SET RATHER THAN SAMPLING IT. Exercising four methods proves nothing about
+  // a fifth added later, so the public/internal instance-method surface is asserted to be exactly this
+  // list: **a new operation forces this test to be updated, which is the only way an enumeration of
+  // behaviour stays complete.** Without it the test decays silently the first time the aggregate grows.
+  //
+  // `AC-AUTH-0029`'s BINDING CLAUSE — *"and is exactly bound to its session, family, and `ClientId`"*. The
+  // `bindings` tuple carries `ClientId` and `TokenFamilyId` and is asserted **unchanged after every
+  // state-changing operation the aggregate has**, with the mutator set pinned above so the enumeration
+  // cannot go stale and a control below proving the session did change. ⚠ **Moved here from a class-level
+  // trait**, which claimed this criterion of all seven methods in the file.
+  [Trait("Acceptance", "AC-AUTH-0029")]
+  public void Session_bindings_survive_every_operation_and_the_status_vocabulary_is_exact()
+  {
+    // ---- THE COMPLEMENT CLAIM.
+    Assert.Equal(
+      ApprovedSessionStatuses,
+      Enum.GetNames<AuthenticationSessionStatus>().OrderBy(name => name, StringComparer.Ordinal).ToArray());
+
+    // ---- THE MUTATOR SET, PINNED SO THE ENUMERATION BELOW CANNOT GO STALE.
+    var mutators = typeof(AuthenticationSession)
+      .GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+      .Where(method => !method.IsPrivate && !method.IsSpecialName)
+      .Select(method => method.Name)
+      .OrderBy(name => name, StringComparer.Ordinal)
+      .ToArray();
+    Assert.Equal(ApprovedSessionOperations, mutators);
+
+    var session = NewPersistedSession(100, 90);
+    var bindings = (session.IdentityId, session.TenantUserId, session.TenantId, session.ClientId, session.TokenFamilyId);
+
+    // ---- EVERY OPERATION THAT CHANGES STATE, IN AN ORDER THAT LETS EACH SUCCEED.
+    Assert.True(session.SelectBranch(Guid.NewGuid()).IsSuccess);
+    session.ClearBranch();
+    var predecessor = session.CreateInitialRefreshToken(Guid.NewGuid(), new byte[32], Now, Guid.NewGuid());
+    SetIdentity(predecessor, 200);
+    var rotation = session.Rotate(
+      predecessor, Guid.NewGuid(), Enumerable.Repeat((byte)7, 32).ToArray(), Now.AddDays(1), TimeSpan.FromDays(30), Guid.NewGuid());
+    Assert.True(rotation.IsSuccess);
+    SetIdentity(rotation.Value, 201);
+    Assert.True(session.MarkCompromised(predecessor, Guid.NewGuid(), Guid.NewGuid(), Now.AddDays(2)).IsSuccess);
+
+    Assert.Equal(
+      bindings,
+      (session.IdentityId, session.TenantUserId, session.TenantId, session.ClientId, session.TokenFamilyId));
+
+    // The control: the session DID change, so the equality above is a survival claim rather than a
+    // statement that nothing happened. Without this, a no-op aggregate would satisfy every line.
+    //
+    // ⚠ PLANTS, AND THE FIRST ONE FOUND SOMETHING I WAS NOT LOOKING FOR. Rebinding `TenantUserId` in
+    // `SelectBranch` reddens the tuple above, naming the field. **Rebinding `TokenFamilyId` in `Rotate`
+    // reddens too — but by THROWING from `RefreshTokenRecord.LinkReplacement`, which independently
+    // validates the family.** So that one binding is guarded twice and the aggregate refuses the change
+    // before this test can observe it; the other four rest on this assertion alone. *Worth knowing which
+    // of the five are load-bearing here, because a plant that reddens for the wrong reason still reads as
+    // a passing plant.*
+    Assert.Equal(AuthenticationSessionStatus.Compromised, session.Status);
+  }
+
+  [Fact]
+  [Trait("Acceptance", "AC-AUTH-0030")]
+  // ==================================================================================================
+  // `AC-AUTH-0030` — *"Refresh atomically consumes one token, links exactly one replacement, UPDATES IDLE
+  // EXPIRATION WITHOUT EXTENDING ABSOLUTE EXPIRATION, and rolls back all changes on failed persistence."*
+  // ==================================================================================================
+  //
+  // The third clause is the one this test carries, and it is carried by `Assert.Equal(AbsoluteExpiresUtc,
+  // IdleExpiresUtc)` after rotating at `Now + 70d` with a 30-day idle lifetime — the `Min` clamp binds.
+  //
+  // ⚠⚠ THAT ASSERTION SITS AFTER A `MarkCompromised` CALL, SO TWO MECHANISMS COULD PRODUCE IT. A compromise
+  // that collapsed the idle window would give the same equality, and the green would say nothing about
+  // which. ***WHEN AN ASSERTION SITS DOWNSTREAM OF MORE THAN ONE MECHANISM THAT COULD PRODUCE IT, THE
+  // CITATION IS A CLAIM ABOUT ATTRIBUTION AND ONLY A PLANT SETTLES IT.*** Planted: `Min(utc.Add(idleLifetime),
+  // AbsoluteExpiresUtc)` replaced by `utc.Add(idleLifetime)` — THIS test reddens. Attributed to the rotation.
+  //
+  // ⚠ NOT WITNESSED HERE: *links exactly one replacement* — the count of records is asserted, but not that
+  // the predecessor POINTS at the successor; and *rolls back on failed persistence*, which needs a failing
+  // unit of work (`Access_token_issuance_failure_rolls_back_...`, `AC-AUTH-0046`, is the nearest).
   public void Rotation_consumes_predecessor_caps_idle_expiry_and_reuse_compromises_descendants()
   {
     var session = NewPersistedSession(100, 90);

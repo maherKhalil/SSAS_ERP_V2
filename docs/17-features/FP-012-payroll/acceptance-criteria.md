@@ -1,4 +1,4 @@
-# FP-012 — Acceptance Criteria (RATIFIED)
+# FP-012 — Acceptance Criteria
 
 `AC-PAY-####`, traced to the requirement each verifies. Criteria marked **conditional** exist only under a
 particular ruling and are labelled with it, so that a ruling which removes them removes them cleanly rather
@@ -12,7 +12,7 @@ than leaving orphans.
 |---|---|---|
 | `AC-PAY-0001` | Creating a compensation record for an employee stores it with its effective date and does not alter any prior record. | `REQ-PAY-0001` |
 | `AC-PAY-0002` | The compensation in force on a date is the record with the greatest effective date not after it. | `REQ-PAY-0001` |
-| `AC-PAY-0003` | No compensation value is readable through any HR endpoint or stored on any HR table. | `REQ-PAY-0002` |
+| `AC-PAY-0003` | No **employee** compensation value is readable through any HR endpoint or stored on any HR table. **The salary band is the ruled exception — see the note below.** | `REQ-PAY-0002` |
 | `AC-PAY-0004` | An amount outside the employee's salary grade band is accepted and recorded, and the out-of-band condition is surfaced to the caller. | `REQ-PAY-0006` — **`OD-PAY-0004` RULED opt. 1** — informational |
 | `AC-PAY-0005` | Compensation granted in one company is not readable from another. | `REQ-PAY-0002`, `OD-PAY-0005` |
 
@@ -63,7 +63,7 @@ than leaving orphans.
 
 | ID | Criterion | Verifies |
 |---|---|---|
-| `AC-PAY-0029` | All five payroll tables appear in the E3 cutover manifest, and a tenant cutover carries payroll data. | `DEC-PAY-0010` |
+| `AC-PAY-0029` | **Every tenant-owned payroll table** appears in the E3 cutover manifest, and a tenant cutover carries payroll data. **See the note below on the count this criterion used to carry.** | `DEC-PAY-0010` |
 | `AC-PAY-0030` | Every persisted payroll string column is `nvarchar`, and every monetary column is `decimal(19,4)`. | `DEC-PAY-0004`, `DEC-PAY-0007` |
 | `AC-PAY-0031` | No foreign key crosses from a payroll table to a Platform-database table. | `DEC-PAY-0008` |
 
@@ -78,3 +78,55 @@ test that encodes a guess as a requirement.
 
 **`OD-PAY-0008` is RULED (option 1),** so `AC-PAY-0026` — the lines sum to the total — is now a criterion
 that must pass rather than one whose passability depended on a ruling.
+
+---
+
+## ⚠ `AC-PAY-0029` carried a count, and the count had gone stale (corrected 2026-08-31, architect)
+
+**It read *“All **five** payroll tables appear in the E3 cutover manifest”*. The manifest's expected list
+carries **seven** — `EmployeeCompensation`, `PayElement`, `PayElementAssignment`, `PayrollPeriod`,
+`PayrollRun`, `PayrollRunDraftLine`, `PayrollRunLine` — and `CutoverManifestArchitectureTests` says so in
+its own comment: *“SEVEN from Payroll (FP-012)”*.**
+
+⚠ **The property held and the number did not**, which is the bad failure mode: a reader auditing the
+criterion against the manifest finds a mismatch **and cannot tell which side is wrong**. Nothing was
+violated; the package simply grew two tables past a number written when it had five.
+
+⚠⚠ **And the fix is not to write *seven*, because seven rots the same way.** `DEC-PAY-0010` — the decision
+this criterion implements — is stated as a **property**: *“Every tenant-owned entity joins the E3
+manifest.”* **The criterion was a COUNTED form of a UNIVERSAL ruling, and the count is the only part that
+could go out of date.** The property form is restored, so the criterion now survives the eighth table.
+**The guard was always count-free and is unaffected: it asserts the composed count minus the excluded set,
+so a new table that forgets the test moves the left side and the assertion fails.**
+
+**Same correction as `AC-EMP-0047` the same day, in the other shape: that one was an absence written wider
+than its ruling, this one a count written narrower than its ruling. Both were settleable from the decision
+the criterion itself cites.**
+
+**`TS-PAY-0028` carried the same number and is corrected with it — the count was in two places, so it was
+already going stale in one.**
+
+---
+
+## ⚠ `AC-PAY-0003` clause 2 said more than it meant (corrected 2026-08-31, architect)
+
+**It read *"No compensation value is … stored on any HR table"*, and as literally worded it is FALSE.**
+
+**Measured over the mechanism rather than by name: the entire HR domain declares `decimal` in exactly one
+file. `SalaryBand.MinimumAmount`, `.MidpointAmount` and `.MaximumAmount` are the only monetary properties
+in HR, owned by `SalaryGrade` through its band. No `Amount`, `Salary`, `Pay`, `Rate` or `Wage` property
+exists on any other HR type.**
+
+⚠⚠ **So HR does store amounts, and it is supposed to. `DEC-POS-0023` draws the line the criterion meant:
+a band is a STRUCTURAL definition of what a JOB pays, not a record of what a PERSON is paid.** The clause
+is corrected to say *employee* compensation, which is what it has always been enforcing.
+
+**Why this matters beyond the wording: a criterion that is false as read invites two bad outcomes** — a
+test written to its letter fails against correct code and gets "fixed" by deleting the salary band, or the
+clause is quietly ignored and stops guarding anything at all.
+
+⚠ **And the guard behind it was narrower still.** `No_position_command_carries_a_compensation_value_or_headcount`
+inspects POSITION MUTATION COMMANDS only: a future `Employee.BaseSalary` property would pass it — wrong
+type, wrong package, not a command. **The mechanism-shaped guard, walking the HR domain's declared
+properties and allowing the band by name with `DEC-POS-0023` cited, is the one that catches what this
+criterion exists to prevent.**

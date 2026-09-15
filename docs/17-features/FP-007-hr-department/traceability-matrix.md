@@ -14,15 +14,15 @@ version: 1.0
 | `REQ-HR-0100` Department CRUD | `FR-DEP-0101`–`FR-DEP-0104`, `FR-DEP-0108` — realized |
 | `REQ-HR-0101` Department Hierarchy | `FR-DEP-0105`, `FR-DEP-0106` — realized |
 | `REQ-HR-0102` Department Manager | `FR-DEP-0107` — realized, via `tenant.DepartmentManagers` (`DEC-DEP-0022`) |
-| `REQ-HR-0006` Employee History | **Not extended** — department history deferred (`DEC-DEP-0016`, `OD-DEP-004`) |
+| `REQ-HR-0006` Employee History | ⚠⚠ **CORRECTED 2026-09-06 — THIS SAID *Not extended — department history deferred*.** `OD-DEP-004` **reversed the deferral** on 2026-08-20 and Phase 1 shipped `EmployeeDepartmentAssignment` as append-only history (`DEC-DEP-0016`, amendment at `decisions-approved.md:147-160`) |
 | `REQ-HR-0200`–`REQ-HR-0202` Position | **Out of scope** (`DEC-DEP-0020`) |
 
 ## Business rule coverage
 
 | Rule | Decision | Acceptance criteria | Test scenarios | Status |
 |---|---|---|---|---|
-| `BR-HR-0005` — one department per employee | `DEC-DEP-0009`, `DEC-DEP-0010` | AC-DEP-0033, AC-DEP-0039 | TS-DEP-0020, TS-DEP-0041 | **OPEN — `OD-DEP-001`.** Realized for new employees; existing rows undecided |
-| `BR-HR-0007` — no self-management | `DEC-DEP-0014` | AC-DEP-0023 | TS-DEP-0039 | **OPEN — `OD-DEP-003`.** Partially realizable at best; the personal reporting line has no field and no requirement |
+| `BR-HR-0005` — one department per employee | `DEC-DEP-0009`, `DEC-DEP-0010` | AC-DEP-0033, AC-DEP-0039 | TS-DEP-0020, TS-DEP-0041 | ⚠⚠ **CORRECTED 2026-09-01 — THIS CELL SAID *OPEN — `OD-DEP-001`* AND THAT DECISION WAS CLOSED ON 2026-08-20.** `decisions-approved.md` records **Option A adopted**: the migration creates one `UNASSIGNED` department per company holding legacy Employees and assigns them to it, failing loudly and transactionally only if such a department already exists. **A matrix that reports a settled decision as OPEN tells its reader the owner still owes an answer they have already given.** |
+| `BR-HR-0007` — no self-management | `DEC-DEP-0014` | AC-DEP-0023 | TS-DEP-0039 | ⚠⚠ **CORRECTED 2026-09-01 — THIS CELL SAID *OPEN — `OD-DEP-003`* AND THAT DECISION WAS CLOSED ON 2026-08-20 (`decisions-approved.md`: reading (iii) adopted).** **Second stale-OPEN cell in this table, same closure date, found in the same pass — so this was a TABLE that went stale rather than a cell.** Partially realizable at best; the personal reporting line has no field and no requirement |
 | `BR-HR-0008` — no circular hierarchies | `DEC-DEP-0006` | AC-DEP-0012, AC-DEP-0013, AC-DEP-0017 | TS-DEP-0025, TS-DEP-0026, TS-DEP-0028, TS-DEP-0031, TS-DEP-0032 | **Realized** |
 | `BR-HR-0009` — inactive departments receive nobody | `DEC-DEP-0012` | AC-DEP-0028, AC-DEP-0029 | TS-DEP-0015, TS-DEP-0016 | **Realized** |
 | `BR-PLT-0002` — company isolation | `DEC-DEP-0001` | AC-DEP-0006, AC-DEP-0011, AC-DEP-0019 | TS-DEP-0008, TS-DEP-0012, TS-DEP-0034 | **Realized** |
@@ -39,10 +39,10 @@ prose.**
 
 | Carried obligation | Origin | Decision | AC | TS | Status |
 |---|---|---|---|---|---|
-| `BR-HR-0005` enforcement, including for V1 employees | `DEC-EMP-0017`, `BRULE-EMP-0026` | `DEC-DEP-0009` | AC-DEP-0033, AC-DEP-0039 | TS-DEP-0020, TS-DEP-0041 | **OPEN — `OD-DEP-001`** |
-| `BR-HR-0007` once a reporting line exists | `DEC-EMP-0031` | `DEC-DEP-0014` | AC-DEP-0023 | TS-DEP-0039 | **OPEN — `OD-DEP-003`**; partially transferred onward |
+| `BR-HR-0005` enforcement, including for V1 employees | `DEC-EMP-0017`, `BRULE-EMP-0026` | `DEC-DEP-0009` | AC-DEP-0033, AC-DEP-0039 | TS-DEP-0020, TS-DEP-0041 | ⚠⚠ **CORRECTED 2026-09-06 — THIS CELL SAID *OPEN — `OD-DEP-001`*, WHICH CLOSED ON 2026-08-20.** Option A adopted; shipped in `20260820140653_AddEmployeeDepartment` and proven by `EmployeeDepartmentMigrationSqlServerTests` |
+| `BR-HR-0007` once a reporting line exists | `DEC-EMP-0031` | `DEC-DEP-0014` | AC-DEP-0023 | TS-DEP-0039 | ⚠⚠ **CORRECTED 2026-09-06 — THIS CELL SAID *OPEN — `OD-DEP-003`*, WHICH CLOSED ON 2026-08-20** adopting reading (iii): *"(i) now, (ii) when a reporting line is introduced"*. The personal reporting line is transferred onward and still has no field and no requirement |
 | Department must not be a placeholder on Employee | `DEC-EMP-0017` | `DEC-DEP-0010`, `DEC-DEP-0015` | AC-DEP-0035 | TS-DEP-0021 | Realized — `DepartmentId` is real and immutable outside the sanctioned channel |
-| Department history | FP-006 RTM, `REQ-HR-0006` partial | `DEC-DEP-0016` | — | — | **OPEN — `OD-DEP-004`**; transferred with an explicit statement of what is lost |
+| Department history | FP-006 RTM, `REQ-HR-0006` partial | `DEC-DEP-0016` | — | — | ⚠⚠⚠ **CORRECTED 2026-09-06 — THIS CELL SAID *OPEN — `OD-DEP-004`; transferred with an explicit statement of what is lost*. THE DEFERRAL WAS REVERSED ON 2026-08-20 AND THE HISTORY SHIPPED IN PHASE 1.** `EmployeeDepartmentAssignment` is append-only from the first Department onward, so *who moved between departments, when, and why* was never lost. **The cell described a data gap that never opened** — see the amendment at `decisions-approved.md:147-160` |
 
 ## Obligations FP-007 transfers onward
 
@@ -50,7 +50,7 @@ prose.**
 |---|---|---|
 | `BR-HR-0006` — every employee has one active position | The package introducing Position | Binding, deferred, no placeholder introduced (`DEC-DEP-0020`) |
 | `BR-HR-0007` personal reporting line | The package introducing an employee reporting line — **which no current requirement asks for** | Must decide whether such a line exists at all before it can be enforced (`DEC-DEP-0014`) |
-| Employee department history | The package introducing employee history | The gap between FP-007 and that package is unrecoverable (`DEC-DEP-0016`) |
+| ~~Employee department history~~ ⚠⚠⚠ **NOT TRANSFERRED — CORRECTED 2026-09-06** | ~~The package introducing employee history~~ **FP-007 itself, Phase 1** | **This row said the gap between FP-007 and that package *"is unrecoverable"*.** ***NO GAP OPENED.*** `OD-DEP-004` reversed the deferral on 2026-08-20 and `EmployeeDepartmentAssignment` shipped as append-only history from the first Department onward (`DEC-DEP-0016`, amendment at `decisions-approved.md:147-160`). ⚠ **This row cited `DEC-DEP-0016` and no `OD-DEP` id, so it survived every decision-id sweep run on 2026-09-01 and 2026-09-06** |
 | Direct `Department → Employee` manager FK with a two-pass cutover copy | An ADR-level change to Platform's cutover engine | Only if that engine gains cycle-aware copying; conditions in `ADR-026` (`DEC-DEP-0022`) |
 
 ## Non-functional requirement coverage
@@ -87,9 +87,20 @@ prose.**
 
 ## What this matrix does not claim
 
-`BR-HR-0005` and `BR-HR-0007` are recorded as **OPEN**, not as covered. FP-007 cannot claim to satisfy either
-until `OD-DEP-001` and `OD-DEP-003` are answered, and stating otherwise would be the exact failure this
-matrix exists to prevent.
+⚠⚠ **CORRECTED 2026-09-06.** This paragraph read: *"`BR-HR-0005` and `BR-HR-0007` are recorded as **OPEN**,
+not as covered. FP-007 cannot claim to satisfy either until `OD-DEP-001` and `OD-DEP-003` are answered, and
+stating otherwise would be the exact failure this matrix exists to prevent."* ***BOTH DECISIONS CLOSED ON
+2026-08-20***, so the precondition it names has been met and the paragraph was itself the failure it warns
+about — a matrix telling its reader the owner still owes an answer they have already given.
+
+**What this matrix does not claim, restated on the closures:**
+
+- **`BR-HR-0005`** — satisfied. `OD-DEP-001` adopted Option A and the migration shipped.
+- **`BR-HR-0007`** — **satisfied in part, and the remainder is not FP-007's to satisfy.** `OD-DEP-003`
+  adopted reading (iii): *"(i) now, (ii) when a reporting line is introduced"*. The departmental reading is
+  enforced by `BRULE-DEP-0012` when a manager is **assigned**; ⚠ **the move direction is not enforced** —
+  `ChangeEmployeeDepartmentCommandHandler` performs no manager lookup (see `lifecycle-model.md`). The
+  personal reporting line is transferred onward and no requirement asks for one, so it may never arrive.
 
 ---
 

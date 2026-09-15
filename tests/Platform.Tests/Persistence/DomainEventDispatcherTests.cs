@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Microsoft.Extensions.Logging.Abstractions;
 using SSAS.BuildingBlocks.Application.Abstractions.Diagnostics;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Persistence;
@@ -17,7 +18,8 @@ public sealed class DomainEventDispatcherTests
       [consumer],
       new TestCorrelationContext(),
       new TestRequestMetadata(),
-      new TestCurrentUser());
+      new TestCurrentUser(),
+      NullLogger<DomainEventDispatcher>.Instance);
     using var activity = new Activity("domain-event-test").Start();
     var domainEvent = new TestDomainEvent(Guid.NewGuid(), DateTimeOffset.UtcNow);
 
@@ -60,7 +62,6 @@ public sealed class DomainEventDispatcherTests
     public string? UserId => "actor-456";
     public string? UserName => null;
     public string? Email => null;
-    public Guid? CompanyId => null;
     public string? SessionId => null;
     public string? TokenId => null;
     public IReadOnlyCollection<string> Roles => [];

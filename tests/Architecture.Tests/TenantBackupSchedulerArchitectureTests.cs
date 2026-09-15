@@ -106,6 +106,8 @@ public sealed class TenantBackupSchedulerArchitectureTests
     // Restore verification is Phase D; the platform deletes no artifacts in V1 at all (ADR-022 §16).
     var forbidden = new[] { "Restore", "VerifyOnly", "Delete", "Purge", "Retention", "Prune", "Sweep" };
 
+    var examined = 0;
+
     foreach (var type in SchedulerTypes())
     {
       foreach (var method in type.GetMethods(
@@ -118,11 +120,27 @@ public sealed class TenantBackupSchedulerArchitectureTests
           continue;
         }
 
+        examined++;
+
         Assert.DoesNotContain(
           forbidden,
           fragment => method.Name.Contains(fragment, StringComparison.Ordinal));
       }
     }
+
+    // ⚠ ANTI-VACUITY ON WHAT SURVIVED THE SKIP, NOT ON THE COLLECTION (256). `SchedulerTypes()` is a
+    // hard-coded pair of `typeof()`s and cannot go empty, so a floor there would prove nothing — but
+    // `DeclaredOnly` means a refactor that moved these methods onto a base class would leave the inner
+    // loop with nothing to inspect, and every assertion above would hold trivially.
+    //
+    // THE GUARD'S OWN NAME IS THE TELL: *adds no restore, retention or deletion capability* IS TRIVIALLY
+    // TRUE OF A TYPE WITH NO METHODS. That is the shape found in the model scope guard, where every
+    // assertion sat inside a `continue` nothing counted past.
+    Assert.True(
+      examined >= 4,
+      $"only {examined} scheduler methods survived the skip; `DeclaredOnly` is finding almost nothing, so " +
+      "this guard is asserting that an empty set contains no deletion verbs rather than that the scheduler " +
+      "has none");
   }
 
   [Fact]
@@ -218,9 +236,32 @@ public sealed class TenantBackupSchedulerArchitectureTests
     // contain a word. A future phase may legitimately need an entity called something-Lease; what it may not
     // do is give the BACKUP SCHEDULER persisted state, because due-ness is derived from policy plus the
     // successful-backup timestamps Phase B already maintains.
-    var model = PlatformModel();
+    // ---- ⚠ TWO FLOORS, ONE PER LAYER (T-079, adopting `ModelWalk`; the layering rule is T-263).
+    //
+    // Both loops below are `foreach` over a runtime enumeration, and **an empty enumeration satisfies every
+    // assertion inside it silently.** The model is built from contributor registrations, so a failed
+    // configuration or a namespace filter that stopped matching after a move produces exactly that.
+    //
+    // ***THE PROPERTY LAYER GETS ITS OWN FLOOR RATHER THAN INHERITING THE ENTITY ONE.*** A healthy entity
+    // list whose `GetProperties()` comes back empty is a different failure, and the `NextDue` ban below
+    // would pass over it while the entity ban above still worked — so a single floor would report the
+    // surviving layer and hide the collapsed one.
+    // ⚠⚠ FLOORS OWNED BY THIS GUARD (T-099). Both were bare literals — 28 and 350 — and the 28 was copied
+    // into `BranchTransferArchitectureTests` for consistency, which made one number the floor for two
+    // different walks. They are now separate constants that happen to be equal, which is a different
+    // artefact: either population can change without silently re-flooring the other.
+    //
+    // 32 entities, derived: actual 36, measured 2026-09-07. Discriminates the platform configuration scan
+    // stopping part-way. 380 properties, derived: actual 438 — and this layer floors SEPARATELY because a
+    // healthy entity list whose property walk collapsed is a different failure (T-263), which is exactly
+    // the event a column ban like the one below would otherwise pass straight through.
+    const int platformEntityFloor = 32;
+    const int platformPropertyFloor = 380;
 
-    foreach (var entity in model.GetEntityTypes())
+    var entities = ModelWalk.FlooredEntities(
+      PlatformModel().GetEntityTypes(), "PlatformModel", platformEntityFloor);
+
+    foreach (var entity in entities)
     {
       var name = entity.ClrType.Name;
 
@@ -229,13 +270,13 @@ public sealed class TenantBackupSchedulerArchitectureTests
         name.Contains("SchedulerLease", StringComparison.OrdinalIgnoreCase) ||
         name.Contains("BackupLease", StringComparison.OrdinalIgnoreCase),
         $"{name} would give the backup scheduler persisted state");
+    }
 
-      // NextDueUtc is the specific denormalisation Phase C rejected: a second source of truth for due-ness
-      // that can drift out of step with the timestamps it duplicates.
-      foreach (var property in entity.GetProperties())
-      {
-        Assert.DoesNotContain("NextDue", property.Name, StringComparison.OrdinalIgnoreCase);
-      }
+    // NextDueUtc is the specific denormalisation Phase C rejected: a second source of truth for due-ness
+    // that can drift out of step with the timestamps it duplicates.
+    foreach (var (_, property) in ModelWalk.FlooredProperties(entities, "PlatformModel", platformPropertyFloor))
+    {
+      Assert.DoesNotContain("NextDue", property.Name, StringComparison.OrdinalIgnoreCase);
     }
   }
 
@@ -291,7 +332,6 @@ public sealed class TenantBackupSchedulerArchitectureTests
 
     public string? Email => null;
 
-    public Guid? CompanyId => null;
 
     public string? SessionId => null;
 

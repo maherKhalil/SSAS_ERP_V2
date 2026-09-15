@@ -517,5 +517,18 @@ tables and consequences travelled unchanged to
 [FP-010](../FP-010-hr-employee-documents/decisions-open.md#the-three-deferred-owner-decisions), where they
 are that package's starting inventory.
 
+> ### ⚠⚠ **AMENDMENT 2026-09-06 — ONE OF THE THREE WAS ANSWERED, AND THIS PARAGRAPH IS STILL IN THE PRESENT TENSE**
+>
+> ***`OD-DOC-009` WAS RULED ON 2026-08-23: V5 Document Management owns employee documents, and FP-010 is
+> closed*** (`FP-010/decisions-open.md:127`). **`OD-DOC-007` and `OD-DOC-008` remain genuinely open and
+> transferred, exactly as described above — so the sentence is right about two of its three subjects and
+> wrong about the third.**
+>
+> ⚠ **This package already handles the same content correctly one file over.** `README.md:101-113` heads it
+> ***"The three deferred decisions — and how they ended"***, writes in the past tense — *"**were**
+> OPEN-DEFERRED"* — and quotes the ruling beneath it. ***Same package, same three decisions, same author:
+> one file appended the ruling and this one did not.*** *The original paragraph is preserved above rather
+> than rewritten, per this file's own convention.*
+
 `OD-DOC-007` is the one that gates `ADR-028`, and `ADR-028` is what gates FP-010. **Neither gates this
 package**, which is the whole content of the `OD-DOC-001` ruling.

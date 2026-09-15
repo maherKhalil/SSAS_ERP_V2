@@ -141,6 +141,21 @@ public sealed class CalendarDomainTests
   }
 
   [Fact]
+  // ---- ⚠⚠⚠ `AC-GL-0002`'s PRINCIPAL CLAUSE IS WITNESSED BY NEITHER OF ITS TWO CITATIONS (2026-09-05).
+  //
+  // *"**The persisted journal records both** the accounting date supplied by the caller **and the fiscal
+  // period resolved from it**. The caller does not supply the period."*
+  //
+  //     ✓ *the caller does not supply it*   `GlEndpointTests.A_request_naming_a_fiscal_period_is_refused…`
+  //     ✓ *resolved from the date*          ***this test*** — `ResolveOpenPeriodFor` returns the right period
+  //     ✗ ***"THE PERSISTED JOURNAL RECORDS BOTH"*** — **witnessed by neither.**
+  //
+  // ***THE MISSING CLAUSE IS THE CRITERION'S MAIN VERB.*** *This test resolves a period from a `FiscalYear`
+  // aggregate in memory and never persists anything; the endpoint test asserts a refusal.* **Nothing reads
+  // back a stored journal and checks that it carries the accounting date AND the resolved period together.**
+  //
+  // ⚠ *Both citations are honest about what they assert and neither claims the whole — but the trait cannot
+  // say "one clause of three", so the count reads this criterion as covered.*
   [Trait("Decision", "AC-GL-0002")]
   public void The_period_covering_a_date_is_resolved_from_the_date_alone()
   {
@@ -180,6 +195,17 @@ public sealed class CalendarDomainTests
 
   [Fact]
   [Trait("Decision", "BR-GL-0003")]
+  // ⚠ CITES `AC-GL-0012`'s FIRST CLAUSE — *"Posting into a closed period is refused with
+  // `Gl.FiscalPeriodClosed`."* **And it asserts more than the criterion asks: CLOSED is distinguished from
+  // NOT-FOUND, which is the difference between "reopen the period" and "define the calendar."**
+  //
+  // ⚠⚠ ***THE SECOND CLAUSE IS NOT SEPARATELY WITNESSED HERE AND I HAVE NOT VERIFIED IT.*** *"The check
+  // runs against the period's state AT POST TIME, so a journal prepared while the period was open is still
+  // refused once it closes."* **This test closes the period and then resolves, which exercises the RESOLVER
+  // rather than the straddle — no draft is prepared while open and posted after closing.** *The mechanism
+  // points the right way (resolution happens at post time, not at draft time), but a mechanism is not a
+  // fixture, and I am recording this as UNVERIFIED rather than absent because I have not planted it.*
+  [Trait("Criterion", "AC-GL-0012")]
   public void A_closed_period_refuses_posting_and_says_so_distinctly_from_being_absent()
   {
     var year = FiscalYear.Create("FY2026", YearStart, YearEnd, TwelveMonths()).Value;

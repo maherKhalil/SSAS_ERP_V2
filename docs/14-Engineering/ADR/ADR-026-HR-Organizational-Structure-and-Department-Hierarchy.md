@@ -2,9 +2,9 @@
 id: ADR-026
 title: HR Organizational Structure and Department Hierarchy
 category: Architecture Decision Record
-version: 1.1
+version: 1.2
 status: Accepted
-date: 2026-08-25
+date: 2026-09-06
 owner: Solution Architecture Team
 tags:
   - hr
@@ -77,8 +77,13 @@ would strand the employee in a branch where their department does not exist, bre
 transfer — and `ADR-024` provides for nothing of the kind. A branch-owned Department would require amending an
 accepted ADR.
 
-**Implementation status: not implemented.** Depends on `OD-DEP-002` (owner confirmation of the business
-reading).
+**Implementation status: implemented.** ⚠ *Corrected 2026-09-06 — this read "not implemented".* `Department`
+is tenant- and company-owned and **deliberately not** `IBranchOwnedEntity` (`Department.cs:9` — *"IT IS
+DELIBERATELY NOT IBranchOwnedEntity. THIS IS THE CLASSIFICATION, NOT AN OMISSION."*). **The dependency clause
+below is untouched and still stands:** this depends on `OD-DEP-002` for owner confirmation of the *business
+reading* — **but the code fact does not wait on it**, which is why the status is corrected and the dependency
+is not.
+Depends on `OD-DEP-002` (owner confirmation of the business reading).
 
 ## Decision 2 — The absence of branch ownership is asserted, not assumed
 
@@ -89,7 +94,10 @@ with two reads as an oversight until something says otherwise.
 The assertion reads the **composed model**, not migration files. TEST-001 established why: a guard that
 enumerates files can be green and blind.
 
-**Implementation status: not implemented.**
+**Implementation status: implemented.** ⚠ *Corrected 2026-09-06 — this read "not implemented".* The guard
+exists and reads the composed model as this decision requires: `tests/Architecture.Tests/DepartmentArchitectureTests.cs`
+asserts `DoesNotContain(typeof(IBranchOwnedEntity), interfaces)` at `:46`, `:60` and `:73`, over reflected
+interfaces rather than migration files.
 
 ## Decision 3 — Hierarchy is an adjacency list
 
@@ -101,7 +109,9 @@ hierarchies are small, and recursive CTEs are adequate at that size.
 A closure table may be added later as a pure read optimization **derived from** the adjacency list. The
 reverse migration is not available, which is a further reason to start here.
 
-**Implementation status: not implemented.**
+**Implementation status: implemented.** ⚠ *Corrected 2026-09-06 — this read "not implemented".*
+`Department.cs:95` declares `public Guid? ParentDepartmentId { get; private set; }`, and `:26` records that it
+*"cannot be assigned — only `ChangeParent()`"*. No closure table was added.
 
 ## Decision 4 — The acyclicity invariant is transactional, evidence-based, and serialized per company
 
@@ -123,13 +133,23 @@ Only the self-parent case is expressible as a SQL Server constraint, and it is o
 (`CK_Departments_ParentIsNotSelf`). **The asymmetry is stated rather than hidden**: one branch of `BR-HR-0008`
 has a database guarantee; the rest has a transactional one, proven against real SQL.
 
-**Implementation status: not implemented.**
+**Implementation status: implemented — all three clauses, verified separately.** ⚠ *Corrected 2026-09-06 —
+this read "not implemented".* ***Transactional*** and ***serialized per company***:
+`DepartmentHierarchyCommandHandlers.cs:30-37` — *"BOTH OPERATIONS RUN INSIDE ONE TRANSACTION, UNDER ONE LOCK…
+the company hierarchy lock is held across all three"*, via `IDepartmentHierarchyLock`. ***Evidence-based***:
+the ancestry read runs inside that same unit of work, and the named constraint exists —
+`20260820054319_AddHrDepartment.cs:45`, `CheckConstraint("CK_Departments_ParentIsNotSelf", "[ParentDepartmentId]
+IS NULL OR [ParentDepartmentId] <> [DepartmentId]")`. ⚠ **Three claims in one sentence, checked as three
+rather than collapsed into one verdict.**
 
 ## Decision 5 — A company may have multiple root departments
 
 Requiring a single root would force an artificial "Company" node into every hierarchy.
 
-**Implementation status: not implemented.**
+**Implementation status: implemented.** ⚠ *Corrected 2026-09-06 — this read "not implemented".*
+`DepartmentConfiguration.cs:118-120` indexes `(TenantId, CompanyId, ParentDepartmentId)` with **no
+`.IsUnique()`**, so nothing forces a single root. ⚠ *Graded: verified in the EF configuration, not against a
+live database.*
 
 ## Decision 6 — Ownership-adjacent fields change only through sanctioned channels
 
@@ -137,7 +157,10 @@ Requiring a single root would force an artificial "Company" node into every hier
 only through an explicit `ChangeDepartment` operation. This extends the rule `ADR-024` established for
 `BranchId` to the second ownership-adjacent field, making it the pattern rather than a one-off.
 
-**Implementation status: not implemented.**
+**Implementation status: implemented.** ⚠ *Corrected 2026-09-06 — this read "not implemented".*
+`Employee.cs:110` declares `public Guid DepartmentId { get; private set; }` — private setter — and the field
+changes only through the dedicated `ChangeDepartment` command and its route, never through the ordinary
+profile update (`DEC-DEP-0015`).
 
 ## Decision 7 — A hierarchical entity's manager association is a separate table
 
@@ -158,15 +181,30 @@ then the direct column becomes available and is the better model. That is an ADR
 Platform-owned component with its own proven guards, and an HR feature package must not make it as a side
 effect of needing a column.
 
-**Implementation status: not implemented.**
+**Implementation status: implemented.** ⚠ *Corrected 2026-09-06 — this read "not implemented".*
+`DepartmentManagers` is a separate table with its own configuration and migration.
+⚠⚠ **A NOTE FOR ANYONE VERIFYING THIS, BECAUSE IT READS WRONG AT FIRST GLANCE:**
+`DepartmentManagerConfiguration.cs:49` says `HasKey(manager => manager.Id)` — *not* `DepartmentId`. **Line 50
+is the answer:** `Property(manager => manager.Id).HasColumnName("DepartmentId").ValueGeneratedNever()`, with
+`:51` ignoring the CLR `DepartmentId`. ***The CLR property is `Id`; the primary-key COLUMN is `DepartmentId`.***
+*Stopping at the key declaration produces the false finding that the PK this ADR describes does not exist.*
 
 ## Decision 8 — Organizational structure is not an authorization dimension
 
-Department is a filterable attribute. No read is *scoped by* department, and no `DepartmentReadScope`-style
-fourth dimension joins tenant, company and branch. `ADR-025` decision 8's three independent dimensions remain
-three.
+Department is a filterable attribute. No read is *scoped by* department, and no fourth dimension joins tenant,
+company and branch. `ADR-025` decision 8's three independent dimensions remain three.
 
-**Implementation status: not implemented.**
+> ⚠⚠ **NAME COLLISION, RECORDED 2026-09-06 — THIS SENTENCE USED TO SAY *"no `DepartmentReadScope`-style
+> fourth dimension"*, AND A CLASS OF EXACTLY THAT NAME NOW EXISTS.**
+> `src/Modules/HR/SSAS.HR.Application/Departments/Reads/DepartmentReadScope.cs` ***DOES NOT VIOLATE THIS
+> DECISION***: it carries `TenantId` and `Companies` (`AuthorizedDepartmentCompanyScope`) — tenant and
+> company, **no department dimension**. It is the scope *for reading departments*, not a scope *by*
+> department. **The example name was dropped from the prohibition because a reader who greps the token this
+> ADR chose as its illustration of what must not exist will find it, in the HR module, in a file named after
+> it.** *Nothing is wrong; the illustration became a trap.*
+
+**Implementation status: implemented in substance.** ⚠ *Corrected 2026-09-06 — this read "not implemented".*
+No read is scoped by department; `DepartmentReadScope` is tenant- and company-scoped, per the note above.
 
 ## Decision 9 — Retroactive business rules require an explicit enforcement strategy, recorded before migration
 
@@ -182,7 +220,12 @@ becomes advisory.
 This decision generalizes: Position will face the identical problem with `BR-HR-0006`, and should follow
 whatever is chosen here.
 
-**Implementation status: not implemented.** Depends on `OD-DEP-001`.
+**Implementation status: implemented.** ⚠ **CORRECTED 2026-09-06 — this read *"not implemented. Depends on
+`OD-DEP-001`."*** `OD-DEP-001` closed on 2026-08-20 adopting **Option A**: the migration creates one
+`UNASSIGNED` department per company holding legacy Employees and assigns them to it, failing loudly and
+transactionally if such a department already exists. **Shipped in
+`20260820140653_AddEmployeeDepartment`, proven by `EmployeeDepartmentMigrationSqlServerTests`**
+(`decisions-approved.md:87-101`).
 
 ## Decision 10 — A rule with no field to constrain is recorded as unenforceable, not quietly satisfied
 
@@ -193,11 +236,23 @@ contains no requirement for a reporting line.
 A Department manager is a different relationship. Treating it as if it satisfied `BR-HR-0007` would mark a
 binding rule as covered when it is not — precisely the failure the traceability discipline exists to catch.
 
-The rule is therefore recorded as **partially enforceable at best**, with the interpretation left to the owner
-and the remainder transferred explicitly to a package that may never arrive. **Where a rule cannot be
-enforced, the honest record is that it is open.**
+> ⚠⚠ **CORRECTED 2026-09-06.** This section read: *"The rule is therefore recorded as **partially enforceable
+> at best**, with the interpretation left to the owner and the remainder transferred explicitly to a package
+> that may never arrive. **Where a rule cannot be enforced, the honest record is that it is open.**"* and
+> *"**Implementation status: not implemented.** Depends on `OD-DEP-003`."*
+>
+> ***THE INTERPRETATION WAS GIVEN ON 2026-08-20.*** `OD-DEP-003` closed adopting reading (iii) — *"(i) now,
+> (ii) when a reporting line is introduced"* — **and this ADR's own revision entry (v1.1, 2026-08-25) already
+> records that closure and uses it as the grounds for moving the ADR to Accepted.** *The body was never
+> updated to match its own revision log, so the document contradicted itself for twelve days.*
 
-**Implementation status: not implemented.** Depends on `OD-DEP-003`.
+The rule is **partially enforced**, and the interpretation is settled rather than open: reading (iii) puts the
+departmental reading in force now and transfers the personal reporting line to whichever package introduces
+one — a package no requirement currently asks for, so it may never arrive.
+
+**Implementation status: partially implemented.** `BRULE-DEP-0012` refuses **assigning** a manager who already
+belongs to the department. ⚠ **The move direction is not enforced** — `ChangeEmployeeDepartmentCommandHandler`
+performs no manager lookup, so an employee can still be moved into the department they manage.
 
 ---
 
@@ -224,7 +279,7 @@ enforced, the honest record is that it is open.**
 
 | Risk | Mitigation |
 |---|---|
-| A future entity adds a mutual foreign key and breaks cutover again | `TS-DEP-0044` asserts the failure mode executably: a constructed model with the direct manager FK must fail with `CutoverCopyOrderUndecidable` |
+| A future entity adds a mutual foreign key and breaks cutover again | ⚠⚠ **CORRECTED 2026-09-01 — THIS ROW NAMED A TEST THAT DID NOT EXIST, AND HAS DONE SINCE IT WAS WRITTEN.** `TS-DEP-0044` is an APPROVED, UNIMPLEMENTED scenario (`FP-007 test-scenarios.md`); it asserted nothing. **What exists today is `CutoverCopyOrderCycleTests` (`tests/Platform.Tests/TenantStorage/`, 2026-09-01), which proves THE MECHANISM: the copy planner returns `CutoverCopyOrderUndecidable` for a foreign-key cycle among tenant-owned entities, isolated by a matched acyclic control that must pass.** ⚠ **It does NOT assert that any particular entity's shape produces such a cycle — that step is still read from the model. So this risk is mitigated AT THE MECHANISM LEVEL, and a future entity adding a mutual foreign key is caught only if someone runs the cutover, not by a guard naming that entity.** |
 | `OD-DEP-001` chooses a nullable interim and nobody remediates | `AC-DEP-0039` requires the follow-up migration to exist and be named; option C is recommended against explicitly |
 | Department ownership is later found to need branch scope | Would require amending this ADR and `ADR-024`. The guard in decision 2 ensures the change is deliberate rather than accidental |
 
@@ -264,3 +319,4 @@ enforced, the honest record is that it is open.**
 |---|---|---|---|
 | 1.0 | 2026-08-20 | Solution Architecture Team | Proposes the HR organizational-structure model: Department ownership, hierarchy representation and invariant, the manager association shape and its cutover cause, and the process for retroactive and unenforceable business rules. Ten decisions, three of them dependent on owner input. |
 | 1.1 | 2026-08-25 | Solution Architecture Team | Status corrected from `Proposed` to **Accepted**. No decision changed. This ADR stated its own acceptance precondition — that `decision 4`, `decision 9` and `decision 10` awaited `OD-DEP-001`, `OD-DEP-003` and `OD-DEP-005` — and that precondition is satisfied: all five FP-007 owner decisions closed on 2026-08-20 as `DEC-DEP-0009`, `DEC-DEP-0014` and `DEC-DEP-0019`. Accepted against its own test rather than by inference from use (`DEC-L-020`). |
+| 1.2 | 2026-09-06 | Architect window (`ssas-erp-v2-20`) | **No decision changed. Ten `Implementation status` annotations were false and are corrected.** This ADR said *"not implemented"* about a package that shipped in four phases: **every one of Decisions 1–8 is built**, `decision 9`'s migration shipped on 2026-08-20, and `decision 10` is **partially** implemented — `BRULE-DEP-0012` refuses *assigning* a manager who belongs to the department, while the **move** direction is still unenforced. Each status now carries the artefact that settles it. ⚠ **The decisions were always right; the status annotations were never revisited after the package shipped**, and `1.1` above passed over them while correcting the header. Two wording changes, neither substantive: `decision 7` gains a note that `DepartmentManagerConfiguration` keys on the CLR property `Id` mapped to the `DepartmentId` **column** — stopping at the key declaration yields the false finding that the described primary key does not exist; and `decision 8`'s prohibition no longer names `DepartmentReadScope` as its example, because **a conforming class of exactly that name now exists** (tenant- and company-scoped, no department dimension), so the illustration had become a trap for anyone grepping it. |

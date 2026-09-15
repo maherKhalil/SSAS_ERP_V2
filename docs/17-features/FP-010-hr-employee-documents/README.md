@@ -79,7 +79,7 @@ traceability matrix starts lying.
 | Criteria | `AC-DOC-0017`, `AC-DOC-0018`, `AC-DOC-0019`, `AC-DOC-0020` |
 | Scenarios | `TS-DOC-0019`, `TS-DOC-0020`, `TS-DOC-0021`, `TS-DOC-0022`, `TS-DOC-0023`, `TS-DOC-0024` |
 | Decisions | `DEC-DOC-0010`, `DEC-DOC-0011`, `DEC-DOC-0012`, `DEC-DOC-0013` — ratified as drafted, FP-010-scoped |
-| Owner decisions | `OD-DOC-007`, `OD-DOC-008`, `OD-DOC-009` — **open-deferred** |
+| Owner decisions | `OD-DOC-007`, `OD-DOC-008` — **open, transferred to V5 as its starting inventory**. `OD-DOC-009` — ⚠ **RULED 2026-08-23: V5 owns this capability.** *Corrected 2026-09-06: this row grouped all three as "open-deferred", contradicting `:4`, `:24` and `:41` of this same file. The label was right for two of its three members.* |
 
 New decisions in either package continue the same monotonic sequence from `DEC-DOC-0014`.
 
@@ -113,3 +113,5 @@ imply a guarantee it does not carry.
 
 `ADR-028`'s scope — what it owns and what stays in this feature package — is stated in
 [`decisions-open.md`](decisions-open.md#dec-doc-0010--adr-028-is-required).
+
+status: UNSTARTED

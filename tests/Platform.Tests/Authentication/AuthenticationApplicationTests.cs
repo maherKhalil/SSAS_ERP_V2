@@ -26,7 +26,39 @@ public sealed class AuthenticationApplicationTests
   [Trait("BusinessRule", "BRULE-AUTH-0013")]
   [Trait("Decision", "DEC-AUTH-0025")]
   [Trait("Requirement", "FR-AUTH-0101")]
-  [Trait("Acceptance", "AC-AUTH-0015")]
+  // ---- ⚠⚠⚠ THE `AC-AUTH-0015` CITATION WAS REMOVED HERE ON 2026-09-05. THE TEST STAYS; THE CLAIM DOES NOT.
+  //
+  // *"Invitation tokens are **single-use** and **membership-bound**."*
+  //
+  // ***THE CRITERION IS TRUE AND THE PRODUCT ENFORCES BOTH HALVES. THIS TEST WITNESSES NEITHER.***
+  //
+  // **What it asserts is `Assert.NotNull(scope.ActionTokens.Values.Single().ConsumedUtc)` — that the token
+  // was STAMPED consumed.** ***A CONSUMPTION STAMP IS NOT A REFUSAL.*** *If `CompleteInvitationCommandHandler`
+  // stopped checking consumption entirely, a replay would succeed and every assertion here would still
+  // pass.* **No second use is ever attempted, and no cross-membership use is ever attempted** — the two
+  // things the criterion actually claims.
+  //
+  // ---- WHERE THE PROPERTY ACTUALLY LIVES, SO NOBODY RE-DERIVES IT.
+  //
+  //     IsActive(now)  ==  ***ConsumedUtc is null*** && RevokedUtc is null && ExpiresUtc > now
+  //
+  // **SINGLE-USE:** the handler's first gate calls `actionToken.ValidateForUse(Invitation, now)`, which
+  // calls `IsActive`, which requires `ConsumedUtc is null`. A replay is refused before anything else runs.
+  // **MEMBERSHIP-BOUND:** the token carries `TenantUserId`; the handler resolves *that* membership through
+  // `GetByTrustedInvitationBindingAsync(tenantId, tenantUserId)` and additionally requires
+  // `account.IdentityId == actionToken.IdentityId`, `tenantUser.IdentityId == actionToken.IdentityId` and
+  // `tenantUser.Status == Pending`. *A token cannot complete a different membership, a different identity,
+  // or an already-active one.*
+  //
+  // ⚠⚠⚠ AND THE WARNING FOR WHOEVER WRITES THE REAL WITNESS: ***SINGLE-USE IS ENFORCED AT TWO SITES.***
+  // `ValidateForUse` checks `IsActive`, and `Consume()` checks `IsActive` again before stamping.
+  // ***A PLANT THAT DISABLES ONLY ONE OF THEM WILL STAY GREEN*** — redundant enforcement makes each site
+  // look dead. **Break both, or the green means nothing.**
+  //
+  // ⚠ The witness this criterion needs is a DISCRIMINATING test in the shape `AC-TEN-0007` uses: complete
+  // the invitation, then attempt the SAME token again on the SAME fixture and require the outcome to
+  // change. *Asserting the refusal is not enough on its own — the refusal must be shown to DEPEND on the
+  // token having been used.*
   [Trait("Scenario", "TS-AUTH-0001")]
   public async Task New_account_invitation_creates_pending_global_account_and_membership_then_completes_setup()
   {
@@ -309,6 +341,89 @@ public sealed class AuthenticationApplicationTests
     Assert.Equal(1, account.FailedAttemptCount);
     Assert.Single(account.DomainEvents);
   }
+
+  [Fact]
+  [Trait("Acceptance", "AC-AUTH-0033")]
+  // ==================================================================================================
+  // `AC-AUTH-0033`'s LAST CLAUSE — *"… and REVOKES EVERY ACTIVE SESSION USING `PasswordReset`."*
+  // ==================================================================================================
+  //
+  // ⚠⚠⚠ MEASURED FIRST: the handler's revocation loop fed an EMPTY list — the repository still called, its
+  // result emptied, so no unread-parameter warning. **All seven suites green.** Password reset could stop
+  // revoking sessions entirely and nothing would say so.
+  //
+  // ⚠⚠ AND THE REASON IS THE FIXTURE, NOT THE FAKE. `FakeAuthenticationSessionRepository` implements
+  // `ListActiveByIdentityForUpdateAsync` correctly, filtering on identity AND `Active`. **No test in this
+  // file has ever added a session to it**, so the branch is unreachable and the fake's correctness is
+  // moot. *A stub that is right about a population nobody populates is a coverage sink with no tell* —
+  // it reads as supported behaviour at every call site.
+  //
+  // THE OTHER FOUR CLAUSES are on `Password_reset_is_non_enumerating_and_completion_advances_security_
+  // state_once`: SecurityVersion advances, the token is single-use (the replay fails), lockout is cleared
+  // (`FailedAttemptCount` 0 and `LockoutEndUtc` null). ⚠ *Changes the password* is asserted by neither —
+  // no test verifies the new credential works or that the stored hash moved.
+  //
+  // ⚠ THE SECOND IDENTITY IS THE CRITERION'S SCOPE, NOT DECORATION. *Every active session* means every one
+  // OF THAT IDENTITY'S; a handler revoking the whole table would satisfy a single-session fixture. **This
+  // is the same "only over a population of one" trap as the logout test**, met a second time, so the
+  // fixture carries three sessions across two identities and one already-revoked.
+  public async Task Password_reset_revokes_every_active_session_for_that_identity_only()
+  {
+    var scope = new TestScope();
+    var identity = scope.AddIdentity("local:9b21439677f44164b2efc7bf5af09e91");
+    var account = scope.AddActiveAccount(identity.Id, "reset-sessions@example.com");
+    var other = scope.AddIdentity("local:4c31439677f44164b2efc7bf5af09e92");
+
+    var first = NewSession(account.IdentityId);
+    var second = NewSession(account.IdentityId);
+    var foreign = NewSession(other.Id);
+    var alreadyRevoked = NewSession(account.IdentityId);
+    Assert.True(alreadyRevoked.Revoke(
+      AuthenticationSessionRevocationReason.Administrative, "ops", Guid.NewGuid(), Now).IsSuccess);
+    scope.Sessions.Values.AddRange([first, second, foreign, alreadyRevoked]);
+
+    var issued = await scope.CreateResetIssuanceHandler().HandleAsync(
+      new IssuePasswordResetCommand("reset-sessions@example.com"));
+    var rawToken = issued.Value.SensitiveToken!.RevealOnce().Value;
+
+    var result = await scope.CreateResetCompletionHandler().HandleAsync(
+      new CompletePasswordResetCommand(rawToken, "Replacement password 123"));
+
+    Assert.True(result.IsSuccess);
+    Assert.Equal(AuthenticationSessionStatus.Revoked, first.Status);
+    Assert.Equal(AuthenticationSessionRevocationReason.PasswordReset, first.RevocationReason);
+    Assert.Equal(AuthenticationSessionStatus.Revoked, second.Status);
+    Assert.Equal(AuthenticationSessionRevocationReason.PasswordReset, second.RevocationReason);
+
+    // EVERY: two, not "one of the two the handler happened to reach".
+    // ONLY THAT IDENTITY'S: the foreign session is untouched.
+    Assert.Equal(AuthenticationSessionStatus.Active, foreign.Status);
+    Assert.Null(foreign.RevocationReason);
+
+    // ⚠ AND THE ALREADY-REVOKED ONE KEEPS ITS ORIGINAL REASON. The handler fails the whole command if any
+    // `Revoke` returns a failure, so a handler that fed ALL sessions rather than the active ones would
+    // either overwrite this reason or refuse the reset outright. **This assertion is what distinguishes
+    // "revokes every ACTIVE session" from "revokes every session".**
+    Assert.Equal(AuthenticationSessionRevocationReason.Administrative, alreadyRevoked.RevocationReason);
+  }
+
+  // ⚠⚠ WHICH OF THE ABOVE ARE PLANT-VERIFIED, STATED RATHER THAN IMPLIED. Only the first pair is: the
+  // handler's list emptied -> `Expected Revoked / Actual Active`. **The foreign-session and
+  // already-revoked assertions cannot be planted from `src/` without rewriting WHICH repository method the
+  // handler calls** — identity scoping and the Active filter both live inside
+  // `ListActiveByIdentityForUpdateAsync`, so any plant against them is a plant against the fake, which
+  // would be planting the instrument rather than the product.
+  //
+  // *They are kept as guards against a specific future change* — swapping that call for an unscoped or
+  // all-status listing, which is one identifier's difference and would read as a widening rather than a
+  // defect. **Labelled so nobody counts three verified legs where there is one.**
+
+  // No identifier is set: the handler iterates the repository's answer and never reads `Id`, so giving
+  // these sessions ids would be arrangement that no assertion depends on. Object identity is what the
+  // assertions use.
+  private static AuthenticationSession NewSession(long identityId) =>
+    AuthenticationSession.Create(
+      identityId, 31, Guid.NewGuid(), "ssas-erp-web", Guid.NewGuid(), 1, Now, Now.AddDays(30), Now.AddDays(90));
 
   [Fact]
   [Trait("BusinessRequirement", "BR-AUTH-0008")]
@@ -787,7 +902,6 @@ public sealed class AuthenticationApplicationTests
     public string? UserId { get; } = userId;
     public string? UserName => null;
     public string? Email => null;
-    public Guid? CompanyId => null;
     public string? SessionId => null;
     public string? TokenId => null;
     public IReadOnlyCollection<string> Roles => [];

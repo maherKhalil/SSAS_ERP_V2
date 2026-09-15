@@ -74,7 +74,7 @@ public sealed class ImportExportRunDomainTests
     Assert.Contains(typeof(IAppendOnlyEntity), interfaces);
     Assert.Contains(typeof(IAuditableEntity), interfaces);
     Assert.DoesNotContain(typeof(IBranchOwnedEntity), interfaces);
-    Assert.Null(type.GetProperty("BranchId"));
+    Assert.Null(type.GetProperty(nameof(SSAS.BuildingBlocks.Domain.IBranchOwnedEntity.BranchId)));
   }
 
   // ---- NO ROWVERSION, AND NO PUBLIC MUTATOR OF ANY KIND.
@@ -89,7 +89,7 @@ public sealed class ImportExportRunDomainTests
   [Trait("Decision", "DEC-DOC-0006")]
   public void Neither_run_record_has_a_rowversion_or_a_public_mutator(Type type)
   {
-    Assert.Null(type.GetProperty("RowVersion"));
+    Assert.Null(type.GetProperty(nameof(SSAS.HR.Domain.Employees.Employee.RowVersion)));
 
     var mutable = type.GetProperties()
       .Where(property => property.SetMethod?.IsPublic == true)

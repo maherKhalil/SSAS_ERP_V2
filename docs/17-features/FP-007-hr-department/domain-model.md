@@ -160,6 +160,16 @@ mutable ownership-adjacent field is a field that will eventually be mutated by a
 `DepartmentDeactivated`, `DepartmentReactivated`, `EmployeeDepartmentChanged`.
 
 These follow `ADR-009` and the existing `SSAS.HR.Domain.Events` pattern. They are raised; no handler is
-introduced by this package. `EmployeeDepartmentChanged` is the natural seam through which a future
-`EmployeeDepartmentAssignment` history would be written if `OD-DEP-004` chooses to introduce it — which is
-why it is raised now even though nothing consumes it.
+introduced by this package.
+
+> ⚠⚠ **CORRECTED 2026-09-06.** This paragraph continued: *"`EmployeeDepartmentChanged` is the natural seam
+> through which a future `EmployeeDepartmentAssignment` history **would be written if `OD-DEP-004` chooses to
+> introduce it** — which is why it is raised now even though nothing consumes it."*
+>
+> ***`OD-DEP-004` CHOSE, ON 2026-08-20, AND THE HISTORY SHIPPED IN PHASE 1 — SO THE CONDITIONAL IS SPENT.***
+> ⚠ **And the mechanism is not the one this paragraph anticipated: the history is *not* written through the
+> event seam.** `Employee.StampInitialAssignment` writes the first record in the same unit of work as the
+> Employee, and `Employee.ChangeDepartment` appends each subsequent one **atomically with the column change**
+> — the aggregate produces the record directly, and the factories are `internal` so nothing outside the
+> domain assembly can fabricate a row (`decisions-approved.md:147-160`). **`EmployeeDepartmentChanged` is
+> still raised and still has no handler; it is simply no longer the seam history depends on.**

@@ -206,3 +206,5 @@ detail (`DEC-ATT-0004`).
 
 **Nothing here is buildable until `decisions-open.md` is ruled** — and `OD-ATT-0001` alone can halve or
 double the package.
+
+status: UNSTARTED

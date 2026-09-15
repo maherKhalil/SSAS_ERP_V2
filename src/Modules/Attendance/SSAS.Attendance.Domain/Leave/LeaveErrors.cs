@@ -4,22 +4,36 @@ namespace SSAS.Attendance.Domain.Leave;
 
 public static class LeaveErrors
 {
+  // The caller is a tenant user with no linked employee (`ADR-030` Decision 5, FP-015). An ordinary state
+  // rather than a fault — platform-support staff, and users created before their employee record exists.
+  //
+  // Mapped to `404 attendance.no_linked_employee`: a distinct per-module code, because the caller sees an
+  // answer about THEMSELVES. Collapsing it into an existing not-found would tell them their records were
+  // not found when the truth is that nobody linked their employee record.
+  public static readonly Error NoLinkedEmployee = new(
+    "Attendance.NoLinkedEmployee",
+    "No employee record is linked to this user.");
+
   public static readonly Error CompanyRequired = new(
     "Attendance.LeaveCompanyRequired",
-    "Leave records must belong to a company.");
+    "Leave records must belong to a company.",
+    Field: "companyId");
 
   // ---- LEAVE TYPES.
   public static readonly Error InvalidLeaveTypeCode = new(
     "Attendance.LeaveTypeCodeInvalid",
-    "A leave type code is required and must be at most 32 characters.");
+    "A leave type code is required and must be at most 32 characters.",
+    Field: "code");
 
   public static readonly Error InvalidLeaveTypeName = new(
     "Attendance.LeaveTypeNameInvalid",
-    "A leave type name is required and must be at most 200 characters.");
+    "A leave type name is required and must be at most 200 characters.",
+    Field: "name");
 
   public static readonly Error InvalidLeaveBehaviour = new(
     "Attendance.LeaveBehaviourInvalid",
-    "The leave behaviour is not one this product implements.");
+    "The leave behaviour is not one this product implements.",
+    Field: "behaviour");
 
   public static readonly Error DuplicateLeaveTypeCode = new(
     "Attendance.LeaveTypeCodeConflict",
@@ -48,11 +62,13 @@ public static class LeaveErrors
 
   public static readonly Error InvalidPeriodYear = new(
     "Attendance.LeaveBalanceYearInvalid",
-    "A leave balance year must be a four-digit calendar year.");
+    "A leave balance year must be a four-digit calendar year.",
+    Field: "periodYear");
 
   public static readonly Error NegativeEntitlement = new(
     "Attendance.LeaveEntitlementNegative",
-    "A leave entitlement cannot be negative.");
+    "A leave entitlement cannot be negative.",
+    Field: "entitlementQuantity");
 
   public static readonly Error DuplicateBalance = new(
     "Attendance.LeaveBalanceConflict",
@@ -87,6 +103,13 @@ public static class LeaveErrors
     "Attendance.LeaveRequestNoWorkingDay",
     "The requested range contains no working day.");
 
+  // Another submission for this employee holds the submission lock, or the caller reached the lock without
+  // an open transaction. **A retry is the remedy for the first and a bug report for the second** — and the
+  // caller cannot tell them apart, which is why both refuse rather than proceeding on an unheld lock.
+  public static readonly Error SubmissionBusy = new(
+    "Attendance.LeaveSubmissionBusy",
+    "Another leave request for this employee is being submitted. Try again.");
+
   public static readonly Error RequestOverlaps = new(
     "Attendance.LeaveRequestOverlaps",
     "The employee already has a submitted or approved leave request covering these dates.");
@@ -119,7 +142,8 @@ public static class LeaveErrors
 
   public static readonly Error InvalidDecisionNote = new(
     "Attendance.LeaveDecisionNoteInvalid",
-    "A leave decision note must be at most 1000 characters and cannot contain control characters.");
+    "A leave decision note must be at most 1000 characters and cannot contain control characters.",
+    Field: "decisionNote");
 
   // ---- APPROVAL ROUTING (OD-ATT-0007).
   public static readonly Error ApproverRequired = new(

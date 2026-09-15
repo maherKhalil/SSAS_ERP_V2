@@ -131,7 +131,7 @@ FP-007 defers the following. Each names where the obligation goes; none is disca
 |---|---|---|
 | **Position** | `REQ-HR-0200`, `REQ-HR-0201`, `REQ-HR-0202`; `BR-HR-0006` | `BR-HR-0006` ("every employee must have one active position") remains binding and its enforcement transfers to the package introducing Position, on exactly the terms FP-006 used for Department. **No `PositionId`, table, column, or foreign key is introduced here** (`DEC-DEP-0020`) |
 | **Employee reporting line (`ManagerId`)** | `BR-HR-0007` | Department has a manager; an *employee* does not have a manager. No authority in the repository defines an employee→manager reporting line. `BR-HR-0007` is therefore only partially enforceable here — see `OD-DEP-003`. No reporting-line model is invented (`DEC-DEP-0014`) |
-| **Employee department history** | `REQ-HR-0006` | FP-006 deferred profile, department and position history. FP-007 records the current department and its audit stamps only. What is lost is stated in `DEC-DEP-0016`; see `OD-DEP-004` before accepting it |
+| ~~**Employee department history**~~ ⚠⚠⚠ **NO LONGER EXCLUDED — CORRECTED 2026-09-06** | `REQ-HR-0006` | **This row said:** *"FP-006 deferred profile, department and position history. FP-007 records the current department and its audit stamps only. What is lost is stated in `DEC-DEP-0016`; see `OD-DEP-004` before accepting it."* ***`OD-DEP-004` REVERSED THAT DEFERRAL ON 2026-08-20 AND PHASE 1 SHIPPED `EmployeeDepartmentAssignment` AS APPEND-ONLY DEPARTMENT-CHANGE HISTORY.*** **Nothing was lost, and this belongs in "As built" rather than in an exclusions table.** Profile and position history remain deferred to FP-006's terms |
 | **Department-scoped reads of other aggregates** | — | Nothing gains a department filter. Employee search may filter *by* department; no read is *scoped by* department (`DEC-DEP-0019`) |
 | **Cost centres, GL mapping, budgets** | Roadmap V1 General Ledger | Department is an HR organizational unit here and carries no financial semantics (`DEC-DEP-0021`) |
 | **Department codes generated automatically** | `BR-PLT-0006` | `Code` is user-entered, exactly as `EmployeeNumber` is in FP-006 (`DEC-DEP-0007`) |
@@ -173,6 +173,16 @@ an operational fact the owner holds, and it should be established before choosin
 **Option C is not recommended in any case.** A binding business rule enforced nowhere is the failure mode
 this whole package exists to avoid.
 
+> **Amendment — `OD-DEP-001` closed 2026-08-20 (appended 2026-09-06).** **Option A adopted.** For every
+> company holding legacy Employees the migration creates exactly one Department with `Code` = `UNASSIGNED`,
+> `Status` = `Active`, assigns those Employees to it, and writes one initial history row each. No
+> system-origin discriminator is added and `UNASSIGNED` is not reserved globally. **If a company already
+> holds a department with that normalized code the migration fails loudly and transactionally** — the
+> collision check is a separate pass over every affected company before any write.
+>
+> **Shipped in `20260820140653_AddEmployeeDepartment`; proven by `EmployeeDepartmentMigrationSqlServerTests`.**
+> Full ruling at `decisions-approved.md:87-101`. *The question above is preserved as it was asked.*
+
 ---
 
 ### OD-DEP-002 — Can one Department contain employees from more than one Branch?
@@ -195,6 +205,14 @@ accepted ADR.
 
 **Engineering recommendation: spanning.** Confirmation is sought rather than a decision, because the
 architecture already constrains it and the owner should know that is the reading being locked in.
+
+> ⚠ **No amendment appended — 2026-09-06.** `decisions-approved.md:23` records this **closed on 2026-08-20,
+> recommendation adopted**, and the summary table is the *only* record of it: no amendment was written
+> beneath `DEC-DEP-0001`, whose body still ends *"ENGINEERING-RECOMMENDATION, pending `OD-DEP-002`."*
+> **A single cell is thin authority for restating a decision here — one cell in that same table was found on
+> 2026-09-01 to name one option's letter with another option's behaviour.** *Amendment deliberately withheld
+> pending the owner's confirmation; this note records why it is missing rather than leaving the absence
+> silent.*
 
 ---
 
@@ -221,6 +239,20 @@ cannot be a member of the department they head, which many organizations would f
 intent is (ii) only, say so — then `BR-HR-0007` is entirely deferred and FP-007 enforces nothing for it, which
 is a legitimate answer but must be recorded rather than assumed.
 
+> **Amendment — `OD-DEP-003` closed 2026-08-20 (appended 2026-09-06).** ***Reading (iii) adopted*** — the
+> engineering recommendation, taken with the operational cost above acknowledged: **a department head cannot
+> be a member of the department they head.** So **(i) is in force now** as `BRULE-DEP-0012`, and (ii) is
+> transferred to whichever package introduces an employee reporting line — which no requirement currently
+> asks for, so it may never arrive.
+>
+> ⚠ **Enforcement is partial and the gap is named rather than implied.** `BRULE-DEP-0012` refuses
+> **assigning** a manager who already belongs to the department. **The move direction is not enforced** —
+> `ChangeEmployeeDepartmentCommandHandler` performs no manager lookup, so an employee can still be moved
+> into the department they manage (`lifecycle-model.md`).
+>
+> Recorded at `decisions-approved.md:27` and independently in the owner's own record. *The question and its
+> three readings above are preserved as asked — `:209-213` remains the only place reading (iii) is defined.*
+
 ---
 
 ### OD-DEP-004 — Is department-change history needed now, or deferred with the rest of Employee history?
@@ -243,6 +275,26 @@ irrecoverable gap. FP-006's deferral is the standing authority and this package 
 silently. If HR expects to answer "when did this person move to Finance?", the answer must be **introduce it
 now**, and that is cheap because `EmployeeBranchAssignment` is a working template.
 
+> ### ⚠⚠⚠ **Amendment — `OD-DEP-004` closed 2026-08-20: THE DEFERRAL WAS REVERSED** *(appended 2026-09-06)*
+>
+> ***THIS IS THE ONE DECISION IN THIS DOCUMENT WHOSE ANSWER WENT AGAINST THE ENGINEERING RECOMMENDATION
+> ABOVE.*** **The owner chose to build the history rather than defer it, and FP-007 Phase 1 shipped
+> `EmployeeDepartmentAssignment` from the outset.** ***So the irrecoverable gap this question warned
+> about never opened:*** *who moved between departments, when, and why* is recorded from the first
+> Department onward.
+>
+> The record is **append-only**, tenant- and company-owned, and **not** branch-owned — a department change
+> says nothing about a branch. There is no `EffectiveToUtc`: closing an interval would mean updating the
+> previous row, which is the history mutation the model exists to prevent, so the interval is derived by
+> ordering (`EffectiveFromUtc`, then the identifier as a tie-break). A null `SourceDepartmentId` marks the
+> initial record. `Employee.StampInitialAssignment` writes the first row in the same unit of work as the
+> Employee and `Employee.ChangeDepartment` appends each subsequent one atomically with the column change;
+> the factories are `internal`, so nothing outside the domain assembly can fabricate a row.
+>
+> Full ruling at `decisions-approved.md:147-160`. ⚠ **The question, the options table and the "defer"
+> recommendation above are preserved exactly as written** — the point of this record is to show that the
+> answer changed and why, which a document edited into agreement with itself cannot do.
+
 ---
 
 ### OD-DEP-005 — Should a branch-scoped user see a company-wide Department?
@@ -263,6 +315,12 @@ cannot then retrieve) and makes the hierarchy incoherent — a parent could be i
 **The business question underneath:** whether a department's *name and structure* is sensitive across
 branches. If it is, the answer changes, and that is not an engineering call.
 
+> ⚠ **No amendment appended — 2026-09-06.** `decisions-approved.md:29` records this **closed on 2026-08-20,
+> recommendation adopted**, and the summary table is the *only* record of it: no amendment was written
+> beneath `DEC-DEP-0019`, whose body still reads as an open question. **Same reason as `OD-DEP-002` above —
+> a single cell in a table with a demonstrated defect is thin authority for restating a decision.**
+> *Withheld pending the owner's confirmation, and recorded rather than left silent.*
+
 ---
 
 ## What this package does not claim
@@ -271,3 +329,5 @@ It does not claim to be approved. It does not claim `BR-HR-0005` is satisfied �
 `OD-DEP-001`. It does not claim `BR-HR-0007` is fully discharged — that depends on `OD-DEP-003`, and under
 every reading part of it transfers onward. Those are stated in
 [`traceability-matrix.md`](traceability-matrix.md) as open, not as covered.
+
+status: UNSTARTED

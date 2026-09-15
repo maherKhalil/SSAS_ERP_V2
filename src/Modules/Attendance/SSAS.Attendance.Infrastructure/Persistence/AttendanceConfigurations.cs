@@ -25,6 +25,10 @@ public sealed class WorkingCalendarConfiguration : IEntityTypeConfiguration<Work
 
     builder.ToTable("AttendanceWorkingCalendars", AttendancePersistenceConstants.TenantSchema);
     builder.HasKey(calendar => calendar.Id);
+    
+    // The key is assigned in the constructor, so the store generates nothing (see the guard
+    // `Every_constructor_keyed_entity_declares_its_key_value_generated_never`).
+    builder.Property(calendar => calendar.Id).ValueGeneratedNever();
 
     builder.Property(calendar => calendar.TenantId).IsRequired();
     builder.Property(calendar => calendar.CompanyId).IsRequired();
@@ -69,6 +73,21 @@ public sealed class WorkingCalendarConfiguration : IEntityTypeConfiguration<Work
       .FindNavigation(nameof(WorkingCalendar.Holidays))!
       .SetPropertyAccessMode(PropertyAccessMode.Field);
 
+    // ================================================================================================
+    // THE CONFIGURED CASCADE BELOW IS OVERRIDDEN BY THE PLATFORM. READ BEFORE RELYING ON IT.
+    // ================================================================================================
+    //
+    // `PersistenceDbContext.OnModelCreating` ends by setting EVERY foreign key in the composed model to
+    // `DeleteBehavior.Restrict`, and it runs AFTER the module contributors — deliberate platform policy,
+    // no silent cascades anywhere in a multi-tenant model, and `TenantDbContext` names it where the
+    // contributors are applied.
+    //
+    // So this declaration expresses INTENT and does not take effect. It is kept because the intent is real
+    // and a reader should see it; the removal that actually happens is EXPLICIT, in the repository, and the
+    // handler orders it.
+    //
+    // Believing this line cost two shipped defects (FP-013): payroll recalculation and journal-draft
+    // update both failed against a real database on orphans nothing deleted.
     builder.HasMany(calendar => calendar.Holidays)
       .WithOne()
       .HasForeignKey(holiday => holiday.WorkingCalendarId)
@@ -84,6 +103,10 @@ public sealed class CalendarHolidayConfiguration : IEntityTypeConfiguration<Cale
 
     builder.ToTable("AttendanceCalendarHolidays", AttendancePersistenceConstants.TenantSchema);
     builder.HasKey(holiday => holiday.Id);
+    
+    // The key is assigned in the constructor, so the store generates nothing (see the guard
+    // `Every_constructor_keyed_entity_declares_its_key_value_generated_never`).
+    builder.Property(holiday => holiday.Id).ValueGeneratedNever();
 
     builder.Property(holiday => holiday.TenantId).IsRequired();
     builder.Property(holiday => holiday.WorkingCalendarId).IsRequired();
@@ -109,6 +132,10 @@ public sealed class AttendancePeriodConfiguration : IEntityTypeConfiguration<Att
 
     builder.ToTable("AttendancePeriods", AttendancePersistenceConstants.TenantSchema);
     builder.HasKey(period => period.Id);
+    
+    // The key is assigned in the constructor, so the store generates nothing (see the guard
+    // `Every_constructor_keyed_entity_declares_its_key_value_generated_never`).
+    builder.Property(period => period.Id).ValueGeneratedNever();
 
     builder.Property(period => period.TenantId).IsRequired();
     builder.Property(period => period.CompanyId).IsRequired();
@@ -153,6 +180,7 @@ public sealed class AttendancePeriodConfiguration : IEntityTypeConfiguration<Att
 
     // Not unique — a period is identified by its range, and the overlap check in the handler is what keeps
     // the ranges disjoint. An index on the range supports both that check and `GetCoveringAsync`.
+    // Not an oversight: `DEC-L-084`.
     builder.HasIndex(period => new { period.TenantId, period.CompanyId, period.StartDate, period.EndDate });
   }
 }
@@ -165,6 +193,10 @@ public sealed class AttendanceRecordConfiguration : IEntityTypeConfiguration<Att
 
     builder.ToTable("AttendanceRecords", AttendancePersistenceConstants.TenantSchema);
     builder.HasKey(record => record.Id);
+    
+    // The key is assigned in the constructor, so the store generates nothing (see the guard
+    // `Every_constructor_keyed_entity_declares_its_key_value_generated_never`).
+    builder.Property(record => record.Id).ValueGeneratedNever();
 
     builder.Property(record => record.TenantId).IsRequired();
     builder.Property(record => record.CompanyId).IsRequired();
@@ -237,6 +269,10 @@ public sealed class LeaveTypeConfiguration : IEntityTypeConfiguration<LeaveType>
 
     builder.ToTable("AttendanceLeaveTypes", AttendancePersistenceConstants.TenantSchema);
     builder.HasKey(leaveType => leaveType.Id);
+    
+    // The key is assigned in the constructor, so the store generates nothing (see the guard
+    // `Every_constructor_keyed_entity_declares_its_key_value_generated_never`).
+    builder.Property(leaveType => leaveType.Id).ValueGeneratedNever();
 
     builder.Property(leaveType => leaveType.TenantId).IsRequired();
     builder.Property(leaveType => leaveType.CompanyId).IsRequired();
@@ -294,6 +330,10 @@ public sealed class LeaveBalanceConfiguration : IEntityTypeConfiguration<LeaveBa
 
     builder.ToTable("AttendanceLeaveBalances", AttendancePersistenceConstants.TenantSchema);
     builder.HasKey(balance => balance.Id);
+    
+    // The key is assigned in the constructor, so the store generates nothing (see the guard
+    // `Every_constructor_keyed_entity_declares_its_key_value_generated_never`).
+    builder.Property(balance => balance.Id).ValueGeneratedNever();
 
     builder.Property(balance => balance.TenantId).IsRequired();
     builder.Property(balance => balance.CompanyId).IsRequired();
@@ -318,6 +358,31 @@ public sealed class LeaveBalanceConfiguration : IEntityTypeConfiguration<LeaveBa
     // One balance per employee, type and year. Unique HERE — unlike attendance records — because a second
     // balance row for the same three is a duplicate rather than a correction: an entitlement is amended in
     // place (it is not append-only), so there is nothing a second row could legitimately mean.
+    //
+    // ---- ⚠ THE KEY IS NARROWER THAN THE READ, AND WHAT MAKES THAT SAFE LIVES IN ANOTHER MODULE.
+    //
+    // This index omits `CompanyId`. `ILeaveBalanceRepository.GetForEmployeeAsync` reads by
+    // `(CompanyId, EmployeeId, LeaveTypeId, PeriodYear)`, so **the constraint is STRICTER than the
+    // lookup**: one balance per employee, type and year across every company in the tenant.
+    //
+    // **That is harmless only because an employee belongs to one company for life.** `Employee.cs` states
+    // it: *"no way to change `CompanyId` or `EmployeeNumber` after creation"*, and nothing in
+    // `src/Modules/HR` assigns `Employee.CompanyId` outside construction. So `EmployeeId` functionally
+    // determines `CompanyId`, and the read's company predicate is defence in depth against reading across
+    // a company boundary rather than part of the key.
+    //
+    // ⚠ **The guarantee is NOT that the setter is sealed.** `Employee.CompanyId` has a public setter, for
+    // the ownership interface the persistence layer stamps through — `Employee.cs` says so in the same
+    // paragraph. What holds the invariant is that **no command path writes it**, plus the shared write
+    // boundaries. **If employees ever become multi-company, THIS INDEX is what breaks**, and the only
+    // symptom will be a 409 that makes no sense from the handler.
+    //
+    // ---- AND ONE CORRECT BEHAVIOUR THAT WILL LOOK LIKE A BUG.
+    //
+    // A caller passing the WRONG `companyId` for a real employee reads null, creates, and loses to this
+    // index — answered as `Attendance.LeaveBalanceConflict` (409) rather than the 500 it used to be.
+    // **That is right, and whoever meets it will report it as a defect.** Named here so they find the
+    // reason instead of the symptom.
     builder.HasIndex(balance => new
       { balance.TenantId, balance.EmployeeId, balance.LeaveTypeId, balance.PeriodYear })
       .IsUnique();
@@ -332,6 +397,10 @@ public sealed class LeaveRequestConfiguration : IEntityTypeConfiguration<LeaveRe
 
     builder.ToTable("AttendanceLeaveRequests", AttendancePersistenceConstants.TenantSchema);
     builder.HasKey(request => request.Id);
+    
+    // The key is assigned in the constructor, so the store generates nothing (see the guard
+    // `Every_constructor_keyed_entity_declares_its_key_value_generated_never`).
+    builder.Property(request => request.Id).ValueGeneratedNever();
 
     builder.Property(request => request.TenantId).IsRequired();
     builder.Property(request => request.CompanyId).IsRequired();
@@ -360,7 +429,8 @@ public sealed class LeaveRequestConfiguration : IEntityTypeConfiguration<LeaveRe
     builder.Property(request => request.DecisionNote).HasMaxLength(LeaveRequest.DecisionNoteMaximumLength);
 
     // Nullable, and the null is meaningful: a root-fallback decision has no approver EMPLOYEE because the
-    // holder is authenticated as a user and no identity-to-employee mapping exists (`OD-ATT-0013`).
+    // holder is authenticated as a user and this path does not resolve them to an employee. The mapping
+    // exists (`UserEmployeeLink`, `ADR-030`, T-082); nothing here reads it (`OD-ATT-0013`).
     builder.Property(request => request.ApproverEmployeeId);
 
     builder.Property(request => request.CreatedUtc).IsRequired();
@@ -369,6 +439,46 @@ public sealed class LeaveRequestConfiguration : IEntityTypeConfiguration<LeaveRe
     builder.Property(request => request.ModifiedBy).HasMaxLength(AttendancePersistenceConstants.ActorMaximumLength);
     builder.Property(request => request.RowVersion).IsRowVersion();
 
+    // Not unique, and for the same reason as the period range above: `SubmitLeaveRequestCommandHandler`'s
+    // overlap check is what keeps one employee's approved requests disjoint. Not an oversight: `DEC-L-084`.
     builder.HasIndex(request => new { request.TenantId, request.EmployeeId, request.StartDate, request.EndDate });
+
+    // ---- ⚠ AND A UNIQUE ONE OVER THE SAME COLUMNS, WHICH CLOSES LESS THAN IT APPEARS TO (T-150).
+    //
+    // **This catches an IDENTICAL repeat — the double-clicked button, the retry after a slow response,
+    // the same request from two devices.** `SubmitLeaveRequestCommandHandler` reads then writes with
+    // nothing held between (no transaction, READ COMMITTED, no range lock), so two concurrent submissions
+    // both pass the overlap check. **For exactly equal ranges, the engine now refuses the second.**
+    //
+    // ⚠ **IT DOES NOT CLOSE THE OVERLAP GAP AND MUST NOT BE READ AS DOING SO.** A unique index constrains
+    // EQUALITY on a key; overlap is a range predicate across rows and no index can express it
+    // (`DEC-L-084`). **Two concurrent submissions for 7th–11th and 9th–15th still both commit.** The
+    // handler's guard remains the only thing standing between them, and only a range lock or
+    // SERIALIZABLE would change that — which is the trade `CalendarCommandHandlers.cs:73` weighs and
+    // declines for fiscal years, and which remains open for leave because leave is self-service.
+    //
+    // ---- FILTERED TO Submitted AND Approved, MATCHING THE GUARD EXACTLY.
+    //
+    // `GetOverlappingAsync` considers only those two statuses. **An unfiltered unique index would refuse
+    // an employee resubmitting dates that were REJECTED or CANCELLED** — a legitimate and ordinary act,
+    // broken by a constraint meant to catch a double-click.
+    // ⚠ NAMED OVERLOAD, WHICH IS LOAD-BEARING. EF identifies an index by its PROPERTY SET, so a second
+    // `HasIndex` over the same columns MODIFIES the first rather than adding one — the scaffolded
+    // migration dropped the non-unique index and replaced it. Naming this one keeps both: the
+    // unfiltered index still serves reads across every status, and this constrains only the active ones.
+    builder.HasIndex(
+        request => new { request.TenantId, request.EmployeeId, request.StartDate, request.EndDate },
+        "UX_AttendanceLeaveRequests_Employee_Range_Active")
+      .IsUnique()
+      // ⚠ STRING LITERALS, NOT ORDINALS. `Status` is stored via `HasConversion<string>()`, and SQL Server
+      // refuses a filtered index whose predicate compares a string column to integer constants —
+      // "the column is compared with a constant of higher data type precedence". **The first attempt used
+      // `IN (0, 1)` and every Attendance integration test failed at catalog creation**, which is the
+      // database refusing to build a schema it cannot honour.
+      // ⚠ AND NON-UNICODE LITERALS, WHERE EVERY PLATFORM FILTER USES `N'...'` -- INCONSISTENT, DELIBERATELY
+      // NOT CHANGED (item 180). `Status` is `nvarchar`, so a `varchar` literal is implicitly WIDENED --
+      // `nvarchar` has the higher precedence -- and the filter evaluates identically. Adding `N` would be
+      // tidier and would change nothing, so it is left alone rather than churned. Measured, not assumed.
+      .HasFilter("[Status] IN ('Submitted', 'Approved')");
   }
 }

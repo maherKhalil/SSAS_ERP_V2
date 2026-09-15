@@ -4,6 +4,10 @@
     <PackageReference Include="Asp.Versioning.Mvc" />
     <PackageReference Include="Asp.Versioning.Mvc.ApiExplorer" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
     <PackageReference Include="Serilog.AspNetCore" />
     <PackageReference Include="Serilog.Sinks.Console" />
     <PackageReference Include="Swashbuckle.AspNetCore" />
@@ -20,6 +24,8 @@
     <ProjectReference Include="..\..\Modules\Finance\SSAS.GL.Infrastructure\SSAS.GL.Infrastructure.csproj" />
     <ProjectReference Include="..\..\Modules\Attendance\SSAS.Attendance.API\SSAS.Attendance.API.csproj" />
     <ProjectReference Include="..\..\Modules\Attendance\SSAS.Attendance.Infrastructure\SSAS.Attendance.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\Modules\HIS\SSAS.HIS.Infrastructure\SSAS.HIS.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\Modules\HIS\SSAS.HIS.API\SSAS.HIS.API.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

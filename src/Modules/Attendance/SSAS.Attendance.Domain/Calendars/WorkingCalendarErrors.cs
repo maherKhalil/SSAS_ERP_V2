@@ -8,11 +8,13 @@ public static class WorkingCalendarErrors
 {
   public static readonly Error CompanyRequired = new(
     "Attendance.WorkingCalendarCompanyRequired",
-    "A working calendar must belong to a company.");
+    "A working calendar must belong to a company.",
+    Field: "companyId");
 
   public static readonly Error InvalidName = new(
     "Attendance.WorkingCalendarNameInvalid",
-    "A working calendar name is required and must be at most 200 characters.");
+    "A working calendar name is required and must be at most 200 characters.",
+    Field: "name");
 
   public static readonly Error DuplicateName = new(
     "Attendance.WorkingCalendarNameConflict",
@@ -24,17 +26,20 @@ public static class WorkingCalendarErrors
 
   public static readonly Error InvalidWeekendPattern = new(
     "Attendance.WeekendPatternInvalid",
-    "A weekend pattern must be a set of days of the week.");
+    "A weekend pattern must be a set of days of the week.",
+    Field: "weekendDays");
 
   // A seven-day weekend means no working day ever exists, which would make every range count zero and every
   // leave request consume nothing — a configuration that silently disables the module rather than failing.
   public static readonly Error WeekendPatternCoversEveryDay = new(
     "Attendance.WeekendPatternCoversEveryDay",
-    "A weekend pattern cannot cover every day of the week; no working day would ever exist.");
+    "A weekend pattern cannot cover every day of the week; no working day would ever exist.",
+    Field: "weekendDays");
 
   public static readonly Error InvalidHolidayName = new(
     "Attendance.HolidayNameInvalid",
-    "A holiday name is required and must be at most 200 characters.");
+    "A holiday name is required and must be at most 200 characters.",
+    Field: "name");
 
   public static readonly Error DuplicateHoliday = new(
     "Attendance.HolidayDateConflict",

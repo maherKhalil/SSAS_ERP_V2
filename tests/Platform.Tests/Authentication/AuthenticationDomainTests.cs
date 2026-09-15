@@ -6,6 +6,54 @@ using SSAS.Platform.Domain.ValueObjects;
 
 namespace SSAS.Platform.Tests.Authentication;
 
+// ==================================================================================================
+// ⚠⚠ `AC-AUTH-0012` — TWO READINGS, NEITHER RULED HERE. RECORDED 2026-09-05. NOT CITED.
+// ==================================================================================================
+//
+// **THE CRITERION, QUOTED TO ITS TERMINAL FULL STOP** (`FP-002/acceptance-criteria.md:21`):
+//
+//     - **AC-AUTH-0012:** Password change advances security state and applies the approved revocation policy.
+//
+// **THE ONLY METHOD IN THE DOMAIN THAT ADVANCES SECURITY STATE ON A NEW PASSWORD, SIGNATURE VERBATIM**
+// (`AuthenticationAccount.cs:155`):
+//
+//     public Result ResetPassword(string newPasswordHash, Guid eventId, DateTimeOffset occurredUtc)
+//
+// It requires `Status == Active`, sets `PasswordChangedUtc`, clears `FailedAttemptCount` and `LockoutEndUtc`,
+// does `SecurityVersion++`, and raises `AuthenticationPasswordReset`. ⚠ **Its sibling
+// `ReplaceHashAfterSuccessfulVerification` deliberately does NOT advance `SecurityVersion`** — a rehash at
+// login is not a credential change — *which shows the distinction is drawn on purpose in this aggregate.*
+//
+// ---- ***READING A: "PASSWORD CHANGE" INCLUDES THE RESET PATH. THEN THE CRITERION IS SATISFIED AND CITABLE.***
+//
+// **The fixture that would fail if it were false is in this file: a test asserting that `ResetPassword`
+// increments `SecurityVersion`** — and `SecurityVersion` is the approved revocation mechanism
+// (`PlatformAuthenticationSessionFlowSqlServerTests` turns on exactly that: *"bumping `SecurityVersion` is
+// how the tenant plane invalidates sessions wholesale"*). *Under this reading the criterion has been met for
+// some time and is uncited by oversight.*
+//
+// ---- ***READING B: "PASSWORD CHANGE" MEANS AN AUTHENTICATED USER CHANGING THEIR OWN PASSWORD.***
+//
+// ***THEN THE SUBJECT DOES NOT EXIST.*** **There is no `ChangePassword` method in the domain and no
+// password-change route: `AuthenticationEndpointRouteBuilderExtensions` maps `/login`, `/select-tenant`,
+// `/refresh`, `/logout` and nothing else.** A reset is initiated by a token, not by a signed-in user, and
+// `AC-AUTH-0013`/`0014` already govern the reset flow. *Under this reading the criterion describes a product
+// gap, not a stale specification.*
+//
+// ⚠⚠⚠ **THE TWO READINGS DIFFER IN WHAT THEY SAY ABOUT THE PRODUCT, NOT MERELY ABOUT THE WORDING — one says
+// "covered since <date>", the other says "unbuilt" — SO THIS IS THE OWNER'S AND NEITHER WINDOW RULES IT.**
+//
+// ---- ⚠⚠ AND THE SPECIFICATION ALREADY DEFERS IT, IN A FORM NO INSTRUMENT COULD SEE.
+//
+// `FP-002/acceptance-criteria.md:67`: *"`AC-AUTH-0002` through `AC-AUTH-0008`, **`AC-AUTH-0010` through
+// `AC-AUTH-0012`**, `AC-AUTH-0018`, `AC-AUTH-0019`, `AC-AUTH-0021`, and `AC-AUTH-0022` remain package
+// acceptance criteria for later FP-002 milestones."*
+//
+// ***THAT IS A DISPOSITION, AND IT WAS INVISIBLE TWICE OVER: it lives in `docs/`, which the comment scan does
+// not cover, AND it is written as a RANGE, which matches only its first member.*** **Both blindnesses are
+// documented on `CriterionInventory.DiscussedInComments()`, and this criterion is the cell that exhibits
+// them together** — *which is why it sat in the "nobody has ever written about this" bucket while its own
+// specification had deferred it in writing.*
 public sealed class AuthenticationDomainTests
 {
   private static readonly DateTimeOffset Now = new(2026, 7, 31, 12, 0, 0, TimeSpan.Zero);
@@ -228,8 +276,18 @@ public sealed class AuthenticationDomainTests
   [Trait("Scenario", "TS-AUTH-0056")]
   public void Credential_and_action_token_hashes_are_not_public_aggregate_properties()
   {
-    Assert.Null(typeof(AuthenticationAccount).GetProperty("PasswordHash"));
-    Assert.Null(typeof(AccountActionToken).GetProperty("SecretHash"));
+    // ⚠⚠⚠ THE ASSERTION IS ABOUT VISIBILITY, NOT EXISTENCE, AND THE STRINGS HID THAT (258).
+    //
+    // Both members DO exist — `AuthenticationAccount.PasswordHash` and `AccountActionToken.SecretHash` are
+    // `internal`. `GetProperty` with default binding flags finds only PUBLIC members, so null here means
+    // "not public", which is exactly what this test's name claims.
+    //
+    // As bare strings it could not tell that from "no such member" or "I misspelt it" — the miss value and
+    // the asserted value are the same. `nameof` PROVES THE MEMBER EXISTS and the null PROVES IT IS NOT
+    // PUBLIC, so the two halves of the claim are now both checked. Visible here because
+    // `SSAS.Platform.Domain` grants `InternalsVisibleTo` to this assembly.
+    Assert.Null(typeof(AuthenticationAccount).GetProperty(nameof(AuthenticationAccount.PasswordHash)));
+    Assert.Null(typeof(AccountActionToken).GetProperty(nameof(AccountActionToken.SecretHash)));
   }
 
   private static AuthenticationAccount CreatePendingAccount() =>

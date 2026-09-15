@@ -66,6 +66,17 @@ internal sealed class WorkingCalendarRepository(ITenantDbContextAccessor context
     var context = await contextAccessor.GetRequiredAsync(cancellationToken);
     await context.Set<WorkingCalendar>().AddAsync(calendar, cancellationToken);
   }
+
+  // See the port: the platform overrides this module's configured cascade with `Restrict`, so a holiday
+  // taken out of the collection is an orphan nothing deletes. Marked Deleted by the handler BEFORE the
+  // aggregate removes it — afterwards, EF's navigation fixer has already tried to null a non-nullable key.
+  public async Task RemoveHolidayAsync(CalendarHoliday holiday, CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(holiday);
+
+    var context = await contextAccessor.GetRequiredAsync(cancellationToken);
+    context.Set<CalendarHoliday>().Remove(holiday);
+  }
 }
 
 internal sealed class AttendancePeriodRepository(ITenantDbContextAccessor contextAccessor) : IAttendancePeriodRepository

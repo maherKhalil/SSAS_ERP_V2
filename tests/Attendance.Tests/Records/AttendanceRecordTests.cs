@@ -63,6 +63,10 @@ public sealed class AttendanceRecordTests
 
   [Fact]
   [Trait("Requirement", "REQ-ATT-0007")]
+  // ⚠ CITES `AC-ATT-0011` — *"Overtime is recorded as a quantity with a tier label and **no
+  // multiplier** — the rate lives in Payroll."* Both halves are here: the tier is required and the absence
+  // of a multiplier is asserted structurally rather than left to a reader.
+  [Trait("Criterion", "AC-ATT-0011")]
   public void Overtime_carries_a_tier_and_no_multiplier()
   {
     var record = Observe(overtime: 3m, tier: "NIGHT");
@@ -81,6 +85,11 @@ public sealed class AttendanceRecordTests
 
   [Fact]
   [Trait("Requirement", "REQ-ATT-0008")]
+  // ⚠ CITES `AC-ATT-0039` FOR ITS FIRST CLAUSE ONLY. *"Paid and unpaid absence are recorded as
+  // **separate quantities**"* is asserted here. *"...and only the unpaid quantity reaches the Payroll
+  // summary as a deduction driver"* is a claim about `IAttendanceSummary`, which this record test never
+  // touches — the id does not carry it.
+  [Trait("Criterion", "AC-ATT-0039")]
   public void Paid_and_unpaid_absence_are_separate_quantities()
   {
     var record = Observe(worked: 0m, paidAbsence: 1m, unpaidAbsence: 2m);
@@ -169,8 +178,30 @@ public sealed class AttendanceRecordTests
   // The runtime refusal lives in `PreventAppendOnlyMutation` and is proved against real SQL in
   // `TS-ATT-0029`. What is asserted here is the two consequences the analysis package called out, because
   // both are absences and absences do not fail on their own.
+  //
+  // ---- ⚠⚠ AND THIS CARRIES `AC-ATT-0009`'s SECOND LEG, WHICH IS WHY A GENERAL TEST CAN DISCHARGE A
+  // ---- SPECIFIC CLAUSE HERE WITHOUT BEING A BORROWED WITNESS.
+  //
+  // *"A record already settled by termination remains readable after termination."* Two legs: nothing may
+  // FILTER it out on read — `AttendanceArchitectureTests.No_attendance_read_path_can_learn_that_an_employee
+  // _was_terminated` — and nothing may DELETE it, which is this.
+  //
+  // **The distinction from borrowing another test's assertion is that the enforcement is a UNIVERSAL over a
+  // type this record IS, rather than a coincidence of shared properties.** `PreventAppendOnlyMutation` was
+  // read to check: `ChangeTracker.Entries<IAppendOnlyEntity>()` filtered on `Modified or Deleted`, no type
+  // test, no status consulted, no exemption, called unconditionally at the top of `SaveChangesAsync`.
+  // ***IT CANNOT SEE EMPLOYMENT AT ALL, SO A TERMINATED EMPLOYEE'S RECORD IS REFUSED DELETION BY EXACTLY
+  // THE SAME CODE AS EVERY OTHER RECORD.*** That is shared code, not a shared property — a proof rather
+  // than a sample.
+  //
+  // ⚠⚠⚠ THE TIER SPLIT, STATED BECAUSE THE CRITERION'S STAMP WOULD OTHERWISE HIDE IT. What is gated is the
+  // MARKER — that `AttendanceRecord` is an `IAppendOnlyEntity`. **The runtime refusal is proved against real
+  // SQL in `TS-ATT-0029`, which is Integration and therefore green at a date rather than at every merge.**
+  // So `AC-ATT-0009` reads tier 1 on the strength of its read-path leg; *this leg is tier 1 for the marker
+  // and tier 2 for the enforcement*, and a reader should not take the criterion's tier as covering both.
   [Fact]
   [Trait("Decision", "DEC-ATT-0009")]
+  [Trait("Criterion", "AC-ATT-0009")]
   public void The_record_is_append_only_and_therefore_carries_no_row_version()
   {
     Assert.True(typeof(SSAS.BuildingBlocks.Domain.IAppendOnlyEntity)

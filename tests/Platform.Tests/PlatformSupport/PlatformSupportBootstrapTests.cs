@@ -115,6 +115,12 @@ public sealed class PlatformSupportBootstrapTests
   }
 
   [Fact]
+  [Trait("Acceptance", "AC-TEN-0036")]
+  // `AC-TEN-0036`'s TENANT-SCOPE CLAUSE — *"Bootstrap grants only known `PermissionScope.PlatformSupport`
+  // permissions; an unknown or TENANT-SCOPED permission is rejected and no assignment is created."* A
+  // tenant-scoped permission in the configured set fails validation. The UNKNOWN half is the next test,
+  // which carries the same trait; **the two rejection reasons are different code paths and a criterion
+  // naming both needs both.**
   public void A_tenant_scoped_initial_permission_fails_validation()
   {
     var result = Validate(new PlatformSupportBootstrapOptions
@@ -126,6 +132,13 @@ public sealed class PlatformSupportBootstrapTests
   }
 
   [Fact]
+  [Trait("Acceptance", "AC-TEN-0036")]
+  // `AC-TEN-0036`'s UNKNOWN-PERMISSION CLAUSE. Paired with the tenant-scoped test above.
+  //
+  // ⚠ BOTH ARE CONFIGURATION-VALIDATION TESTS, SO WHAT THEY PROVE IS THAT SUCH A SET IS REFUSED BEFORE ANY
+  // RUN — not that a run reaching the grant step would reject one. **`and no assignment is created` is
+  // satisfied here VACUOUSLY, because validation fails before assignment is reached.** That is the correct
+  // design and it is still a weaker witness than a run that got further.
   public void An_unknown_initial_permission_fails_validation()
   {
     var result = Validate(new PlatformSupportBootstrapOptions
@@ -149,6 +162,33 @@ public sealed class PlatformSupportBootstrapTests
 
   // ---- Orchestrator (ADR-016 / DEC-TEN-0019/0020/0021) ----
 
+  // ⚠⚠⚠ `AC-TEN-0032` EXAMINED AND NOT CITED — IT IS **OPEN-BY-PRACTICE**, AND ALL THREE CONDITIONS HOLD.
+  //
+  // *"No tenant role or tenant-IAM path can INVOKE BOOTSTRAP or create/modify platform-support authority;
+  // bootstrap is keyed only by immutable `AuthenticationSubject` configuration."*
+  //
+  //   THE PRACTICE      `IPlatformSupportBootstrapService` is resolved in exactly ONE place —
+  //                     `PlatformSupportBootstrapHostedService`, a startup hosted service. No request path
+  //                     resolves it, so no tenant path can reach it. ⚠ **AND IT IS RESOLVED THERE BY
+  //                     `GetRequiredService` INSIDE `StartAsync`, NOT BY CONSTRUCTOR INJECTION** — measured:
+  //                     four references in `src/` and ZERO constructor parameters of that type.
+  //   TWO MECHANISMS    so the practice is not *resolved in one place* but ***RESOLVED IN ONE PLACE BY TWO
+  //                     POSSIBLE MECHANISMS, AND NO STRUCTURAL GUARD CAN SEE THE SECOND***: a
+  //                     constructor-dependency ban would catch a handler that INJECTS the service and would
+  //                     be blind to one that calls `GetRequiredService` for it. **Such a guard would close
+  //                     one route of two while being named for the whole property — a partial alarm, worse
+  //                     than none if reported as closing this criterion.** That is why none was built.
+  //   THE ROUTE AROUND  ⚠ **the interface is declared in the APPLICATION assembly**, so any handler could
+  //                     take it as a constructor dependency tomorrow and NOTHING WOULD OBJECT. The property
+  //                     holds because nobody has done it, not because anything prevents it.
+  //   THE NEIGHBOUR     the CONFIGURATION type is genuinely guarded: `PlatformSupportAuthorityArchitecture
+  //                     Tests.No_bootstrap_configuration_is_introduced_in_this_phase` keeps
+  //                     `PlatformSupportBootstrapOptions` out of Domain and Application entirely.
+  //
+  // ***SO THE OPTIONS ARE FENCED AND THE SERVICE IS NOT, AND THE CRITERION'S OWN WORDING COVERS BOTH.***
+  // The asymmetry is invisible: a reader seeing the configuration guard would reasonably assume the
+  // invocation path is guarded too. **The cheap closure is one more forbidden name in that existing guard's
+  // list, on the Application assembly — the idiom is already there and takes the interface's name.**
   [Fact]
   public async Task No_configured_subjects_short_circuits_without_any_persistence_access()
   {
@@ -164,6 +204,17 @@ public sealed class PlatformSupportBootstrapTests
   }
 
   [Fact]
+  [Trait("Acceptance", "AC-TEN-0035")]
+  // `AC-TEN-0035`'s SECOND HALF — *"re-running bootstrap creates NO DUPLICATE principal or assignment and
+  // DOES NOTHING when usable authority already exists."* `AuthorityAlreadyUsable` with `Added` null is that
+  // clause. The audit half is on `Selection_is_deterministic_...`, which carries the same trait.
+  //
+  // ⚠ NOT CITED FOR `AC-TEN-0033`, THOUGH IT LOOKS LIKE THE OBVIOUS SITE. `0033` as it stands today is the
+  // REFINED rule — bootstrap is inert only when general AND ADMINISTRATIVE authority are usable
+  // (`DEC-TEN-0026`, Approved 2026-08-12). This test uses the one-argument `FakeAuthorityState(true)`, which
+  // predates that distinction; the three tests under the `DEC-TEN-0026` heading below take both predicates
+  // and are where `0033` is cited. **A test written against the narrow rule still passes under the wide one
+  // and proves only the half they share.**
   public async Task Existing_usable_authority_makes_bootstrap_inert()
   {
     var authority = new FakeAuthorityState(true);
@@ -179,6 +230,32 @@ public sealed class PlatformSupportBootstrapTests
   }
 
   [Fact]
+  [Trait("Acceptance", "AC-TEN-0048")]
+  [Trait("Acceptance", "AC-TEN-0050")]
+  [Trait("Acceptance", "AC-TEN-0035")]
+  // THREE CRITERIA, AND THE FIXTURE IS WHAT MAKES EACH DISCRIMINATING RATHER THAN INCIDENTAL.
+  //
+  // `AC-TEN-0048` — *"a single bootstrap evaluation establishes EXACTLY ONE genesis principal — the FIRST
+  // ELIGIBLE subject by ORDINAL comparison of the canonical subject (NEVER configuration insertion
+  // order)."* ⚠ The subjects are configured `["local:bob", "local:alice"]` — **reverse ordinal order, and
+  // both are eligible** — so choosing `alice` can only be ordinal comparison. Had they been configured
+  // alphabetically the test would pass under either rule and prove neither.
+  //
+  // ⚠⚠ THE *EXACTLY ONE* HALF WAS NOT ASSERTABLE UNTIL THIS COMMIT. `Assert.Single(AddedPrincipals)` is new;
+  // the fake previously kept only the last `AddAsync`, so a service establishing two principals passed
+  // every line here. See the note on `FakePrincipalRepository` — **a count claim cannot be carried by a
+  // one-element recorder**, and *exactly one* is a count claim wearing an identity assertion's clothes.
+  //
+  // `AC-TEN-0050` — *"Configured subjects OTHER than the selected one receive NO platform authority
+  // automatically."* `local:bob` is eligible, configured FIRST, and gets nothing. That is the whole
+  // criterion, and it rests on the same new `Assert.Single` — with a one-slot recorder, a bob principal
+  // added before alice's was invisible.
+  //
+  // `AC-TEN-0035`'s AUDIT HALF — *"Genesis/recovery operations are audited with a DISTINGUISHABLE BOOTSTRAP
+  // ACTOR."* `assignment.AssignedBy` is `platform-bootstrap:local:alice` on every assignment: prefixed so it
+  // cannot collide with a human actor, and carrying WHICH subject seeded the plane. **The criterion's other
+  // half — re-running creates no duplicate and does nothing when authority is usable — is at
+  // `Existing_usable_authority_makes_bootstrap_inert`, which carries the same trait.**
   public async Task Selection_is_deterministic_ordinal_first_eligible_regardless_of_configuration_order()
   {
     // Both eligible; configured in reverse order. The ordinal-least subject (local:alice) must be chosen.
@@ -191,11 +268,35 @@ public sealed class PlatformSupportBootstrapTests
 
     Assert.Equal(PlatformSupportBootstrapOutcome.GenesisEstablished, outcome);
     Assert.NotNull(principals.Added);
+    // EXACTLY ONE — `AC-TEN-0048`'s cardinality and `AC-TEN-0050`'s "others get nothing" are the same
+    // assertion seen from two sides, and neither was expressible before the recorder kept every add.
+    Assert.Single(principals.AddedPrincipals);
     Assert.Equal(IdFor("local:alice"), principals.Added!.IdentityId);
     Assert.All(principals.Added.PermissionAssignments, assignment => Assert.Equal("platform-bootstrap:local:alice", assignment.AssignedBy));
   }
 
   [Fact]
+  [Trait("Acceptance", "AC-TEN-0031")]
+  // `AC-TEN-0031` — *"The configured `AuthenticationSubject` must resolve to an EXISTING `Identity` … a
+  // MISSING or ineligible subject creates no platform authority."* `local:alice` is deliberately absent from
+  // the identity repository and is skipped rather than created.
+  //
+  // ⚠ THE CRITERION'S LAST SENTENCE — *"Bootstrap NEVER CREATES IDENTITIES"* — IS NOT ASSERTABLE THROUGH
+  // THIS FAKE. The identity repository double exposes no create path, so the property holds by the SHAPE OF
+  // THE TEST DOUBLE rather than by anything the product is observed not to do. **A capability the fake
+  // cannot offer is a capability the test cannot prove is unused** — the same defect class as the one-slot
+  // recorder below, in the opposite direction.
+  //
+  // ⚠⚠ CORRECTED: I FIRST WROTE THAT THIS CLAUSE WAS *"NOT ASSERTED ANYWHERE"*, WHICH WAS AN UNBOUNDED
+  // ABSENCE AND TOO WIDE. **`PlatformSupportAuthorityEndToEndTests.Register_creates_exactly_one_principal_
+  // and_creates_no_identity_or_account` asserts the SAME PROPERTY for the sibling operation** — counting
+  // rows in `platform.Identities` and `platform.AuthenticationAccounts` before and after, against a real
+  // database.
+  //
+  // **The clause remains uncarried FOR THE BOOTSTRAP PATH**, which is a narrower and defensible statement —
+  // Register and bootstrap are different operations and only one of them is exercised end-to-end. ⚠ And the
+  // Register test hands over the idiom that would close it: **a before/after row count needs no cooperation
+  // from a double at all**, which is exactly why it can witness a non-creation that this file cannot.
   public async Task A_missing_first_candidate_is_skipped_for_the_next_eligible_one()
   {
     var identities = new FakeIdentityRepository();
@@ -212,6 +313,36 @@ public sealed class PlatformSupportBootstrapTests
   }
 
   [Fact]
+  [Trait("Acceptance", "AC-TEN-0031")]
+  [Trait("Acceptance", "AC-TEN-0037")]
+  // ⚠ `AC-TEN-0037` — *"Bootstrap/recovery NEVER CHANGES a `Disabled` principal's status; re-enable is a
+  // separate explicit lifecycle operation. Configuration membership is NOT RE-ENABLE AUTHORITY."* — IS THE
+  // THIRD *SATISFIED BY A BROADER GUARD* CASE TONIGHT, AND THE SHAPE IS NOW FAMILIAR.
+  //
+  // `local:bob` is skipped here because it ALREADY OWNS A PRINCIPAL — **not because that principal is
+  // Disabled.** The service's rule is new-principal-only: any identity holding a principal is skipped,
+  // whatever its status. ***SO A DISABLED PRINCIPAL IS NEVER RE-ENABLED BECAUSE ITS IDENTITY IS NEVER
+  // SELECTED, AND NO FIXTURE HERE CONTAINS A DISABLED PRINCIPAL AT ALL.***
+  //
+  // The criterion holds and the guard that holds it is not about disablement — **it would still be there if
+  // the re-enable rule vanished.** Same shape as `AC-TEN-0024`'s system-role clause and `AC-TEN-0045`'s
+  // unexercised exception: **covered, and untestable at this site as stated.**
+  //
+  // ⚠⚠⚠ DORMANT, WITH AN EXTERNAL TRIGGER. ***WHAT WOULD HAVE TO CHANGE ELSEWHERE: bootstrap ceasing to skip
+  // identities that already own a principal.*** The moment recovery is allowed to REUSE an existing
+  // principal's identity — for any reason, including a perfectly good one about re-establishing authority
+  // faster — **the disabled-principal path becomes reachable and `AC-TEN-0037` becomes load-bearing with no
+  // witness.** The service's own header calls new-principal-only a deliberate choice, which is exactly the
+  // kind of choice a later phase revisits.
+  //
+  // **Whoever relaxes new-principal-only must add a disabled-principal fixture here in the same change**,
+  // because after that change this file contains nothing that would notice a re-enable.
+  //
+  // `AC-TEN-0031`'s ELIGIBILITY HALF — *"must resolve to an … authentication-capable, ACTIVE
+  // `AuthenticationAccount`; a missing or INELIGIBLE subject creates no platform authority."* `local:alice`
+  // has an ineligible account and is skipped; `local:carol` seeds the plane. **`local:bob` is skipped for a
+  // DIFFERENT reason — it already owns a principal — so the test carries two distinct exclusions and only
+  // the first is this criterion's.**
   public async Task An_ineligible_account_and_an_already_owning_identity_are_both_skipped()
   {
     // local:alice's account is not authentication-eligible; local:bob already owns a principal;
@@ -273,6 +404,34 @@ public sealed class PlatformSupportBootstrapTests
   }
 
   [Fact]
+  [Trait("Acceptance", "AC-TEN-0049")]
+  // `AC-TEN-0049` — *"Concurrent bootstrap evaluations that both observe no usable authority CONVERGE, via
+  // the authoritative unique `IdentityId`/active-assignment constraints, on EXACTLY ONE genesis/recovery
+  // principal (the loser's duplicate is an idempotent race outcome); NO DISTRIBUTED LOCK is required."*
+  //
+  // ⚠ WHAT IS CARRIED IS THE LOSER'S BEHAVIOUR, WHICH IS THE HALF THAT CAN GO WRONG: the losing evaluation
+  // meets the unique constraint and reconverges instead of failing or duplicating.
+  //
+  // ⚠⚠⚠ BUT THE CRITERION'S STATED MECHANISM IS SUPERSEDED, AND THE CITATION IS FOR THE OUTCOME ONLY.
+  // `0049` says convergence happens *"VIA the authoritative unique `IdentityId`/active-assignment
+  // constraints"* and that *"NO DISTRIBUTED LOCK is required"*. `PlatformSupportBootstrapService`'s own
+  // header now says the opposite about which mechanism is primary: *"Convergence is provided by the recovery
+  // serialization (`IPlatformSupportRecoverySerializer`) … IdentityId uniqueness remains as defense-in-depth
+  // … it is NO LONGER THE PRIMARY multi-subject convergence mechanism."* And
+  // `PlatformSupportRecoverySerializer` is **an exclusive lock on the platform-support principal table**,
+  // taken inside the transaction — chosen because at genesis the table is empty, so there is no row to lock
+  // and a candidate-keyed lock would let two workers holding two DIFFERENT locks both proceed.
+  //
+  // **So the trait claims the OUTCOME — exactly one principal survives a race — and not the route.** Whether
+  // a single-database table lock falsifies *no distributed lock* is a reading of that phrase rather than a
+  // measurement, and it is not mine to settle; the service author evidently judged it consistent, noting
+  // *"no new locking primitive"*. Recorded here so the next reader compares the criterion to the code rather
+  // than to this test.
+  //
+  // ⚠⚠ AND THIS IS A ROT KIND NO TEXT FILTER CAN FIND. Absences, phase markers, temporal antecedents and
+  // quoted statuses all ANNOUNCE themselves with a word. **A superseded MECHANISM announces nothing** —
+  // *"via the authoritative unique constraints"* contains no marker of any kind, and the only way to catch it
+  // is to compare the criterion's stated how against the code's actual how.
   public async Task A_write_race_that_loses_the_unique_constraint_reconverges_on_the_winner()
   {
     // Pre-check sees no authority; the atomic insert loses the IdentityId uniqueness race; the live
@@ -307,9 +466,34 @@ public sealed class PlatformSupportBootstrapTests
   }
 
   // ---- DEC-TEN-0026 administrative recovery predicate ----
-
+  //
+  // ⚠⚠⚠ `AC-TEN-0033` IS CITED ACROSS THESE THREE, AND ONLY AGAINST THE **REFINED** RULE. The criterion's
+  // first sentence reads *"bootstrap … is INERT ONCE USABLE AUTHORITY EXISTS"*, and its parenthetical adds
+  // *"recovery is ADDITIONALLY ELIGIBLE when usable authority exists but no usable ADMINISTRATIVE authority
+  // exists"* — `DEC-TEN-0026`, which `decisions-approved.md:11` records as **Approved for Implementation on
+  // 2026-08-12**.
+  //
+  // ⚠⚠ THE CRITERION'S OWN PARENTHETICAL STILL CALLS THAT DECISION *PROPOSED*, AND THE STATUS WORD IS THREE
+  // WEEKS STALE. That matters here more than anywhere else in the package: **under the unrefined first
+  // sentence, `Administrative_loss_triggers_recovery_even_though_general_authority_survives` below reads as
+  // a VIOLATION — general authority is usable and bootstrap is not inert.** A disposal against the narrow
+  // text would have reported correct code as a product defect. `decisions-approved.md` (live tree) is the
+  // authority; `acceptance-criteria.md`'s status word is not.
+  //
+  // THE TRIO IS A COMPLETE CASE ANALYSIS OVER THE TWO PREDICATES, WHICH IS WHY IT CARRIES THE REFINEMENT
+  // RATHER THAN ILLUSTRATING IT:
+  //   general TRUE  + administrative TRUE   inert            the ONLY inert state
+  //   general TRUE  + administrative FALSE  recovery         the DEC-TEN-0026 case exactly
+  //   general TRUE  + administrative FALSE  fails closed     …with no eligible configured subject
+  // **The second row is the entire refinement**: general authority survives and recovery engages anyway.
+  //
+  // ⚠ `general FALSE` is not a row here because it is the ORIGINAL genesis path, covered above. So the
+  // analysis is complete over the states the refinement introduced, not over the whole matrix — stated
+  // rather than implied, because *complete* is a claim about a set and the set here is the two-predicate
+  // space with one axis already covered elsewhere.
   [Fact]
   [Trait("Decision", "DEC-TEN-0026")]
+  [Trait("Acceptance", "AC-TEN-0033")]
   public async Task Bootstrap_is_inert_only_when_both_general_and_administrative_authority_are_usable()
   {
     // general TRUE + administrative TRUE is the ONLY inert state.
@@ -325,6 +509,13 @@ public sealed class PlatformSupportBootstrapTests
 
   [Fact]
   [Trait("Decision", "DEC-TEN-0026")]
+  [Trait("Acceptance", "AC-TEN-0033")]
+  [Trait("Acceptance", "AC-TEN-0051")]
+  // ⚠ ALSO CARRIES `AC-TEN-0051`'s POSITIVE HALF — *"if another eligible configured subject owns no
+  // principal, bootstrap establishes that subject as a NEW `Active` recovery principal"*. A new principal is
+  // added for `local:alice` and granted `Administer`. **The criterion's OTHER half — that a `Disabled`
+  // principal is never re-enabled and REMAINS `Disabled` — is NOT here: this fixture has no disabled
+  // principal at all, so nothing in it could observe a re-enable.** Recorded rather than glossed.
   public async Task Administrative_loss_triggers_recovery_even_though_general_authority_survives()
   {
     // The DEC-TEN-0026 case: a surviving non-admin principal keeps general authority TRUE, but with no usable
@@ -348,6 +539,17 @@ public sealed class PlatformSupportBootstrapTests
 
   [Fact]
   [Trait("Decision", "DEC-TEN-0026")]
+  [Trait("Acceptance", "AC-TEN-0033")]
+  [Trait("Acceptance", "AC-TEN-0052")]
+  // `AC-TEN-0052`'s FAIL-CLOSED CLAUSE — *"bootstrap fails closed (no implicit re-enable, no duplicate
+  // principal)"*. `NoEligibleCandidate` with `Added` null is exactly that, and it is the stronger of the two
+  // fail-closed sites because general authority SURVIVES here: the service has a live principal in front of
+  // it and still refuses to elevate it.
+  //
+  // ⚠⚠ `0052`'s SECOND CLAUSE IS UNCOVERED AND NAMED: *"and EMITS AN OPERATOR DIAGNOSTIC that no eligible
+  // recovery subject exists."* Nothing here observes a diagnostic — the outcome enum is the only channel
+  // asserted, and an enum value is not an operator-facing message. **A silent fail-closed and a diagnosed
+  // one are the same green.**
   public async Task Administrative_loss_without_an_eligible_configured_subject_fails_closed()
   {
     // No eligible configured subject: recovery must NOT elevate the surviving non-admin principal, must not
@@ -530,7 +732,21 @@ public sealed class PlatformSupportBootstrapTests
   {
     private readonly HashSet<long> existingIdentityIds = [];
 
-    public PlatformSupportPrincipal? Added { get; private set; }
+    // ⚠⚠⚠ `Added` WAS A SINGLE SLOT AND THAT MADE A CARDINALITY CLAIM UNASSERTABLE. `AddAsync` overwrote it,
+    // so a service that established TWO principals left the LAST one here and every existing assertion still
+    // passed. **`AC-TEN-0048` says a single evaluation establishes EXACTLY ONE genesis principal and
+    // `AC-TEN-0050` says the other configured subjects receive no authority — neither is a claim a
+    // one-element recorder can carry**, because both are about HOW MANY, and the recorder discards that.
+    //
+    // Same family as the derived-field fake in `AuthenticationSessionApplicationTests`: **the fake's SHAPE,
+    // not the test's assertions, is what bounded what could be proved.** A recorder that keeps only the last
+    // value silently converts every count assertion into a last-write assertion.
+    //
+    // `Added` is kept as the last-write convenience so every pre-existing test reads unchanged; assertions
+    // about HOW MANY use `AddedPrincipals`.
+    public List<PlatformSupportPrincipal> AddedPrincipals { get; } = [];
+
+    public PlatformSupportPrincipal? Added => AddedPrincipals.Count == 0 ? null : AddedPrincipals[^1];
 
     public void MarkExisting(long identityId) => existingIdentityIds.Add(identityId);
 
@@ -539,7 +755,7 @@ public sealed class PlatformSupportBootstrapTests
 
     public Task AddAsync(PlatformSupportPrincipal principal, CancellationToken cancellationToken = default)
     {
-      Added = principal;
+      AddedPrincipals.Add(principal);
       return Task.CompletedTask;
     }
 

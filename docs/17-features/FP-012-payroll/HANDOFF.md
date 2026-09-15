@@ -190,6 +190,11 @@ Domain tests, no database:
 * Payroll↔HR and Payroll↔GL isolation **in both directions** — Payroll sees GL only via `SSAS.GL.Contracts`
 * **`TS-PAY-0011` verifies `DEC-PAY-0018`'s premise** — if the poster stops reusing GL's path, that decision
   reopens
+  * ⚠⚠ **CORRECTED 2026-09-01 — `TS-PAY-0011` RETURNS ZERO FILES IN `tests/`. THE PREMISE IS ASSERTED, IN
+    THE SUITE THIS BULLET NAMES:** `PayrollArchitectureTests.Payroll_assemblies_reach_other_modules_only_through_contracts`
+    and `PayrollArchitectureTests.No_other_module_learns_about_payroll`, **and the file's own header names
+    `DEC-PAY-0018` as the reason both directions are asserted.** **A handoff document is what a new person
+    reads first, so a dead pointer costs more here than anywhere else in the record.**
 * Scope unforgeability; permission completeness; no public setter on a monetary property
 * Every tenant-owned payroll entity implements `ITenantOwnedEntity`
 * **The `EmploymentRecord` field list** — the roster guard already asserts this; extend if the contract moves

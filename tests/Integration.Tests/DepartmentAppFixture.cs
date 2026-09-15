@@ -325,6 +325,11 @@ internal sealed class DepartmentAppFixture : IAsyncDisposable
     }
   }
 
+  // Exposed for the hierarchy-lock CONTENTION test, which needs a SECOND connection. Every call builds
+  // fresh options, so two calls are two connections -- and that is the whole property under test: a lock
+  // taken on one connection is invisible to a test that only ever uses the other.
+  public TenantDbContext CreateContext() => NewContext();
+
   private TenantDbContext NewContext()
   {
     var options = new DbContextOptionsBuilder<TenantDbContext>()
@@ -441,7 +446,6 @@ internal sealed class DepartmentAppFixture : IAsyncDisposable
 
     public string? Email => null;
 
-    public Guid? CompanyId => null;
 
     public string? SessionId => null;
 
@@ -467,6 +471,11 @@ internal sealed class DepartmentAppFixture : IAsyncDisposable
 internal sealed class DepartmentGraph : IAsyncDisposable
 {
   private readonly TenantDbContext context;
+
+  // Exposed so a test can assert a PERSISTENCE rule on a row this graph wrote, on the context that has a
+  // trusted company. `DepartmentAppFixture.CreateContext()` supplies no company authorizer, so a save
+  // through it is refused by the COMPANY guard before the tenant one is ever reached.
+  public TenantDbContext Context { get; private set; } = null!;
   private readonly SingleContextAccessor accessor;
   private readonly SingleContextUnitOfWork unitOfWork;
   private readonly DepartmentRepository repository;
@@ -509,6 +518,7 @@ internal sealed class DepartmentGraph : IAsyncDisposable
 
     accessor = new SingleContextAccessor(context);
     unitOfWork = new SingleContextUnitOfWork(context);
+    Context = context;
     repository = new DepartmentRepository(accessor);
 
     // THE REAL RESOLVER, over stubbed Platform authorities. See the note beside the stubs below.
@@ -812,7 +822,6 @@ internal sealed class DepartmentGraph : IAsyncDisposable
 
     public string? Email => null;
 
-    public Guid? CompanyId => null;
 
     public string? SessionId => null;
 

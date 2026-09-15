@@ -1,3 +1,5 @@
+using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
+using SSAS.BuildingBlocks.SharedKernel;
 using SSAS.Attendance.Application.Abstractions;
 using SSAS.Attendance.Application.Approval;
 using SSAS.Attendance.Application.Permissions;
@@ -6,6 +8,7 @@ using SSAS.Attendance.Domain.Calendars;
 using SSAS.Attendance.Domain.Leave;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Domain;
+using SSAS.BuildingBlocks.Tenancy;
 using SSAS.BuildingBlocks.Tenancy.Persistence;
 using SSAS.HR.Contracts.Employment;
 
@@ -65,7 +68,36 @@ public sealed class CreateLeaveTypeCommandHandler(
     await leaveTypes.AddAsync(leaveType.Value, cancellationToken);
 
     var saved = await unitOfWork.SaveChangesAsync(cancellationToken);
-    return saved.IsFailure ? Result.Failure<Guid>(saved.Error) : Result.Success(leaveType.Value.Id);
+    if (saved.IsFailure)
+    {
+      // ---- THE LEAVE TYPE RACE: THE GUARD AND THE INDEX NAME THE SAME CONDITION (T-176).
+      //
+      // `ILeaveTypeRepository.CodeExistsAsync` is a read, so two callers can both pass it with the same value and both reach
+      // this save. **the unique index on `(TenantId, CompanyId, NormalizedCode)` decides it at commit**, and the loser reached
+      // `AttendanceApiErrorMapper` with an unmapped `Persistence.UniqueConstraint` — answered 500 for a
+      // plain business conflict, while `LeaveErrors.DuplicateLeaveTypeCode` sat mapped to 409 and unreturned on
+      // this path.
+      //
+      // ---- ⚠ THE SAME CODE HONESTLY SERVES BOTH, AND THAT IS NOT TRUE OF EVERY RACE.
+      //
+      // **The race and the pre-check produce an IDENTICAL caller-visible condition** — the name is taken —
+      // so one code answers both without lying about either. **Retrying the identical request fails again:**
+      // the caller must change the input, not repeat it.
+      //
+      // That is the opposite of the leave-entitlement race, where a retry finds the winner's row and
+      // succeeds, and of the journal reversal, where two different conditions collapse into one exception
+      // and neither can be named. **Same 409 in all three; three different things for a client to do.**
+      //
+      // ⚠ **SOUND ONLY WHILE THIS HANDLER CAN REACH EXACTLY ONE UNIQUE INDEX.** It writes a `LeaveType` and nothing else.
+      if (saved.Error.Code == PersistenceErrorCodes.UniqueConstraint)
+      {
+        return Result.Failure<Guid>(LeaveErrors.DuplicateLeaveTypeCode);
+      }
+
+      return Result.Failure<Guid>(saved.Error);
+    }
+
+    return Result.Success(leaveType.Value.Id);
   }
 }
 
@@ -190,7 +222,56 @@ public sealed class SetLeaveEntitlementCommandHandler(
     await balances.AddAsync(balance.Value, cancellationToken);
 
     var saved = await unitOfWork.SaveChangesAsync(cancellationToken);
-    return saved.IsFailure ? Result.Failure<Guid>(saved.Error) : Result.Success(balance.Value.Id);
+    if (saved.IsFailure)
+    {
+      // ---- THE ENTITLEMENT RACE, AND WHY THE LOSER IS TOLD TO RETRY (T-171).
+      //
+      // The read above is `GetForEmployeeAsync`, so two callers can both see null and both take this
+      // branch. **`UX_AttendanceLeaveBalances_Employee_Type_Year` decides it at commit**, and before that
+      // index the loser received `Persistence.UniqueConstraint` unmapped — a 500.
+      //
+      // ⚠ **AND A SECOND ROW WAS NOT A REPORTING PROBLEM.** `LeaveBalance.Consume` guards with
+      // `ConsumedQuantity + quantity > EntitlementQuantity` **against that row's own counter**, and the
+      // repository reads with `FirstOrDefaultAsync`. Two rows meant the guard passed twice against two
+      // different counters: **an employee could take double their entitlement and nothing reported it.**
+      //
+      // ---- RETRYABLE, AND THE REASON IS NOT MERELY "TRY AGAIN".
+      //
+      // **The losing operation's intent is satisfied by the winner's row.** A retry finds it and takes the
+      // `SetEntitlement` branch above — which is exactly what this caller asked for. Setting an
+      // entitlement twice concurrently CONVERGES.
+      //
+      // That is the mirror of the journal reversal, where a lost race is TERMINAL because the reversal
+      // already exists and no retry can succeed. **Same 409, opposite correct client action** — which is
+      // why the code matters and the status alone does not.
+      //
+      // ⚠ **THE INDEX EXISTS AND ALWAYS HAS — T-171/T-172 SAID OTHERWISE AND WERE WRONG (T-173).**
+      //
+      // `IX_AttendanceLeaveBalances_TenantId_EmployeeId_LeaveTypeId_PeriodYear` is unique and unfiltered,
+      // shipped in `AddAttendanceFoundation` on 2026-08-25, and `AttendanceConfigurations` states its
+      // reasoning in place. **The race was never open; the loser was simply getting a 500** because
+      // `Persistence.UniqueConstraint` reached the mapper unmapped. This branch is what makes it a 409.
+      //
+      // ⚠ **AND THE INDEX KEY IS NARROWER THAN THE READ.** The index omits `CompanyId`; the read
+      // (`GetForEmployeeAsync`) includes it. So the constraint is STRICTER than the lookup: one balance
+      // per employee, type and year across ALL companies in the tenant. If an employee id can ever appear
+      // under two companies, the second company's entitlement is refused by an index nobody would think
+      // to look at from here.
+      //
+      // ---- SOUND ONLY WHILE THAT TABLE CARRIES EXACTLY ONE UNIQUE INDEX.
+      //
+      // This handler writes nothing else, so a unique violation here can only be that one — and naming it
+      // becomes a guess the day a second unique index is added. The coupling is invisible from here,
+      // which is why it is written here.
+      if (saved.Error.Code == PersistenceErrorCodes.UniqueConstraint)
+      {
+        return Result.Failure<Guid>(LeaveErrors.DuplicateBalance);
+      }
+
+      return Result.Failure<Guid>(saved.Error);
+    }
+
+    return Result.Success(balance.Value.Id);
   }
 }
 
@@ -199,11 +280,13 @@ public sealed class SetLeaveEntitlementCommandHandler(
 // ================================================================================================
 public sealed class SubmitLeaveRequestCommandHandler(
   ILeaveRequestRepository requests,
+  ILeaveSubmissionLock submissionLock,
   ILeaveTypeRepository leaveTypes,
   IWorkingCalendarRepository calendars,
   IEmployeeRoster roster,
   IAttendanceScopeResolver scope,
-  ITenantUnitOfWork unitOfWork)
+  ITenantUnitOfWork unitOfWork,
+  ICurrentTenant currentTenant)
 {
   public async Task<Result<Guid>> HandleAsync(
     SubmitLeaveRequestCommand command, CancellationToken cancellationToken = default)
@@ -211,7 +294,8 @@ public sealed class SubmitLeaveRequestCommandHandler(
     ArgumentNullException.ThrowIfNull(command);
 
     // `Attendance.Leave.Manage`, not a self-service permission. Under `OD-ATT-0013` this route is an
-    // ADMINISTRATOR submitting on an employee's behalf, because no identity-to-employee mapping exists —
+    // ADMINISTRATOR submitting on an employee's behalf. The mapping exists (`UserEmployeeLink`, T-082) but
+    // no submission path reads it —
     // which is why `EmployeeId` is mandatory in the command rather than inferred from the caller.
     var authorized = await scope.AuthorizeAsync(
       AttendancePermissionNames.ManageLeave, command.CompanyId, cancellationToken);
@@ -251,6 +335,29 @@ public sealed class SubmitLeaveRequestCommandHandler(
     // figure is a fact about a decision, not a derivation from mutable configuration.
     var workingDays = calendar.WorkingDaysBetween(command.StartDate, command.EndDate);
 
+    // ---- ⚠ THE TRANSACTION AND THE LOCK, BOTH OF WHICH THIS HANDLER LACKED (T-151).
+    //
+    // The check below and the insert that follows were a plain read-then-write: no transaction, READ
+    // COMMITTED, and the shared lock released at statement end. **Two concurrent submissions both read, both
+    // found nothing, and both committed** — a double-clicked button was sufficient, and the result is
+    // double-counted unpaid absence on a payslip.
+    //
+    // **T-150's unique index catches only IDENTICAL ranges.** Overlap is a range predicate and no index can
+    // express it (`DEC-L-084`), so 7th–11th against 9th–15th needed this.
+    //
+    // The lock is EMPLOYEE-scoped: two employees submitting at the same instant never contend. It is
+    // transaction-owned, so a commit or rollback releases it and **it refuses outright if no transaction is
+    // open** rather than granting something ineffective.
+    await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
+
+    var locked = await submissionLock.AcquireAsync(
+      currentTenant.TenantId ?? Guid.Empty, command.EmployeeId, cancellationToken);
+
+    if (locked.IsFailure)
+    {
+      return Result.Failure<Guid>(locked.Error);
+    }
+
     // Overlap against requests that actually booked days. Cancelled and rejected ones are excluded by the
     // repository because they booked nothing.
     var overlapping = await requests.GetOverlappingAsync(
@@ -271,6 +378,13 @@ public sealed class SubmitLeaveRequestCommandHandler(
     await requests.AddAsync(request.Value, cancellationToken);
 
     var saved = await unitOfWork.SaveChangesAsync(cancellationToken);
+    if (saved.IsFailure)
+    {
+      return Result.Failure<Guid>(saved.Error);
+    }
+
+    await transaction.CommitAsync(cancellationToken);
+
     return saved.IsFailure ? Result.Failure<Guid>(saved.Error) : Result.Success(request.Value.Id);
   }
 
@@ -318,6 +432,8 @@ public sealed class ApproveLeaveRequestCommandHandler(
   ILeaveApprovalRouter router,
   IAttendanceScopeResolver scope,
   ICurrentUser currentUser,
+  ICurrentTenantUser currentTenantUser,
+  IUserEmployeeResolver userEmployees,
   ITenantUnitOfWork unitOfWork)
 {
   public async Task<Result> HandleAsync(
@@ -346,8 +462,16 @@ public sealed class ApproveLeaveRequestCommandHandler(
 
     // The aggregate applies the self-approval bar again on the employee-identified path. Not redundant:
     // the router decides ROUTING, the aggregate holds the INVARIANT, and removing either leaves a hole.
+    //
+    // ---- AND THE ROOT PATH NOW CARRIES THE SAME INVARIANT (BR-ATT-0007, T-084).
+    //
+    // Resolution happens HERE because this is the only layer permitted to call a cross-module contract;
+    // the comparison happens in the aggregate for the reason stated one line above. `null` is an ordinary
+    // answer and not a refusal — see `LeaveRequest.GuardNotSelfAtRoot`.
+    var acting = await ResolveActingEmployeeAsync(cancellationToken);
+
     var decided = route.Value.UsedRootFallback
-      ? request.ApproveAtRoot(currentUser.UserId, DateTimeOffset.UtcNow, command.DecisionNote)
+      ? request.ApproveAtRoot(acting, currentUser.UserId, DateTimeOffset.UtcNow, command.DecisionNote)
       : request.Approve(route.Value.ApproverEmployeeId, currentUser.UserId, DateTimeOffset.UtcNow, command.DecisionNote);
     if (decided.IsFailure)
     {
@@ -386,6 +510,26 @@ public sealed class ApproveLeaveRequestCommandHandler(
 
     return await unitOfWork.SaveChangesAsync(cancellationToken);
   }
+
+  // ---- THE ACTING USER'S EMPLOYEE, OR null (ADR-030 Decision 5).
+  //
+  // No tenant session means no linked employee by definition — the operator case the root fallback exists
+  // for — so it is `null` rather than a refusal, and the aggregate treats it as "the bar does not apply"
+  // rather than "the caller failed to identify themselves".
+  // THE ONE PLACE THE ANSWER BECOMES AN ActingEmployee. A value is `Resolved`, an absence is `Unresolved`,
+  // and no other site performs that translation — so "who decided this was unresolved" has exactly two
+  // answers in this file and both are named.
+  private async Task<ActingEmployee> ResolveActingEmployeeAsync(CancellationToken cancellationToken)
+  {
+    if (currentTenantUser.TenantUserId is not { } tenantUserId)
+    {
+      return ActingEmployee.Unresolved();
+    }
+
+    var employeeId = await userEmployees.ResolveEmployeeIdAsync(tenantUserId, cancellationToken);
+
+    return employeeId is { } resolved ? ActingEmployee.Resolved(resolved) : ActingEmployee.Unresolved();
+  }
 }
 
 public sealed class RejectLeaveRequestCommandHandler(
@@ -393,6 +537,8 @@ public sealed class RejectLeaveRequestCommandHandler(
   ILeaveApprovalRouter router,
   IAttendanceScopeResolver scope,
   ICurrentUser currentUser,
+  ICurrentTenantUser currentTenantUser,
+  IUserEmployeeResolver userEmployees,
   ITenantUnitOfWork unitOfWork)
 {
   public async Task<Result> HandleAsync(
@@ -422,12 +568,36 @@ public sealed class RejectLeaveRequestCommandHandler(
       return Result.Failure(route.Error);
     }
 
+    // The same bar as approve, on the same path, for the same reason: `RejectAtRoot` reached the root
+    // fallback through the identical router branch and had the identical hole (T-084).
+    var acting = await ResolveActingEmployeeAsync(cancellationToken);
+
     var decided = route.Value.UsedRootFallback
-      ? request.RejectAtRoot(currentUser.UserId, DateTimeOffset.UtcNow, command.DecisionNote)
+      ? request.RejectAtRoot(acting, currentUser.UserId, DateTimeOffset.UtcNow, command.DecisionNote)
       : request.Reject(route.Value.ApproverEmployeeId, currentUser.UserId, DateTimeOffset.UtcNow, command.DecisionNote);
 
     // No balance movement. Rejection never consumed anything, because the balance moves at APPROVAL.
     return decided.IsFailure ? decided : await unitOfWork.SaveChangesAsync(cancellationToken);
+  }
+
+  // ---- THE ACTING USER'S EMPLOYEE, OR null (ADR-030 Decision 5).
+  //
+  // No tenant session means no linked employee by definition — the operator case the root fallback exists
+  // for — so it is `null` rather than a refusal, and the aggregate treats it as "the bar does not apply"
+  // rather than "the caller failed to identify themselves".
+  // THE ONE PLACE THE ANSWER BECOMES AN ActingEmployee. A value is `Resolved`, an absence is `Unresolved`,
+  // and no other site performs that translation — so "who decided this was unresolved" has exactly two
+  // answers in this file and both are named.
+  private async Task<ActingEmployee> ResolveActingEmployeeAsync(CancellationToken cancellationToken)
+  {
+    if (currentTenantUser.TenantUserId is not { } tenantUserId)
+    {
+      return ActingEmployee.Unresolved();
+    }
+
+    var employeeId = await userEmployees.ResolveEmployeeIdAsync(tenantUserId, cancellationToken);
+
+    return employeeId is { } resolved ? ActingEmployee.Resolved(resolved) : ActingEmployee.Unresolved();
   }
 }
 
@@ -470,18 +640,53 @@ public sealed class CancelLeaveRequestCommandHandler(
     // submission reserves nothing — the consequence of `OD-ATT-0006` putting the movement at approval.
     if (wasApproved)
     {
+      // ---- ⚠ A NULL HERE IS REFUSED, NOT SKIPPED, AND THE DIFFERENCE IS LEAVE DAYS (T-189).
+      //
+      // Both lookups used to be `is not null` guards that fell through in silence. **Falling through means
+      // the days consumed at approval are never returned and the caller is told the cancel SUCCEEDED** —
+      // no error, no log, and a balance that is quietly wrong from then on.
+      //
+      // Approval already refuses on exactly these two nulls, with exactly these two errors. Mirroring it is
+      // what makes consume and release the same shape rather than one strict and one forgiving.
+      //
+      // ---- NEITHER NULL IS REACHABLE TODAY, AND THAT IS WHY THE REFUSAL IS WORTH ITS LINES.
+      //
+      // The argument spans five files, so it is written once here rather than rediscovered:
+      //
+      //   1. `wasApproved` is true, and approval REFUSES both nulls — so both existed at approval.
+      //   2. The key is IDENTICAL at both sites: company, employee, leave type, `StartDate.Year`. And
+      //      `LeaveTypeId`, `StartDate` and `WorkingDaysConsumed` are assigned only in the constructor;
+      //      every mutator (`Approve`, `Reject`, `Cancel`, the `*AtRoot` pair) moves STATUS alone.
+      //   3. Nothing deletes either entity — neither repository interface has a remove, and no
+      //      `Remove`/`RemoveRange` touches these sets anywhere in `src/`.
+      //   4. Neither lookup filters on `IsActive`, so `SetActivation(false)` does not hide a type.
+      //   5. `ConsumesBalance` is computed from `Behaviour`, which `Create` sets and no mutator changes.
+      //      **A flip there would be the silent path**: consumed as metered, cancelled as unmetered.
+      //
+      // The only global query filter is on `TenantId`, identical across both operations.
+      //
+      // Every link is something a later change could break — a delete method, a `Behaviour` setter, an
+      // `IsActive` predicate added to a lookup. **The refusal is what turns any of those from silently
+      // losing leave days into a visible failure**, which is the whole reason it replaces a skip.
       var leaveType = await leaveTypes.GetByIdAsync(request.LeaveTypeId, cancellationToken);
-      if (leaveType is not null && leaveType.ConsumesBalance)
+      if (leaveType is null)
+      {
+        return Result.Failure(LeaveErrors.LeaveTypeNotFound);
+      }
+
+      if (leaveType.ConsumesBalance)
       {
         var balance = await balances.GetForEmployeeAsync(
           request.CompanyId, request.EmployeeId, request.LeaveTypeId, request.StartDate.Year, cancellationToken);
-        if (balance is not null)
+        if (balance is null)
         {
-          var released = balance.Release(request.WorkingDaysConsumed);
-          if (released.IsFailure)
-          {
-            return released;
-          }
+          return Result.Failure(LeaveErrors.BalanceNotFound);
+        }
+
+        var released = balance.Release(request.WorkingDaysConsumed);
+        if (released.IsFailure)
+        {
+          return released;
         }
       }
     }

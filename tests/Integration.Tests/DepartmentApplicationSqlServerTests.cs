@@ -54,6 +54,12 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
   // WITHOUT THE COMPANY HIERARCHY LOCK THIS TEST FAILS. That is the point of it.
   [Fact]
   [Trait("Decision", "ADR-026")]
+  // CITED BY B18 pass 17, body-confirmed: the criterion verbatim -- two concurrent re-parent
+  // operations that would TOGETHER form a cycle cannot both succeed.
+  //
+  // Its control is already written beside it: `Two_concurrent_legal_moves_both_succeed`. Without
+  // that pair, a lock that refused every concurrent move would satisfy this test perfectly.
+  [Trait("Criterion", "AC-DEP-0017")]
   public async Task Two_concurrent_moves_cannot_jointly_create_a_cycle()
   {
     await using var fixture = await DepartmentAppFixture.CreateAsync();
@@ -149,6 +155,10 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
   // is B, not A. Only walking the whole chain upward finds A.
   [Fact]
   [Trait("Decision", "ADR-026")]
+  // CITED BY B18 pass 17, body-confirmed: `AC-DEP-0013` is *given A -> B -> C, moving A beneath C
+  // is refused*. `The_cycle_check_walks_an_arbitrarily_deep_chain` generalises the same claim past
+  // the three-node case the criterion states.
+  [Trait("Criterion", "AC-DEP-0013")]
   public async Task A_department_cannot_be_moved_beneath_its_own_grandchild()
   {
     await using var fixture = await DepartmentAppFixture.CreateAsync();
@@ -189,6 +199,9 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
 
   [Fact]
   [Trait("Decision", "ADR-026")]
+  // CITED BY B18 pass 22: `AC-DEP-0012` at the APPLICATION layer. See the domain sibling and, for the
+  // clause that earlier passes recorded as unresolved, the raw-SQL test in the schema suite.
+  [Trait("Criterion", "AC-DEP-0012")]
   public async Task A_department_cannot_become_its_own_parent()
   {
     await using var fixture = await DepartmentAppFixture.CreateAsync();
@@ -206,6 +219,8 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
   // A legal move carries the whole subtree with it. Descendants are never detached.
   [Fact]
   [Trait("Decision", "ADR-026")]
+  // CITED BY B18 pass 17: moving a department carries its descendants with it.
+  [Trait("Criterion", "AC-DEP-0014")]
   public async Task Moving_a_department_carries_its_subtree()
   {
     await using var fixture = await DepartmentAppFixture.CreateAsync();
@@ -246,6 +261,8 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
   // ---- CROSS-COMPANY AND INACTIVE PARENTS, over real rows.
   [Fact]
   [Trait("Decision", "ADR-026")]
+  // CITED BY B18 pass 17: a proposed parent belonging to another company is refused.
+  [Trait("Criterion", "AC-DEP-0011")]
   public async Task A_parent_from_another_company_is_refused()
   {
     await using var fixture = await DepartmentAppFixture.CreateAsync();
@@ -263,6 +280,8 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
 
   [Fact]
   [Trait("Decision", "ADR-026")]
+  // CITED BY B18 pass 17: moving a department beneath an Inactive parent is refused.
+  [Trait("Criterion", "AC-DEP-0015")]
   public async Task An_inactive_parent_is_refused()
   {
     await using var fixture = await DepartmentAppFixture.CreateAsync();
@@ -281,9 +300,115 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
     Assert.Equal(DepartmentErrors.ParentInactive, moved.Error);
   }
 
+  // ================================================================================================
+  // ⚠⚠⚠ THE THIRD `ParentInactive` SITE — CREATION — WHICH NOTHING REACHED.
+  // ================================================================================================
+  //
+  // `DepartmentErrors.ParentInactive` is returned from THREE handlers, one per operation that can attach a
+  // department to a parent:
+  //
+  //   `DepartmentCommandHandlers:85`            CREATE beneath the parent      ← this test
+  //   `DepartmentHierarchyCommandHandlers:144`  MOVE beneath the parent        `An_inactive_parent_is_refused`
+  //   `DepartmentLifecycleCommandHandlers:132`  REACTIVATE beneath the parent  `Reactivation_beneath_...`
+  //
+  // **Searched with no cap because it is an absence claim: `ParentInactive` appeared in the whole `tests`
+  // tree at exactly two sites — `:300` and `:491` — which are the MOVE and REACTIVATE paths. Creation was
+  // reached by nothing.**
+  //
+  // ---- ⚠⚠ AND THE EXPECTED RHYME WITH `GradeInactive` IS WRONG IN BOTH DIRECTIONS, WHICH IS WHY IT WAS
+  // ---- CHECKED RATHER THAN INHERITED.
+  //
+  // `PositionErrors.cs:159` says the grade trio MIRRORS this one, so the natural expectation was the same
+  // shape. It is not:
+  //
+  //   `GradeInactive`    TWO sites, TWO different relationships (position→job grade, job grade→salary
+  //                      grade), reached through a SHARED validator called from two handler families.
+  //   `ParentInactive`   THREE sites, ONE self-referential relationship, each an INLINE check in its own
+  //                      handler with no shared validator at all.
+  //
+  // **The trio mirrors in its ERROR VOCABULARY — three ways a reference can be invalid — and not in its
+  // call graph.** A test written from the analogy would have looked for a second relationship that does
+  // not exist and missed a third site that does.
+  //
+  // ---- ⚠ THE ALLOWED SIDE ALREADY EXISTS FOR ONE PATH, AND THAT IS WHY THIS ONE ADDS IT FOR CREATE.
+  //
+  // `Reactivation_beneath_an_inactive_parent_is_refused:493-497` already reactivates the parent and shows
+  // the child then follows — the capability half, for the REACTIVATE path, written before tonight. Nothing
+  // showed it for CREATE, so the refusals below are followed by the reversal.
+  //
+  // ---- ⚠⚠⚠ MEASURED AS A FULL 3×3. NINE CELLS RUN, 2026-09-03, AND IT IS PERFECTLY DIAGONAL.
+  //
+  //                              create test    move test    reactivate test
+  //   remove the CREATE guard        RED          green          green
+  //   remove the MOVE guard         green          RED           green
+  //   remove the REACTIVATE guard   green         green           RED
+  //
+  // **Three handlers return one error value, so a single plant could not tell three tests about three
+  // guards from three tests about whichever guard runs first.** The OFF-DIAGONAL is the claim: each test
+  // is blind to the other two guards, which is exactly what makes adding a third one worth doing rather
+  // than duplicating cover that already existed.
+  //
+  // ⚠ Unlike the grade pair, these checks are INLINE in three separate handlers with no shared validator —
+  // so the disjointness is structural here and the matrix confirms it rather than discovering it. Run
+  // anyway, because *structurally disjoint* was the expectation and the expectation is the thing being
+  // tested.
+  [Fact]
+  [Trait("Decision", "ADR-026")]
+  [Trait("Criterion", "AC-DEP-0015")]
+  public async Task A_department_cannot_be_created_beneath_an_inactive_parent()
+  {
+    await using var fixture = await DepartmentAppFixture.CreateAsync();
+    await using var graph = fixture.Graph();
+
+    var parent = await fixture.CreateDepartmentAsync("P", "Parent");
+
+    Assert.True((await graph.Deactivate().HandleAsync(
+      new DeactivateDepartmentCommand(parent, await fixture.RowVersionAsync(parent)))).IsSuccess);
+
+    var refused = await graph.Create().HandleAsync(
+      new CreateDepartmentCommand(fixture.CompanyA, "C", "Child", parent));
+
+    Assert.True(refused.IsFailure, "a department was created beneath an inactive parent");
+    Assert.Equal(DepartmentErrors.ParentInactive, refused.Error);
+
+    // ⚠ AND NOTHING WAS WRITTEN. *Refused* means the row does not exist, which the error alone does not
+    // say — a handler that failed AFTER saving satisfies the assertion above and leaves an orphan.
+    Assert.Equal(0, await fixture.ScalarAsync(
+      "SELECT COUNT(*) FROM [tenant].[Departments] WHERE [NormalizedCode] = N'C'"));
+
+    // ---- THE ALLOWED SIDE. The refusal above is the control: the guard is observed FIRING on this exact
+    // parent moments earlier, so the success below is a REVERSAL rather than a parent that never blocked.
+    Assert.True((await graph.Reactivate().HandleAsync(
+      new ReactivateDepartmentCommand(parent, await fixture.RowVersionAsync(parent)))).IsSuccess);
+
+    var created = await graph.Create().HandleAsync(
+      new CreateDepartmentCommand(fixture.CompanyA, "C", "Child", parent));
+
+    Assert.True(created.IsSuccess, created.IsFailure ? created.Error.Code : null);
+
+    // THE CAPABILITY, read back through the query handler: the department exists AND is attached where it
+    // was refused a moment ago. `Result.Success` alone would not say the parent was recorded.
+    var read = await graph.Get().HandleAsync(new GetDepartmentQuery(created.Value));
+
+    Assert.True(read.IsSuccess, read.IsFailure ? read.Error.Code : null);
+    Assert.Equal(parent, read.Value.ParentDepartmentId);
+  }
+
   // ---- A STALE TOKEN IS REFUSED, and the hierarchy is left alone.
   [Fact]
   [Trait("Decision", "ADR-026")]
+  // CITED BY B18 pass 20 as the BEHAVIOURAL half of `AC-DEP-0048`, and the citation is bounded.
+  //
+  // The criterion is *every department mutation refuses a stale `RowVersion` with `409`* -- two
+  // clauses, and no single test carries either one whole:
+  //   * this test refuses a stale token for ONE mutation, the move;
+  //   * `Every_department_mutation_requires_a_row_version` supplies the population -- but by
+  //     HAND-NAMING seven commands, so nothing checks those seven against the commands that exist;
+  //   * `D24_A_concurrency_conflict_on_assign_manager_maps_identically` is the only `409`, for one
+  //     mutation, and the other six mutations' transport mapping is read by no test.
+  //
+  // So *every* is enumerated rather than derived, and `409` is pinned once. Recorded, not assumed.
+  [Trait("Criterion", "AC-DEP-0048")]
   public async Task A_stale_row_version_refuses_a_move()
   {
     await using var fixture = await DepartmentAppFixture.CreateAsync();
@@ -310,6 +435,10 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
 
   [Fact]
   [Trait("Decision", "ADR-026")]
+  // CITED BY B18 pass 17, body-confirmed. The arrangement creates "sales" and then "SALES", so it
+  // discriminates on NORMALIZATION -- which is the criterion's own word. A duplicate in the same
+  // casing would have proven a weaker claim.
+  [Trait("Criterion", "AC-DEP-0003")]
   public async Task A_duplicate_normalized_code_is_refused_within_the_company()
   {
     await using var fixture = await DepartmentAppFixture.CreateAsync();
@@ -328,6 +457,9 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
 
   [Fact]
   [Trait("Decision", "ADR-026")]
+  // CITED BY B18 pass 17, body-confirmed: the criterion verbatim, and the necessary counterpart to
+  // `AC-DEP-0003` -- uniqueness scoped to the company rather than the tenant.
+  [Trait("Criterion", "AC-DEP-0004")]
   public async Task The_same_code_is_free_in_another_company()
   {
     await using var fixture = await DepartmentAppFixture.CreateAsync();
@@ -387,28 +519,22 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
     Assert.Equal(DepartmentErrors.CodeConflict, updated.Error);
   }
 
-  // ---- THE ORDINARY UPDATE CANNOT REACH PARENT OR STATUS, and the proof is the type itself.
-  //
-  // There is no field to set, so this is a compile-time guarantee rather than a runtime refusal. Asserting
-  // it here records that the absence is load-bearing rather than incidental.
-  [Fact]
-  [Trait("Decision", "ADR-026")]
-  public void The_update_command_carries_no_parent_status_or_manager()
-  {
-    var properties = typeof(UpdateDepartmentCommand)
-      .GetProperties()
-      .Select(property => property.Name)
-      .ToArray();
-
-    Assert.Equal(["DepartmentId", "Code", "Name", "RowVersion"], properties);
-  }
-
   // ================================================================================================
   // LIFECYCLE
   // ================================================================================================
 
   [Fact]
   [Trait("Decision", "ADR-026")]
+  // CITED BY B18 pass 21, body-confirmed: the criterion verbatim, at the application layer.
+  // `D29_Deactivating_a_department_with_active_children_is_refused` is the same rule at the API
+  // layer -- the pair is what shows the refusal is the domain's and not a request-validation
+  // convention, the same argument as `AC-DEP-0028`'s two layers.
+  //
+  // OMITTED FROM BATCH 2 BY MISTAKE. It was body-confirmed in pass 17 and named in the batch-2
+  // plan, and it did not reach the script that applied it: eighteen criteria were planned and
+  // seventeen were written. The commit reported seventeen, so the record was accurate and the
+  // INTENT was not -- which is only visible by recounting the tree rather than reading the plan.
+  [Trait("Criterion", "AC-DEP-0027")]
   public async Task Deactivation_is_refused_while_an_active_child_remains()
   {
     await using var fixture = await DepartmentAppFixture.CreateAsync();
@@ -484,12 +610,129 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
     Assert.Equal(DepartmentErrors.InvalidTransition, again.Error);
   }
 
+  // ---- DEACTIVATION DOES NOT REQUIRE AN EMPTY DEPARTMENT (`AC-DEP-0026`).
+  //
+  // ⚠⚠ THE "SUCCEEDS" HALF WAS ASSERTED BY NOTHING, AND THE TEST THAT LOOKS LIKE IT CANNOT ASSERT IT.
+  // `D14_An_employee_stays_in_a_department_that_is_deactivated_afterwards` covers the NO-EVICTION half,
+  // but it deactivates BY RAW SQL against the table. So if this handler ever grew a
+  // `HasAssignedEmployeesAsync` refusal to match its `HasActiveChildrenAsync` one, D14 WOULD STILL PASS —
+  // it never invokes the handler — and `AC-DEP-0027`'s test seeds no employees to notice.
+  //
+  // This drives the real handler with a member present, which is the over-fire control for that refusal.
+  [Fact]
+  [Trait("Decision", "ADR-026")]
+  // ---- ⚠⚠⚠ `AC-DEP-0026`: THIS CITATION HAS NEVER BEEN EXECUTED BY ANY RUN (recorded 2026-09-05).
+  //
+  // **The method below post-dates `ce9b28f`, the commit at the last green Integration run
+  // (2026-09-01 10:17).** `Integration.Tests` does not run under `GATE_SCOPE=TASK`, and `GATE_SCOPE=PHASE`
+  // is owner-parked — ***so nothing available to a developer here can change that.*** **No run has observed
+  // these assertions: this is a CLAIM, not a check, and it must not be read as coverage.**
+  //
+  // ⚠ ***THE CITATION IS NOT WITHDRAWN AND SHOULD NOT BE. "NEVER EXECUTED" IS A FACT ABOUT OBSERVATION,
+  // NOT ABOUT DESIGN*** — the two are independent axes, and this pass judged only the first.
+  //
+  // ⚠⚠ **AND THIS FILE DID NOT SAY SO.** *Found by a tree-wide walk, not by reading:* **seven citations in
+  // the repository rest on witnesses no run has ever observed, and ***EXACTLY ONE OF THE SEVEN CARRIED AN
+  // AUTHOR'S WARNING*** — `PayrollSchemaSqlServerTests`, which says *"NOT RUN… must not be reported as
+  // coverage until a PHASE run has seen it."* **Six were silent.** *That is a census of a closed population,
+  // not a sample: **the prose convention does not exist**, and a trait key for UNRUN is the only mechanism
+  // that would have caught these.*
+  [Trait("Criterion", "AC-DEP-0026")]
+  public async Task Deactivation_succeeds_with_assigned_employees_who_keep_their_department()
+  {
+    await using var fixture = await DepartmentAppFixture.CreateAsync();
+    await using var graph = fixture.Graph();
+
+    var department = await fixture.CreateDepartmentAsync("MEM", "With Members");
+    await fixture.InsertEmployeeAsync("EMP-0026", department: department);
+
+    var deactivated = await graph.Deactivate().HandleAsync(
+      new DeactivateDepartmentCommand(department, await fixture.RowVersionAsync(department)));
+
+    Assert.True(deactivated.IsSuccess, deactivated.IsFailure ? deactivated.Error.Code : null);
+    Assert.Equal(DepartmentStatus.Inactive, await fixture.StatusAsync(department));
+
+    // NO CASCADE AND NO EVICTION. The member is where they were; deactivating an org unit is not a
+    // transfer, and moving people as a side effect would rewrite where they work.
+    Assert.Equal(1, await fixture.ScalarAsync(
+      $"SELECT COUNT(*) FROM [tenant].[Employees] WHERE [DepartmentId] = '{department}'"));
+
+    // And still readable through the real read handler rather than only present in the table.
+    var read = await graph.Get().HandleAsync(new GetDepartmentQuery(department));
+
+    Assert.True(read.IsSuccess, read.IsFailure ? read.Error.Code : null);
+    Assert.Equal(DepartmentStatus.Inactive, read.Value.Status);
+  }
+
+  // ---- AN INACTIVE DEPARTMENT IS STILL READABLE AND STILL LISTED (`AC-DEP-0030`).
+  //
+  // ⚠ THE LIST HALF IS THE ONE WORTH ASSERTING. A read service that quietly filtered `Inactive` out of
+  // the DEFAULT search would satisfy every other department test — the refusal tests never list, and the
+  // paging tests use active rows — while making a deactivated department unfindable in the UI that has to
+  // offer it for reactivation. So this searches with NO status filter and asserts it comes back.
+  [Fact]
+  [Trait("Decision", "ADR-026")]
+  // ---- ⚠⚠⚠ `AC-DEP-0030`: THIS CITATION HAS NEVER BEEN EXECUTED BY ANY RUN (recorded 2026-09-05).
+  //
+  // **The method below post-dates `ce9b28f`, the commit at the last green Integration run
+  // (2026-09-01 10:17).** `Integration.Tests` does not run under `GATE_SCOPE=TASK`, and `GATE_SCOPE=PHASE`
+  // is owner-parked — ***so nothing available to a developer here can change that.*** **No run has observed
+  // these assertions: this is a CLAIM, not a check, and it must not be read as coverage.**
+  //
+  // ⚠ ***THE CITATION IS NOT WITHDRAWN AND SHOULD NOT BE. "NEVER EXECUTED" IS A FACT ABOUT OBSERVATION,
+  // NOT ABOUT DESIGN*** — the two are independent axes, and this pass judged only the first.
+  //
+  // ⚠⚠ **AND THIS FILE DID NOT SAY SO.** *Found by a tree-wide walk, not by reading:* **seven citations in
+  // the repository rest on witnesses no run has ever observed, and ***EXACTLY ONE OF THE SEVEN CARRIED AN
+  // AUTHOR'S WARNING*** — `PayrollSchemaSqlServerTests`, which says *"NOT RUN… must not be reported as
+  // coverage until a PHASE run has seen it."* **Six were silent.** *That is a census of a closed population,
+  // not a sample: **the prose convention does not exist**, and a trait key for UNRUN is the only mechanism
+  // that would have caught these.*
+  [Trait("Criterion", "AC-DEP-0030")]
+  public async Task An_inactive_department_is_still_readable_and_still_listed_marked_inactive()
+  {
+    await using var fixture = await DepartmentAppFixture.CreateAsync();
+    await using var graph = fixture.Graph();
+
+    var active = await fixture.CreateDepartmentAsync("KEEP", "Stays Active");
+    var department = await fixture.CreateDepartmentAsync("GONE", "Goes Inactive");
+
+    Assert.True((await graph.Deactivate().HandleAsync(
+      new DeactivateDepartmentCommand(department, await fixture.RowVersionAsync(department)))).IsSuccess);
+
+    var read = await graph.Get().HandleAsync(new GetDepartmentQuery(department));
+
+    Assert.True(read.IsSuccess, read.IsFailure ? read.Error.Code : null);
+    Assert.Equal(DepartmentStatus.Inactive, read.Value.Status);
+
+    // ⚠⚠ NO STATUS FILTER — the default list, which is what a caller gets without asking.
+    var listed = await graph.Search().HandleAsync(new SearchDepartmentsQuery());
+
+    Assert.True(listed.IsSuccess, listed.IsFailure ? listed.Error.Code : null);
+
+    var row = Assert.Single(listed.Value.Items, item => item.DepartmentId == department);
+    Assert.Equal(DepartmentStatus.Inactive, row.Status);
+
+    // ANTI-VACUITY: the active one is still listed too, so this is not a list that collapsed to one row
+    // or to one status — the assertion above would hold trivially over a single-row result.
+    Assert.Contains(listed.Value.Items, item => item.DepartmentId == active);
+  }
+
   // ================================================================================================
   // MANAGER
   // ================================================================================================
 
   [Fact]
   [Trait("Decision", "ADR-026")]
+  // CITED BY B18 pass 20, body-confirmed. Assign / replace / clear in one test, so it carries the
+  // positive half of BOTH criteria: `AC-DEP-0018` (assigning an employee of the same company as
+  // manager succeeds and is readable on the department) and `AC-DEP-0022` (clearing removes the
+  // assignment and the department reads back with a null manager).
+  //
+  // `A_department_with_no_manager_reports_no_manager_at_all` is `0022`'s never-assigned case:
+  // cleared and never-assigned must read alike, and only the pair shows that.
+  [Trait("Criterion", "AC-DEP-0018")]
+  [Trait("Criterion", "AC-DEP-0022")]
   public async Task A_manager_can_be_assigned_replaced_and_cleared()
   {
     await using var fixture = await DepartmentAppFixture.CreateAsync();
@@ -656,6 +899,8 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
 
   [Fact]
   [Trait("Decision", "ADR-026")]
+  // CITED BY B18 pass 20, body-confirmed: the criterion verbatim.
+  [Trait("Criterion", "AC-DEP-0019")]
   public async Task A_manager_from_another_company_is_refused()
   {
     await using var fixture = await DepartmentAppFixture.CreateAsync();
@@ -673,6 +918,10 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
 
   [Fact]
   [Trait("Decision", "ADR-026")]
+  // CITED BY B18 pass 20, body-confirmed: the criterion verbatim. Its counterpart is
+  // `A_terminated_sitting_manager_is_retained_but_never_reported_as_active` -- refused on the way
+  // IN, retained once seated. That is `AC-DEP-0021` and a deliberately different rule.
+  [Trait("Criterion", "AC-DEP-0020")]
   public async Task A_terminated_employee_is_refused_as_a_manager()
   {
     await using var fixture = await DepartmentAppFixture.CreateAsync();
@@ -686,6 +935,175 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
 
     Assert.True(assigned.IsFailure);
     Assert.Equal(DepartmentErrors.ManagerTerminated, assigned.Error);
+  }
+
+
+  // ================================================================================================
+  // THE TWO HR DIRECTORY SERVICES, EXECUTED FOR THE FIRST TIME (item 238).
+  // ================================================================================================
+  //
+  // ---- WHY THESE TWO FIRST.
+  //
+  // Item 237 measured every production type with coverage and found SIX query-bearing types with ZERO
+  // executed lines. These are two of them, and they are the two the NAME-based proxy MISSED: both appear
+  // in `tests/` only as STRING LITERALS -- `"EmployeeApproverDirectoryService.cs"` in a file-reading
+  // architecture test, and the bare name in a ban list.
+  //
+  // ⚠ **A regex over identifiers cannot tell a type reference from a filename in quotes, so a test that
+  // READS a type's source is indistinguishable from one that RUNS it.** These two had never been run.
+  //
+  // ---- ⚠ AND THE JUSTIFICATION IS A CORRELATION, NOT A PREDICTION.
+  //
+  // The only other types this product has had in that condition were `GlReadService`'s two queries, and
+  // both threw on every call. **Two of two in one small class is a reason to LOOK, not a reason to
+  // EXPECT.** A clean result here is a result: code shown to work is worth what a defect would be.
+  [Fact]
+  public async Task The_placement_directory_answers_placement_standing_and_employment_type()
+  {
+    await using var fixture = await DepartmentAppFixture.CreateAsync();
+    await using var graph = fixture.Graph();
+
+    var employee = await fixture.InsertEmployeeAsync("E-DIR-1");
+
+    var directory = new EmployeePlacementDirectoryService(new DirectoryContext(graph.Context));
+
+    // ---- ALL THREE INTERFACES THE ONE CLASS IMPLEMENTS. It is `IEmployeePlacementDirectory`,
+    // `IEmploymentStandingDirectory` AND `IEmployeeEngagementDirectory`, and a test of one query says
+    // nothing about the other two -- each is its own `context.Set<Employee>()` chain.
+    var placement = await directory.GetPlacementAsync(employee);
+    Assert.NotNull(placement);
+    Assert.Equal(fixture.CompanyA, placement!.CompanyId);
+
+    var standing = await directory.GetStandingAsync(employee);
+    Assert.Equal(SSAS.BuildingBlocks.Tenancy.EmploymentStanding.Current, standing);
+
+    Assert.NotNull(await directory.GetEmploymentTypeAsync(employee));
+
+    // ⚠ THE CONTROL. Every assertion above is satisfied by a directory that answers the same thing for
+    // any input; an unknown employee must answer differently, and `Unknown` rather than a throw is the
+    // contract -- a dangling link is reachable and is not an error.
+    Assert.Null(await directory.GetPlacementAsync(Guid.NewGuid()));
+    Assert.Equal(
+      SSAS.BuildingBlocks.Tenancy.EmploymentStanding.Unknown,
+      await directory.GetStandingAsync(Guid.NewGuid()));
+  }
+
+  // ---- ⚠ THE APPROVER CHAIN IS THE RISKIER OF THE TWO, AND THAT IS WHY IT IS HERE.
+  //
+  // It walks a department tree in a loop, bounded at 50, and joins `DepartmentManager` to `Employee`
+  // through a SUBQUERY. A join built inside a loop is where a translation fault hides, and nothing had
+  // ever asked SQL Server to translate it.
+  [Fact]
+  public async Task The_approver_directory_walks_the_department_tree_to_the_managed_seat()
+  {
+    await using var fixture = await DepartmentAppFixture.CreateAsync();
+    await using var graph = fixture.Graph();
+
+    var parent = await fixture.CreateDepartmentAsync("P", "Parent");
+    var child = await fixture.CreateDepartmentAsync("C", "Child", parent);
+
+    var manager = await fixture.InsertEmployeeAsync("E-MGR");
+    Assert.True((await graph.AssignManager().HandleAsync(new AssignDepartmentManagerCommand(
+      parent, manager, await fixture.RowVersionAsync(parent)))).IsSuccess);
+
+    var reportee = await fixture.InsertEmployeeAsync("E-RPT", department: child);
+
+    var directory = new EmployeeApproverDirectoryService(
+      new DirectoryContext(graph.Context),
+      new DirectoryCompanyAccess(fixture.CompanyA),
+      new DirectoryTenant(fixture.Tenant),
+      new DirectoryTenantUser());
+
+    var chain = await directory.GetApproverChainAsync(fixture.CompanyA, reportee);
+
+    // The reportee's own department has no seat, so the walk must climb to the parent's.
+    var seat = Assert.Single(chain);
+    Assert.Equal(manager, seat.EmployeeId);
+    Assert.Equal(parent, seat.DepartmentId);
+
+    // ⚠ THE CONTROL, AND IT IS THE ONE THAT MATTERS. An authorized company is required, and a caller
+    // without one must be refused rather than served a chain -- an approval authority answered to the
+    // wrong company is worse than none.
+    var unauthorized = new EmployeeApproverDirectoryService(
+      new DirectoryContext(graph.Context),
+      new DirectoryCompanyAccess(Guid.NewGuid()),
+      new DirectoryTenant(fixture.Tenant),
+      new DirectoryTenantUser());
+
+    await Assert.ThrowsAsync<UnauthorizedAccessException>(
+      () => unauthorized.GetApproverChainAsync(fixture.CompanyA, reportee));
+  }
+
+  private sealed class DirectoryContext(TenantDbContext context) : ITenantDbContextAccessor
+  {
+    public Task<DbContext> GetRequiredAsync(CancellationToken cancellationToken = default) =>
+      Task.FromResult<DbContext>(context);
+  }
+
+  private sealed class DirectoryCompanyAccess(Guid permitted)
+    : SSAS.BuildingBlocks.Tenancy.Companies.ITenantCompanyAccessResolver
+  {
+    public Task<SSAS.BuildingBlocks.Domain.Result<IReadOnlyList<
+      SSAS.BuildingBlocks.Tenancy.Companies.CompanyAccessSummary>>> GetPermittedCompaniesAsync(
+      Guid tenantId, long tenantUserId, CancellationToken cancellationToken = default) =>
+      Task.FromResult(SSAS.BuildingBlocks.Domain.Result.Success<IReadOnlyList<
+        SSAS.BuildingBlocks.Tenancy.Companies.CompanyAccessSummary>>(
+        [new SSAS.BuildingBlocks.Tenancy.Companies.CompanyAccessSummary(permitted, "CODE", "Name")]));
+
+    public Task<SSAS.BuildingBlocks.Domain.Result> AuthorizeCompanyAsync(
+      Guid tenantId, long tenantUserId, Guid companyId, CancellationToken cancellationToken = default) =>
+      Task.FromResult(companyId == permitted
+        ? SSAS.BuildingBlocks.Domain.Result.Success()
+        : SSAS.BuildingBlocks.Domain.Result.Failure(
+          new SSAS.BuildingBlocks.Domain.Error("Company.Denied", "Denied.")));
+  }
+
+  private sealed class DirectoryTenant(Guid tenantId) : ICurrentTenant
+  {
+    public Guid? TenantId => tenantId;
+  }
+
+  private sealed class DirectoryTenantUser : SSAS.BuildingBlocks.Tenancy.ICurrentTenantUser
+  {
+    public long? TenantUserId => 42;
+  }
+
+  // ---- ⚠ THE TENANT GUARD REACHES A CHILD ENTITY, NOT ONLY AN AGGREGATE ROOT (item 228, `AC-EMP-0002`).
+  //
+  // The post-creation `TenantId` guard in `PersistenceDbContext` walks
+  // `ChangeTracker.Entries<ITenantOwnedEntity>()`, and **42 types declare that interface: 26 aggregate
+  // roots and 16 child entities.** ⚠ **All three types asserted before this — `Company`, `TenantUser`,
+  // `Employee` — are AGGREGATE ROOTS.** A guard that had walked only roots would have passed every one
+  // of them, and every further per-type test drawn from the same class.
+  //
+  // **So the untested population was structural, not a list of thirty-nine names**, and one test on a
+  // child closes the class. `DepartmentManager` is the subject because it is the child that is NOT
+  // append-only: ⚠ **`TenantDbContext.SaveChangesAsync` runs `PreventAppendOnlyMutation` BEFORE
+  // `base.SaveChangesAsync`, so on `EmployeeBranchAssignment` the append-only refusal wins and a test
+  // there would have thrown for the wrong reason.** The message assertion is what makes that visible.
+  [Fact]
+  [Trait("Criterion", "AC-EMP-0002")]
+  public async Task A_child_entitys_tenant_cannot_be_changed_after_it_is_written()
+  {
+    await using var fixture = await DepartmentAppFixture.CreateAsync();
+    await using var graph = fixture.Graph();
+
+    var department = await fixture.CreateDepartmentAsync("A", "Alpha");
+    var employee = await fixture.InsertEmployeeAsync("E-0001");
+
+    Assert.True((await graph.AssignManager().HandleAsync(new AssignDepartmentManagerCommand(
+      department, employee, await fixture.RowVersionAsync(department)))).IsSuccess);
+
+    var context = graph.Context;
+    var manager = await context.Set<DepartmentManager>().SingleAsync();
+
+    manager.TenantId = Guid.NewGuid();
+
+    var refusal = await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
+
+    // ⚠ The MESSAGE, not merely the throw. Three guards can refuse a save on this context and only one
+    // of them is the subject; a bare `ThrowsAsync` would pass on any of them.
+    Assert.Contains("Tenant ownership cannot be changed", refusal.Message, StringComparison.Ordinal);
   }
 
   // ---- AN EMPLOYEE FROM ANOTHER BRANCH OF THE SAME COMPANY IS ELIGIBLE.
@@ -715,6 +1133,14 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
   // current head of a department.
   [Fact]
   [Trait("Decision", "ADR-026")]
+  // CITED BY B18 pass 20, body-confirmed: the assignment survives termination -- the manager row is
+  // still there and the read still names the employee -- while the read reports the manager as not
+  // active.
+  //
+  // NOTE FOR THE SPECIFICATION, NOT FOR THIS TEST: `AC-DEP-0021` words the read half as
+  // `manager.isTerminated = true`, and the contract exposes `IsActive`, asserted false here. The
+  // same claim through the complementary field -- the criterion names a field the DTO does not have.
+  [Trait("Criterion", "AC-DEP-0021")]
   public async Task A_terminated_sitting_manager_is_retained_but_never_reported_as_active()
   {
     await using var fixture = await DepartmentAppFixture.CreateAsync();
@@ -752,6 +1178,23 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
   // alone. Instead the caller is told that a manager IS assigned and nothing more.
   [Fact]
   [Trait("Decision", "ADR-026")]
+  // CITED BY B18 pass 22 for `AC-DEP-0046`, BOUNDED, and the bound is the population rather than the
+  // rule. The criterion is *a caller authorized for one branch sees departments whose MEMBERS are all
+  // in another branch*. This test's narrow reader IS branch-scoped and DOES see the department -- its
+  // own comment states the rule verbatim: *the DEPARTMENT is visible, company-scoped visibility is the
+  // approved rule* -- so the RULE is asserted here and nowhere else.
+  //
+  // ⚠ WHAT IS NOT ASSERTED IS THE POPULATION. The out-of-scope person here is the MANAGER, not a
+  // member. Recorded search: the department SQL suite holds exactly two branch-named tests, this one
+  // and `An_employee_from_another_branch_of_the_same_company_may_manage`, and the second is about
+  // manager ASSIGNMENT across branches rather than department VISIBILITY. No test places ordinary
+  // members in another branch and reads the department from a narrow caller.
+  //
+  // ⚠⚠ AND `An_employee_from_another_branch_...` WAS THE CANDIDATE AN EARLIER PASS OFFERED FOR THIS
+  // CRITERION. Reading its body refuted it: it asserts that assignment SUCCEEDS, which is a different
+  // claim in the same area -- the same adjacency that put a branch-disclosure test under
+  // `AC-DEP-0023`'s self-membership ban.
+  [Trait("Criterion", "AC-DEP-0046")]
   public async Task A_manager_outside_the_callers_branch_scope_is_assigned_but_undisclosed()
   {
     await using var fixture = await DepartmentAppFixture.CreateAsync();
@@ -848,6 +1291,9 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
   // confused: one means the department needs a manager, the other means you may not know who it has.
   [Fact]
   [Trait("Decision", "ADR-026")]
+  // CITED BY B18 pass 20: `AC-DEP-0022`'s never-assigned case. See
+  // `A_manager_can_be_assigned_replaced_and_cleared` for the cleared case.
+  [Trait("Criterion", "AC-DEP-0022")]
   public async Task A_department_with_no_manager_reports_no_manager_at_all()
   {
     await using var fixture = await DepartmentAppFixture.CreateAsync();
@@ -869,6 +1315,8 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
   // resolver, which is where the DECISION is proven.
   [Fact]
   [Trait("Decision", "ADR-025")]
+  // CITED BY B18 pass 18: reading a department outside the caller's authorized company scope.
+  [Trait("Criterion", "AC-DEP-0006")]
   public async Task A_department_in_an_unauthorized_company_is_not_found()
   {
     await using var fixture = await DepartmentAppFixture.CreateAsync();
@@ -915,7 +1363,8 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
       new SearchDepartmentsQuery(PageSize: DepartmentSearchCriteria.MaxPageSize + 1));
 
     Assert.True(refused.IsFailure);
-    Assert.Equal(DepartmentErrors.InvalidPagination, refused.Error);
+    // The query above passes `MaxPageSize + 1`, so the SIZE is the fault (T-260).
+    Assert.Equal(DepartmentErrors.InvalidPageSize, refused.Error);
   }
 
   [Fact]
@@ -1079,6 +1528,11 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
 
   [Fact]
   [Trait("Decision", "DEC-POS-0034")]
+  // CITED BY B18 pass 20, body-confirmed: `employeeCount` reflects only employees within the
+  // caller's employee read scope. Two siblings complete the criterion:
+  // `A_member_count_never_reaches_outside_the_company_scope` and
+  // `An_empty_department_counts_zero_while_an_unscoped_caller_counts_null`.
+  [Trait("Criterion", "AC-DEP-0047")]
   public async Task A_department_member_count_includes_only_employees_inside_the_callers_scope()
   {
     await using var fixture = await DepartmentAppFixture.CreateAsync();
@@ -1109,6 +1563,16 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
   // at all gets null from the same call. Asserting both here means the two can never quietly converge.
   [Fact]
   [Trait("Decision", "DEC-POS-0034")]
+  // CITED BY B18 pass 20, body-confirmed, and this is `AC-DEP-0047`'s ANTI-VACUITY CONTROL rather
+  // than a third instance of it. THREE values, not two: a permitted caller reads 1 for a populated
+  // department and 0 for an empty one, and an unpermitted caller reads null.
+  //
+  // `0` and `null` being DIFFERENT ANSWERS is the point -- an empty department you may see is not
+  // confused with a department you may not. That is `AC-DEP-0007`'s distinction (an empty result
+  // claims something about the DATA, a refusal claims something about the CALLER) expressed as a
+  // count. A scope-blind implementation returning 0 for both would pass the two siblings and fail
+  // here.
+  [Trait("Criterion", "AC-DEP-0047")]
   public async Task An_empty_department_counts_zero_while_an_unscoped_caller_counts_null()
   {
     await using var fixture = await DepartmentAppFixture.CreateAsync();
@@ -1138,6 +1602,9 @@ public sealed class DepartmentApplicationSqlServerTests(Xunit.Abstractions.ITest
   // incidental, and a count written without it would still pass every single-company test above.
   [Fact]
   [Trait("Decision", "ADR-025")]
+  // CITED BY B18 pass 20: `AC-DEP-0047` at the COMPANY boundary, where the sibling above works the
+  // branch and employee boundary.
+  [Trait("Criterion", "AC-DEP-0047")]
   public async Task A_member_count_never_reaches_outside_the_company_scope()
   {
     await using var fixture = await DepartmentAppFixture.CreateAsync();

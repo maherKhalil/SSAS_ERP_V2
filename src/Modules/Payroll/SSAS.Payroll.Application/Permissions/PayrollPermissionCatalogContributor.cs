@@ -44,7 +44,14 @@ public sealed class PayrollPermissionCatalogContributor : IPermissionCatalogCont
       "someone holding the approval permission"),
 
     new(PayrollPermissionNames.ViewPayslips,
-      "View the pay lines of individual employees for a run. This is personal data")
+      "View the pay lines of individual employees for a run. This is personal data"),
+
+    // The description is written for the person GRANTING it, and the second half matters more here than
+    // anywhere: an administrator must be able to see that this grants an employee THEIR OWN payslips and
+    // nothing else, or they will hesitate to give it to everyone — which is the whole point of it.
+    new(PayrollPermissionNames.ViewOwnPayslips,
+      "View one's OWN payslips and no one else's. Grants no sight of any other employee's pay, and is " +
+      "separate from the administrative payslip permission in both directions")
   ];
 
   // Enumerated once at composition and never re-read, so this is a property over a static array rather than

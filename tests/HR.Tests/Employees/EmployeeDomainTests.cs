@@ -9,6 +9,66 @@ namespace SSAS.HR.Tests.Employees;
 // what transfer refuses, and what the events do and do not carry. The rules that need authoritative state —
 // uniqueness, the ownership boundaries, scope authorization and the sanctioned transfer channel — are proven
 // against real SQL Server, because an in-memory provider would agree with all of them and prove none.
+// ==================================================================================================
+// ⚠⚠⚠ `AC-EMP-0001` IS CORRECTLY UNCITED AND THE REASON GIVEN FOR IT IS FALSE. CHECKED 2026-09-05.
+// ==================================================================================================
+//
+// **The criterion is the creation roll-up, and its own document disposes of it (`acceptance-criteria.md:20`,
+// noted 2026-08-31): a roll-up must not be cited, because citing it on one test presents a summary as a
+// single assertion and citing it on all of them repeats the clause-level criteria.** ***THAT RULING IS
+// RIGHT AND IS NOT DISTURBED HERE.***
+//
+// **THE GROUND GIVEN FOR IT IS NOT.** The note reads *"**Every** clause in it — the identifier, the trusted
+// tenant, the trusted company, the server-stamped branch, the normalized number, the initial state — is
+// specified again, ON ITS OWN, in a criterion below"*, and closes *"a criterion that indexes other criteria
+// is verified by verifying them."*
+//
+// ***ALL 47 `### AC-EMP-` DECLARATIONS WERE ENUMERATED AND THE SIX CLAUSES CHECKED AGAINST THEM:***
+//
+//     trusted `TenantId`         → `AC-EMP-0002`   ✓
+//     trusted `CompanyId`        → `AC-EMP-0003`   ✓
+//     server-stamped `BranchId`  → `AC-EMP-0004`   ✓
+//     normalized number          → `AC-EMP-0006`   ✓
+//     ***nonempty Guid `EmployeeId`  → NOTHING***
+//     ***trimmed NAME                → NOTHING***  (`0006` covers the NUMBER's display casing, not the name)
+//     begins in `Active`         → `AC-EMP-0012` only as *"Create→Active is a permitted TRANSITION"*, which
+//                                  is a different sentence from *"creation begins in Active"*
+//
+// ⚠⚠ ***SO TWO CLAUSES HAVE NO CRITERION OF THEIR OWN, AND THE UNIVERSAL THAT LICENSES THE RULING DOES NOT
+// HOLD OVER THE POPULATION IT QUANTIFIES.***
+//
+// ---- ⚠⚠⚠ BUT THEY ARE NOT UNSPECIFIED, AND A FIRST DRAFT OF THIS NOTE SAID THEY WERE.
+//
+// **Checked against FP-006's fuller documents rather than its criteria file alone, because a criteria file
+// is a précis and the rule usually lives elsewhere:**
+//
+//   *nonempty Guid `EmployeeId`*  ***`business-rules.md:44` (`BRULE-EMP-0006`)*** — *"`EmployeeId` is a
+//                                 server-generated, nonempty, immutable, never-reused `Guid`, assigned at
+//                                 creation and never accepted from a caller (`ADR-013`)."* And again as
+//                                 ***`DEC-EMP-0004`*** in `decisions-approved.md`.
+//   *trimmed name*                ***`data-model.md:44`*** — *"`FullName` | `NVARCHAR(200)`, required |
+//                                 Trimmed mutable display name with casing preserved."*
+//
+// ***BOTH ARE SPECIFIED, WITH IDENTIFIERS, IN THIS PACKAGE. WHAT THEY LACK IS A CRITERION.*** So the note's
+// defect is narrower than *"specified nowhere"*: **the ruling says a roll-up *"is verified by verifying
+// them"*, and for these two clauses there is no THEM to verify — the specification exists, the citable
+// criterion does not.**
+//
+// ⚠ **OWNER ITEM, CORRESPONDINGLY SMALLER: either the two clauses get criteria of their own, or the note's
+// *every* becomes *most* and names the exceptions.** *No behaviour is unspecified; a citation route is
+// missing.*
+//
+// ---- ⚠⚠⚠ AND THE SHAPE IS WORTH MORE THAN THE CELL: **A CORRECT DISPOSAL RESTING ON A WRONG UNIVERSAL.**
+//
+// ***A CORRECT CONCLUSION WITH A FALSE JUSTIFICATION IS WORSE THAN A WRONG CONCLUSION, BECAUSE NOBODY
+// RE-EXAMINES A RULING THEY AGREE WITH — THEY REUSE ITS ARGUMENT.*** **The ruling survives; the reasoning
+// does not, and the reasoning is the part a later reader would carry to the next roll-up.**
+//
+// ⚠ **THE GAP IS AT CRITERION LEVEL AND THAT IS THE ONLY CLAIM MADE HERE.** *Whether some test happens to
+// observe a nonempty identifier or a trimmed name was NOT checked, deliberately* — **it would not change the
+// finding, and asserting it unverified is the failure this whole census exists to catch.** ***What is
+// established is that nothing in the SPECIFICATION requires either outcome: a change removing one would
+// violate no criterion, and a citation sweep would report nothing missing.***
 public sealed class EmployeeDomainTests
 {
   private static readonly Guid Tenant = Guid.Parse("11111111-1111-1111-1111-111111111111");
@@ -27,6 +87,8 @@ public sealed class EmployeeDomainTests
   // ---- CREATION.
 
   [Fact]
+  // ⚠ CITED BY B18 pass 09 (mechanism search): clause 1 -- creation records `EmployeeStatusChangeReason.Created`.
+  [Trait("Criterion", "AC-EMP-0018")]
   public void A_created_employee_is_active_with_a_server_generated_identity()
   {
     var employee = NewEmployee();
@@ -101,6 +163,8 @@ public sealed class EmployeeDomainTests
   // ---- THE EMPLOYEE NUMBER IS IMMUTABLE. There is no operation, on the aggregate or anywhere else, that
   // changes it after creation.
   [Fact]
+  // ⚠ CITED BY ITEM 218, body-confirmed: no operation can change `EmployeeNumber` after creation -- asserted over the type's MUTATORS, not one call site.
+  [Trait("Criterion", "AC-EMP-0008")]
   public void No_operation_changes_the_employee_number_or_ownership_identifiers()
   {
     // Property accessors are excluded: this asks what OPERATIONS exist, and a getter is not one.
@@ -155,6 +219,9 @@ public sealed class EmployeeDomainTests
   // ---- LIFECYCLE.
 
   [Fact]
+  // ⚠ CITED BY ITEM 218/B18, body-confirmed: walks Active->Inactive->Active->Terminated asserting success at each step, which is the
+  // criterion's listed set.
+  [Trait("Criterion", "AC-EMP-0012")]
   public void The_approved_transitions_are_permitted()
   {
     var employee = NewEmployee();
@@ -197,8 +264,81 @@ public sealed class EmployeeDomainTests
       employee.Deactivate(EmployeeStatusChangeReason.Administrative, "a", Guid.NewGuid(), Now).Error.Code);
   }
 
+  // ---- ⚠ THE ENABLEMENT PAIR CHANGES THE STATUS AND NOTHING ELSE (`AC-EMP-0013`).
+  //
+  // The transitions themselves are asserted above. **The clauses that DISTINGUISH this criterion from
+  // `AC-EMP-0012` are the ones about what does NOT move**: neither half changes company, branch or any
+  // identity field, and neither writes a branch-assignment record.
+  //
+  // Nothing asserted them. `Deactivate` and `Activate` both delegate to `ApplyTransition`, which assigns
+  // `Status`, `StatusChangeReasonCode`, `StatusChangedUtc` and `StatusChangedBy` and touches nothing else
+  // — so the criterion holds **by construction**, and held before this test existed. What was missing is
+  // the assertion that would notice if a later transition started stamping the current branch, which is
+  // the plausible mistake: `Transfer` writes an assignment row, and an enablement that "kept the history
+  // consistent" by doing the same would look reasonable in review.
+  //
+  // ⚠ **THE STATUS ASSERTIONS ARE THE CONTROL, NOT DECORATION.** Every *unchanged* assertion below is
+  // satisfied perfectly by a `Deactivate` that returns success and does nothing at all. **Only checking
+  // that the status DID move separates "changed nothing else" from "changed nothing".**
+  [Fact]
+  [Trait("Criterion", "AC-EMP-0013")]
+  public void Neither_half_of_the_enablement_pair_touches_ownership_identity_or_assignments()
+  {
+    var employee = Stamped();
+
+    // ⚠ And the arrangement control: the aggregate HAS an assignment to preserve. Against an employee
+    // with none, "the count did not change" is 0 == 0 and holds however the transition behaves.
+    var assignment = Assert.Single(employee.BranchAssignments);
+    var destination = assignment.DestinationBranchId;
+
+    void AssertOnlyTheStatusMoved()
+    {
+      Assert.Equal(Tenant, employee.TenantId);
+      Assert.Equal(Company, employee.CompanyId);
+      Assert.Equal(BranchA, employee.BranchId);
+      Assert.Equal("EMP-1", employee.EmployeeNumber.Value);
+      Assert.Equal(Hired, employee.EmploymentDate);
+
+      // The record, not merely the count: a transition that removed one row and wrote another would
+      // leave the count alone.
+      Assert.Equal(destination, Assert.Single(employee.BranchAssignments).DestinationBranchId);
+    }
+
+    Assert.True(employee.Deactivate(
+      EmployeeStatusChangeReason.Administrative, "a", Guid.NewGuid(), Now).IsSuccess);
+    Assert.Equal(EmployeeStatus.Inactive, employee.Status);
+    AssertOnlyTheStatusMoved();
+
+    Assert.True(employee.Activate(
+      EmployeeStatusChangeReason.Administrative, "a", Guid.NewGuid(), Now).IsSuccess);
+    Assert.Equal(EmployeeStatus.Active, employee.Status);
+    AssertOnlyTheStatusMoved();
+  }
+
+  // ---- ⚠ AND THE PAIR IS A PAIR: NO SEPARATE REACTIVATE OPERATION EXISTS (`AC-EMP-0013`).
+  //
+  // A created Employee is already `Active`, so re-enablement IS activation and a second concept would be
+  // a second way to reach the same state — with its own guard to get wrong.
+  //
+  // ⚠ **`CompanyDomainTests` has asserted exactly this for `Company` since it was written:
+  // `Assert.Null(typeof(Company).GetMethod("Reactivate"))`.** **The same mechanism, on a sibling
+  // aggregate, and nobody wrote the Employee half** — which is the second time this sweep has found a
+  // guard present for one aggregate and absent for this one.
+  [Fact]
+  [Trait("Criterion", "AC-EMP-0013")]
+  public void No_separate_reactivate_operation_exists()
+  {
+    Assert.Null(typeof(Employee).GetMethod(nameof(SSAS.HR.Domain.Positions.JobGrade.Reactivate)));
+
+    // The control: reflection over this type really does see its operations, so the null above is an
+    // absence rather than a lookup that finds nothing whatever it is asked for.
+    Assert.NotNull(typeof(Employee).GetMethod("Activate"));
+  }
+
   // ---- TERMINATED IS TERMINAL, AND THERE IS NO REHIRE.
   [Fact]
+  // ⚠ CITED BY ITEM 218/B18, body-confirmed: a `Terminated` employee cannot be activated or deactivated.
+  [Trait("Criterion", "AC-EMP-0015")]
   public void A_terminated_employee_cannot_transition_again()
   {
     var employee = Terminated();
@@ -214,6 +354,8 @@ public sealed class EmployeeDomainTests
   }
 
   [Fact]
+  // ⚠ CITED BY ITEM 218/B18, body-confirmed: ...nor updated.
+  [Trait("Criterion", "AC-EMP-0015")]
   public void A_terminated_employee_cannot_have_its_profile_updated()
   {
     Assert.Equal(
@@ -223,6 +365,8 @@ public sealed class EmployeeDomainTests
 
   // ---- BR-HR-0003.
   [Fact]
+  // ⚠ CITED BY ITEM 218, body-confirmed: `TerminationDate` earlier than `EmploymentDate` is refused -- and the same day is permitted.
+  [Trait("Criterion", "AC-EMP-0010")]
   public void Termination_cannot_precede_employment()
   {
     var employee = NewEmployee();
@@ -241,6 +385,8 @@ public sealed class EmployeeDomainTests
 
   // `Created` records a creation and nothing else.
   [Fact]
+  // ⚠ CITED BY B18 pass 09 (mechanism search): clause 2 -- activate/deactivate/terminate require a NON-`Created` reason; using `Created` is refused.
+  [Trait("Criterion", "AC-EMP-0018")]
   public void A_lifecycle_transition_cannot_be_recorded_as_the_hire()
   {
     Assert.Equal(
@@ -251,6 +397,8 @@ public sealed class EmployeeDomainTests
   // ---- INITIAL ASSIGNMENT.
 
   [Fact]
+  // ⚠ CITED BY ITEM 218, body-confirmed: exactly one `EmployeeBranchAssignment`, `SourceBranchId` null -- asserted as `Assert.Single` plus `Assert.Null`.
+  [Trait("Criterion", "AC-EMP-0005")]
   public void Creation_produces_exactly_one_initial_assignment_naming_no_source()
   {
     var employee = Stamped();
@@ -302,6 +450,10 @@ public sealed class EmployeeDomainTests
   }
 
   [Fact]
+  // ⚠ CITED BY ITEM 218/B18, body-confirmed: ...nor transferred. ⚠ The criterion's "remains retrievable by id" clause is pinned by NONE of the three.
+  [Trait("Criterion", "AC-EMP-0015")]
+  // ⚠ CITED BY B18, body-confirmed: the TERMINATED half -- refused with TransferAfterTermination.
+  [Trait("Criterion", "AC-EMP-0034")]
   public void A_terminated_employee_cannot_be_transferred()
   {
     var employee = Stamped();
@@ -331,6 +483,9 @@ public sealed class EmployeeDomainTests
   }
 
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: the DESTINATION-EQUALS-SOURCE half -- refused with TransferDestinationUnchanged, and
+  // Assert.Single on the assignments proves no record was appended by the refusal.
+  [Trait("Criterion", "AC-EMP-0034")]
   public void A_transfer_to_the_current_branch_is_refused()
   {
     var employee = Stamped();
@@ -345,6 +500,8 @@ public sealed class EmployeeDomainTests
 
   // `InitialAssignment` belongs to creation alone: a transfer must not be able to masquerade as a hire.
   [Fact]
+  // ⚠ CITED BY B18 pass 09 (mechanism search): clause 3 -- transfers require a non-`InitialAssignment` reason; `InvalidTransferReason` refuses it.
+  [Trait("Criterion", "AC-EMP-0018")]
   public void A_transfer_cannot_be_recorded_as_an_initial_assignment()
   {
     var employee = Stamped();
@@ -416,9 +573,20 @@ public sealed class EmployeeDomainTests
     Assert.Empty(type.GetMethods(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)
       .Where(method => method.DeclaringType == type && !method.IsSpecialName));
 
+    // ⚠ THE LOOKUP IS PROVEN TO SEE THIS TYPE BEFORE THREE NULLS ARE READ AS ABSENCES (273). Each
+    // `Assert.Null` passes when the property is absent AND when the call cannot see the type's properties
+    // at all, and three of them in a row look like thoroughness while sharing one point of failure.
+    Assert.NotNull(type.GetProperty(nameof(EmployeeBranchAssignment.EffectiveFromUtc)));
+
     // No RowVersion, no Modified pair, no EffectiveToUtc.
-    Assert.Null(type.GetProperty("RowVersion"));
-    Assert.Null(type.GetProperty("ModifiedUtc"));
+    Assert.Null(type.GetProperty(nameof(SSAS.HR.Domain.Employees.Employee.RowVersion)));
+    Assert.Null(type.GetProperty(nameof(SSAS.BuildingBlocks.Domain.IAuditableEntity.ModifiedUtc)));
+
+    // ⚠⚠ AND THIS ONE CANNOT BE BOUND, WHICH IS WHY IT IS THE ONLY BARE STRING LEFT IN THE THREE.
+    // `EffectiveToUtc` exists NOWHERE in `src/` — twelve occurrences, every one a comment recording its
+    // absence — so there is no symbol for `nameof` and a misspelling here would pass undetected. The two
+    // above are bound because `RowVersion` and `ModifiedUtc` DO exist elsewhere and a rename breaks the
+    // build. Item `258` left `UpdateName` a string on exactly this reasoning.
     Assert.Null(type.GetProperty("EffectiveToUtc"));
 
     // Only the ownership interfaces may set anything, and only what the persistence layer stamps.

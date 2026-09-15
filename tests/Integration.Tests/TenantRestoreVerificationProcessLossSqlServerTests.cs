@@ -511,6 +511,48 @@ public sealed class TenantRestoreVerificationProcessLossSqlServerTests(Xunit.Abs
         Actor
       }, ChildJson));
 
+      // ==============================================================================================
+      // ⚠ THIS CHILD'S STREAMS ARE READ ONLY UNTIL THE HANDSHAKE, AND THAT IS A DELIBERATE DECISION
+      // (item 195). DO NOT "FIX" IT BY REACHING FOR `SqlcmdChildProcess`.
+      // ==============================================================================================
+      //
+      // `ReadLineAsync` below consumes stdout only until `ADMITTED `, and stderr only on an unexpected EOF
+      // *during* that handshake. **After admission both streams are abandoned for the rest of the child's
+      // life.** Item 194 surveyed every process-starting site in the repository and this is the only one
+      // left in that state; the other four were converted by item 189. The two consequences were measured
+      // separately, because they do NOT have the same answer:
+      //
+      // ---- 1. THE PIPE-BUFFER DEADLOCK IS NOT CONSTRUCTIBLE HERE, so nothing guards against it.
+      //
+      // An unread redirected pipe blocks the writer once its ~4 KB OS buffer fills. After `ADMITTED ` this
+      // host writes AT MOST TWO SHORT LINES -- `WaitingLine` then nothing (it blocks forever), or
+      // `RestoringLine` and possibly `COMPLETED <status>`. That is on the order of 40 bytes against ~4 KB,
+      // roughly a hundredfold margin. **Guarding a failure that cannot be constructed is its own defect**,
+      // so this is recorded rather than defended against.
+      //
+      // ---- 2. ⚠ THE EVIDENCE LOSS IS REAL, AND IT COSTS THE REASON RATHER THAN THE CORRECTNESS.
+      //
+      // The host emits `COMPLETED <status>` **only when the restore outran the observer** -- see the
+      // comment above its own `ExecuteAsync` call -- which is exactly the case this fixture treats as an
+      // INCONCLUSIVE TRIAL. **So the one line that explains an inconclusive trial is written and nobody
+      // reads it.** The verdict is still reported as inconclusive either way, so no result is wrong; what
+      // is unavailable is *why*.
+      //
+      // ---- ⚠ WHY `SqlcmdChildProcess` DOES NOT FIT, THOUGH IT LOOKS LIKE THE OBVIOUS REMEDY.
+      //
+      // It drains each stream with a single `ReadToEndAsync`, which completes only when the child exits.
+      // **This parent must match a marker while the child is still running**, so handing these streams to
+      // that type would replace a pipe-buffer hazard with a HANDSHAKE hazard -- a worse trade, and a
+      // deadlock that IS constructible. A real fix means buffering both streams in the background and
+      // matching `ADMITTED ` against the buffer rather than the live stream: a design change to a fixture
+      // whose timing is deliberately tuned.
+      //
+      // ---- WHAT WOULD MAKE IT WORTH DOING, so a later reader revisits this instead of re-deriving it:
+      //
+      // **INCONCLUSIVE TRIALS BECOMING FREQUENT.** While they are rare, the cost of the restructure exceeds
+      // the value of the reason. If this fixture starts reporting inconclusive trials often -- or if the
+      // host is ever given more to say after admission, which changes the deadlock arithmetic above -- then
+      // buffer both streams and report `COMPLETED <status>` in the inconclusive message.
       var start = new ProcessStartInfo(HostExecutable())
       {
         UseShellExecute = false,
@@ -875,6 +917,9 @@ public sealed class TenantRestoreVerificationProcessLossSqlServerTests(Xunit.Abs
         {
           child.WaitForExit(30_000);
         }
+        // The child was just killed, so a failure to wait on it means it is already gone. `SystemException`
+        // covers both the invalid-handle and the access cases, and either one answers the question the wait
+        // was asking.
         catch (SystemException)
         {
         }
@@ -912,7 +957,19 @@ public sealed class TenantRestoreVerificationProcessLossSqlServerTests(Xunit.Abs
       if (!string.IsNullOrWhiteSpace(root) && Directory.Exists(root))
       {
         try { Directory.Delete(root, recursive: true); }
+        // ⚠ TEARDOWN OF A DIRECTORY, AND UNLIKE THE CATALOG ABOVE IT IS NOT RECORDED.
+        //
+        // A file still locked by a process that has not fully exited is the normal case here, and failing
+        // the test for it would report a cleanup race as a product defect. **The leak is not lost**: the
+        // gate reaps stale backup roots at startup, because a recorder at teardown is structurally blind
+        // to a run that died before reaching it.
         catch (IOException) { }
+        // ⚠ TEARDOWN OF A DIRECTORY, AND UNLIKE THE CATALOG ABOVE IT IS NOT RECORDED.
+        //
+        // A file still locked by a process that has not fully exited is the normal case here, and failing
+        // the test for it would report a cleanup race as a product defect. **The leak is not lost**: the
+        // gate reaps stale backup roots at startup, because a recorder at teardown is structurally blind
+        // to a run that died before reaching it.
         catch (UnauthorizedAccessException) { }
       }
     }
@@ -1041,7 +1098,6 @@ public sealed class TenantRestoreVerificationProcessLossSqlServerTests(Xunit.Abs
     public string? UserId => "low-c-process-loss-test";
     public string? UserName => null;
     public string? Email => null;
-    public Guid? CompanyId => null;
     public string? SessionId => null;
     public string? TokenId => null;
     public IReadOnlyCollection<string> Roles => [];

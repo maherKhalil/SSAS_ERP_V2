@@ -1,4 +1,4 @@
-﻿using SSAS.BuildingBlocks.Tenancy.Permissions;
+using SSAS.BuildingBlocks.Tenancy.Permissions;
 
 namespace SSAS.HR.Application.Permissions;
 
@@ -80,7 +80,13 @@ public sealed class HrPermissionCatalogContributor : IPermissionCatalogContribut
     new(HrPermissionNames.UpdateSalaryGrades,
       "Update a salary grade's code, name and rank order, and set or withdraw its minimum, midpoint and " +
       "maximum amounts"),
-    new(HrPermissionNames.DeactivateSalaryGrades, "Deactivate and reactivate salary grades")
+    new(HrPermissionNames.DeactivateSalaryGrades, "Deactivate and reactivate salary grades"),
+    
+    // ---- EMPLOYEE DOCUMENTS (FP-010).
+    new(HrPermissionNames.ViewEmployeeDocuments, "View an employee's documents metadata"),
+    new(HrPermissionNames.DownloadEmployeeDocuments, "Download document content bytes"),
+    new(HrPermissionNames.UploadEmployeeDocuments, "Upload new documents for an employee"),
+    new(HrPermissionNames.WithdrawEmployeeDocuments, "Withdraw an employee document")
   ];
 
   public IReadOnlyCollection<ModulePermissionDefinition> Permissions => Definitions;

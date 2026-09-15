@@ -1,4 +1,4 @@
-# FP-014 — Domain model (proposed)
+# FP-014 — Domain model
 
 **Written from the ruling set of 2026-08-25**, in which all seventeen `OD-SUB` carry rulings and the
 scope is `E + C` (`DEC-L-006`) — enablement and the commercial record together, all 28 `REQ-SUB` in

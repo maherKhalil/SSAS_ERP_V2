@@ -14,6 +14,22 @@ namespace SSAS.HR.Domain.Departments;
 // `CutoverCopyOrderUndecidable` when no table is ready; with a mutual reference neither is ever ready. It
 // does not degrade or warn. Cutover would stop working for every tenant.
 //
+// ---- ASSERTED SINCE 2026-09-01, NOT ONLY REASONED (244).
+//
+// `CutoverCopyOrderCycleTests.A_foreign_key_cycle_makes_the_copy_order_undecidable`, in
+// `tests/Platform.Tests/TenantStorage/`, constructs a model whose two tenant-owned tables reference
+// each other and asserts the failure. Its matched control asserts that the SAME two tables, with one
+// of the two foreign keys removed, produce a plan -- so the failure is attributable to the cycle
+// rather than to the tables being undescribable.
+//
+// PRECISION, BECAUSE THIS COMMENT NAMES `Order`: the test calls the public
+// `TenantCutoverCopyPlan.Build`. `Order` is private and the cycle check -- the point at which no
+// table is ready -- is inside it, so `Build` is the only way to reach it.
+//
+// AND THE BOUND, WHICH IS THE HALF A CITATION USUALLY LOSES: WHAT IS TESTED IS THAT THE PLANNER
+// REFUSES A CYCLE. That THIS table's shape would produce one is still read from the model rather
+// than executed. The mechanism is proven; applying it to this table is an argument.
+//
 // This record has foreign keys pointing OUTWARD to both Department and Employee, so it is a dependent of
 // each and a principal of neither. The graph stays acyclic, referential integrity is fully preserved, and
 // Platform's cutover engine is untouched. `ADR-026` decision 7 names the condition under which the direct

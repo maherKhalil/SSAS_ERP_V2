@@ -40,7 +40,18 @@ public sealed class RolesEndpointTests : IAsyncLifetime
   private HttpClient? client;
   private RecordingRoleReadService roleReadService = new();
 
+  // ⚠ CITES `AC-IAM-0009` — *"Protected requests without valid authentication return 401."* Through the
+  // REAL Host authentication pipeline, not a stub: this file builds the actual JWT validation and
+  // authorization wiring, which is what makes a status-code assertion worth anything here.
+  //
+  // ⚠⚠ AND `Assert.False(roleReadService.Called)` IS THE HALF THAT IS NOT IN THE CRITERION AND SHOULD BE.
+  // A 401 that had already queried the tenant's roles would satisfy the sentence exactly. **The recorder
+  // proves the refusal happened BEFORE the work, not alongside it** — and the same flag appears on every
+  // refusal test in this file, with `Called == true` on the authorized one at `:84` as its companion.
+  // **Without that one positive, `Called == false` everywhere is satisfied by a read service nothing ever
+  // calls.**
   [Fact]
+  [Trait("Criterion", "AC-IAM-0009")]
   public async Task Unauthenticated_request_returns_401()
   {
     var response = await Client.GetAsync("/api/platform/roles");
@@ -49,7 +60,23 @@ public sealed class RolesEndpointTests : IAsyncLifetime
     Assert.False(roleReadService.Called);
   }
 
+  // ⚠ CITES `AC-IAM-0010` — *"Authenticated requests without required permission return 403."* The token
+  // carries a valid tenant claim and NO permission claim, so the 401/403 boundary is exercised rather than
+  // assumed: the caller is authenticated and still refused.
+  //
+  // ⚠⚠ **THIS TEST AND `Unauthenticated_request_returns_401` ARE A PAIR AND NEITHER MEANS ANYTHING ALONE.**
+  // A pipeline that returned 401 for everything satisfies `AC-IAM-0009` and violates this one; a pipeline
+  // that returned 403 for everything does the reverse. **Neither test alone distinguishes a working
+  // boundary from a stuck one — what carries the property is that the two statuses DIFFER for inputs that
+  // differ in exactly one way.**
+  //
+  // ⚠⚠⚠ AND A PER-CRITERION SWEEP CAN NEVER SEE THIS. Each criterion has a test, each test passes, each
+  // citation is accurate — **and the thing being proved lives BETWEEN them, in two different criteria, so
+  // no instrument keyed to one criterion at a time can observe it.** Written on this test because the
+  // permission side is the more likely of the two to be edited; deleting or weakening either one silently
+  // empties the other.
   [Fact]
+  [Trait("Criterion", "AC-IAM-0010")]
   public async Task Authenticated_without_view_permission_returns_403()
   {
     using var request = Authorized(new Claim(JwtClaimTypes.TenantId, TenantId.ToString()));
@@ -92,6 +119,71 @@ public sealed class RolesEndpointTests : IAsyncLifetime
     AssertSecurityHeaders(response);
   }
 
+  // ================================================================================================
+  // THE PERMISSION CATALOGUE (T-203) — THE ONE ROW OF THE CAPABILITY GAP THAT NEEDED NO DECISION.
+  // ================================================================================================
+  //
+  // An audit of the 67 documented-but-unrouted rows put 41 behind five owner decisions, 15 behind an
+  // accepted deferral and 10 down to capability that already exists under another path. This was the
+  // remainder: a read of a static catalogue, whose handler was written and registered and whose permission
+  // was catalogued, waiting only for six lines of transport.
+  [Fact]
+  public async Task The_catalogue_requires_its_own_permission()
+  {
+    using var request = Authorized(
+      "/api/platform/permissions",
+      new Claim(JwtClaimTypes.TenantId, TenantId.ToString()),
+      new Claim(JwtClaimTypes.Permission, PlatformPermissionNames.ViewRoles));
+
+    var response = await Client.SendAsync(request);
+
+    // `ViewRoles` is the NEIGHBOURING permission and the one most likely to be reached for by mistake:
+    // roles and permissions sit in the same document and the same route group. It is not this route's.
+    Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+  }
+
+  [Fact]
+  public async Task The_catalogue_lists_tenant_assignable_permissions_only()
+  {
+    using var request = Authorized(
+      "/api/platform/permissions",
+      new Claim(JwtClaimTypes.TenantId, TenantId.ToString()),
+      new Claim(JwtClaimTypes.Permission, PlatformPermissionNames.ViewPermissions));
+
+    var response = await Client.SendAsync(request);
+
+    Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+    var catalogue = await response.Content.ReadFromJsonAsync<PermissionCatalogResponse>();
+    Assert.NotNull(catalogue);
+    Assert.NotEmpty(catalogue!.Items);
+
+    // ⚠ THE ASSERTION THAT MATTERS. `ADR-015`'s PlatformSupport-scoped permissions are never assignable by
+    // a tenant, and listing one to a tenant administrator would advertise an authority they cannot be
+    // granted. The handler filters; this proves the filter survives the transport.
+    Assert.All(catalogue.Items, item => Assert.Equal("Tenant", item.Scope));
+
+    // The scope travels as a STRING. A numeric enum would let a reordering silently change what an
+    // existing value means to a client that has already shipped.
+    Assert.All(catalogue.Items, item => Assert.False(string.IsNullOrWhiteSpace(item.Name)));
+    AssertSecurityHeaders(response);
+  }
+
+  [Fact]
+  public async Task The_catalogue_accepts_no_query_parameters()
+  {
+    using var request = Authorized(
+      "/api/platform/permissions?pageNumber=1",
+      new Claim(JwtClaimTypes.TenantId, TenantId.ToString()),
+      new Claim(JwtClaimTypes.Permission, PlatformPermissionNames.ViewPermissions));
+
+    var response = await Client.SendAsync(request);
+
+    // Not paged and not filtered. Accepting and ignoring a parameter would be a promise the route does not
+    // keep, and a caller who paged it would believe they had seen everything.
+    Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+  }
+
   [Fact]
   public async Task Invalid_paging_returns_400_request_invalid()
   {
@@ -122,7 +214,32 @@ public sealed class RolesEndpointTests : IAsyncLifetime
     Assert.False(roleReadService.Called);
   }
 
+  // ⚠ CITES `AC-IAM-0002` — *"A tenant administrator cannot access or manage another tenant EVEN WHEN
+  // SUPPLYING ANOTHER TENANT ID."* The caller is fully authorized for its own tenant and supplies a
+  // different `tenantId`; the request is refused and the read service is never reached.
+  //
+  // ⚠⚠ THE MECHANISM IS NOT A CROSS-TENANT CHECK AND THE TEST NAME SAYS SO — *rejected as UNKNOWN*. The
+  // endpoint declares no `tenantId` parameter, so strict binding refuses it as an unrecognised query field,
+  // **400 `request.invalid` rather than 403.** The criterion is satisfied because the input has nowhere to
+  // land, not because anything compares the supplied id to the trusted one.
+  //
+  // This is an OBSERVATION rather than a *satisfied by construction* argument — the parameter is actually
+  // supplied and the refusal is actually seen. **But the protection is a property of the PARAMETER LIST,
+  // and a property that holds by ABSENCE disappears without a diff anyone would flag.**
+  //
+  // ⚠⚠⚠ READ THIS IF THE TEST IS RED. IF IT FAILED BECAUSE THE ENDPOINT GAINED A `tenantId` PARAMETER —
+  // for paging, filtering, an admin view, anything — THEN TENANT ISOLATION HERE IS NO LONGER STRUCTURAL.
+  //
+  //   **DO NOT relax this test to accept the parameter.** That is the obvious repair and it is the defect:
+  //   it removes the guarantee, leaves every other test green, and nothing else in the suite would notice.
+  //
+  //   **DO add an explicit comparison against the trusted tenant** — the handler must reject a supplied id
+  //   that differs from `ICurrentTenant`, and this test must then assert THAT refusal (403, not 400).
+  //
+  // **The failure this test produces recruits the next person into removing the property it protects**, so
+  // the instruction is written here rather than only the rationale.
   [Fact]
+  [Trait("Criterion", "AC-IAM-0002")]
   public async Task A_caller_supplied_tenant_id_query_is_rejected_as_unknown()
   {
     using var request = Authorized(
@@ -156,6 +273,18 @@ public sealed class RolesEndpointTests : IAsyncLifetime
     builder.Services.AddScoped<IRequestTenantEligibility, RequestTenantEligibility>();
     builder.Services.AddSingleton<IRoleReadService>(roleReadService);
     builder.Services.AddScoped<ListRolesQueryHandler>();
+
+    // ---- ⚠ ADDED WITH THE PERMISSION-CATALOGUE ROUTE (T-203), AND ITS ABSENCE BROKE EVERY TEST ABOVE.
+    //
+    // This host maps the identity-access group, so routing ONE more endpoint made its dependencies
+    // construction-time dependencies of the whole host — and DI validation failed all four existing tests
+    // with a message about a handler none of them calls.
+    //
+    // **That is the good failure mode**: a test host that omits a registration proves the production wiring
+    // only by accident, and this one said so loudly the moment production gained a route.
+    builder.Services.AddSingleton<PlatformPermissionCatalog>();
+    builder.Services.AddSingleton<IPermissionCatalog, ComposedPermissionCatalog>();
+    builder.Services.AddScoped<ListPermissionCatalogQueryHandler>();
 
     application = builder.Build();
     application.UseCorrelationId();

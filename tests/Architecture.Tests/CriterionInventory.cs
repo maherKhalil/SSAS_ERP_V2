@@ -1,0 +1,513 @@
+using System.Text.RegularExpressions;
+
+namespace SSAS.Architecture.Tests;
+
+// ==================================================================================================
+// DECLARED, CITED AND TRIPWIRED CRITERIA, DERIVED FROM THE TREE. AN INSTRUMENT, NOT A WITNESS.
+// ==================================================================================================
+//
+// **This carries no criterion trait and asserts nothing about any product behaviour.** It exists because
+// every coverage number this project quotes — *"FP-009 is 15 of 19"*, *"FP-014 is 31 of 54"* — was being
+// computed by a script in a session scratchpad. ***A NUMBER WHOSE ONLY DERIVATION DIES WITH A SESSION IS
+// RETIRED THE DAY THAT SESSION ENDS, WHATEVER ANYONE STILL BELIEVES ABOUT IT.***
+//
+// ---- ⚠⚠⚠ THE DEFINITIONS, WRITTEN OUT SO THE NUMBERS SURVIVE EVEN THIS FILE.
+//
+// **DECLARED** — ids matching `AC-<PREFIX>-dddd` at the START of a line in one of SIX shapes, inside a
+// feature folder's markdown. *Six because two declaration conventions coexist in this tree:* a table row
+// `| `ID` |`, a bullet `- **ID**` (optionally with a `(TAG)`, optionally colons), a bullet with an em dash,
+// ``**`ID`** —``, ``**`ID` —``, and a heading `## `ID``. **Keying on one shape returns ZERO for half the
+// tree, which reads identically to "nothing is declared".**
+//
+// **CITED** — a test method carrying `[Trait("K","ID")]` where K is one of FOUR keys: `Criterion`,
+// `Acceptance`, `Decision`, `AcceptanceCriteria`. ***THE MATCH IS CONJUNCTIVE — KEY AND VALUE IN ONE
+// PATTERN*** — so a fifth key is invisible to it by construction rather than by accident.
+//
+// **TRIPWIRED** — the same shape with key `Tripwire`. ***REPORTED SEPARATELY AND NEVER ADDED TO CITED:
+// a guard asserting that a criterion's subject DOES NOT EXIST is the opposite of a witness for it.***
+//
+// ⚠⚠ **COMMENTS ARE STRIPPED BEFORE MATCHING.** This tree is prose-dense — a raw matcher over it measures
+// the DOCUMENTATION, and a commented-out trait would count as a citation.
+//
+// ---- ⚠ WHAT THIS DELIBERATELY DOES NOT DO: IT ASSERTS NO COUNTS.
+//
+// **A test pinning "FP-009 has 15 citations" reddens on the next commit that adds one** — high rate, and
+// the change is the intended work rather than a regression. *That fails the second question a strict guard
+// must answer: is there a lower-noise design with the same detection?* **There is: assert the instrument's
+// INTEGRITY and let the counts move freely.** The companion test checks that this can still find spec
+// folders, still recognises all four keys, and still strips comments — ***so it reddens when the
+// INSTRUMENT rots, which is the failure nobody would otherwise notice.***
+internal static class CriterionInventory
+{
+  private const string IdPattern = @"AC-[A-Z]+-\d{4}";
+
+  private static readonly Regex[] DeclarationShapes =
+  [
+    new(@"^\|\s*`(" + IdPattern + @")`\s*\|", RegexOptions.Multiline),
+    new(@"^-\s+\*\*(" + IdPattern + @")(?:\s*\([A-Z]+\))?:?\*\*:?", RegexOptions.Multiline),
+    new(@"^-\s+\*\*(" + IdPattern + @")\*\*\s*[-—]", RegexOptions.Multiline),
+    new(@"^\*\*`(" + IdPattern + @")`\*\*\s*[-—]", RegexOptions.Multiline),
+    new(@"^\*\*`(" + IdPattern + @")`\s*[-—]", RegexOptions.Multiline),
+    new(@"^#{2,4}\s+`?(" + IdPattern + @")`?", RegexOptions.Multiline),
+  ];
+
+  private static readonly Regex CitedTrait =
+    new(@"Trait\s*\(\s*""(?:Criterion|Acceptance|Decision|AcceptanceCriteria)""\s*,\s*""(" + IdPattern + @")""");
+
+  private static readonly Regex TripwireTrait =
+    new(@"Trait\s*\(\s*""Tripwire""\s*,\s*""(" + IdPattern + @")""");
+
+  // Bare ids, for resolution and for the comment scan. ⚠ NOT a declaration shape and never a citation:
+  // it matches an id ANYWHERE, which is exactly wrong for counting and exactly right for asking
+  // "does this id exist" and "has anyone written about it".
+  private static readonly Regex AnyId = new(IdPattern);
+
+  public static IReadOnlyCollection<string> FeatureFolders() =>
+    [.. Directory.EnumerateDirectories(Path.Combine(RepositoryRoot(), "docs", "17-features"))
+      .Select(Path.GetFileName)
+      .Where(name => name is not null)
+      .Select(name => name!)
+      .OrderBy(name => name, StringComparer.Ordinal)];
+
+  // A folder CLAIMS to have criteria by carrying the file that holds them. A folder without one is a
+  // feature created before its specification — an ordinary state, and not the same thing as a folder
+  // whose declarations have stopped being recognised.
+  public static bool HasCriteriaFile(string featureFolder) =>
+    File.Exists(Path.Combine(RepositoryRoot(), "docs", "17-features", featureFolder, "acceptance-criteria.md"));
+
+  public static IReadOnlyCollection<string> DeclaredIn(string featureFolder)
+  {
+    var directory = Path.Combine(RepositoryRoot(), "docs", "17-features", featureFolder);
+    var declared = new SortedSet<string>(StringComparer.Ordinal);
+
+    foreach (var file in Directory.EnumerateFiles(directory, "*.md", SearchOption.AllDirectories))
+    {
+      var text = File.ReadAllText(file);
+      foreach (var shape in DeclarationShapes)
+      {
+        foreach (Match match in shape.Matches(text))
+        {
+          declared.Add(match.Groups[1].Value);
+        }
+      }
+    }
+
+    return declared;
+  }
+
+  public static IReadOnlyCollection<string> Cited() => Scan(CitedTrait);
+
+  public static IReadOnlyCollection<string> Tripwired() => Scan(TripwireTrait);
+
+  // ---- EVERY CRITERION DECLARED ANYWHERE, AS ONE SET.
+  //
+  // `DeclaredIn` answers per feature because coverage is reported per feature. Resolution is a different
+  // question — *does this id exist at all* — and asking it per folder would report a criterion cited from
+  // another module's test as unresolvable. **The union is the right population for that and the wrong one
+  // for counting, so both exist and neither is a substitute.**
+  public static IReadOnlyCollection<string> DeclaredEverywhere() =>
+    [.. FeatureFolders().SelectMany(DeclaredIn).Distinct(StringComparer.Ordinal).OrderBy(id => id, StringComparer.Ordinal)];
+
+  // ---- ⚠⚠⚠ THE THIRD STATE OF A CRITERION ID IN THIS TREE, AND IT HAD NO NAME UNTIL NOW.
+  //
+  // A criterion can be CITED (a trait claims a witness), TRIPWIRED (a guard claims the subject does not
+  // exist), or neither. **"Neither" has been read as one thing and it is two.** *A criterion nobody has ever
+  // written a word about is a completely different object from one with three paragraphs of reasoned refusal
+  // written beside the test that would have cited it* — and both currently render as the same empty cell.
+  //
+  // ***THIS COLLECTS THE SECOND KIND.*** A comment naming a criterion is the trace that reading it leaves.
+  // **The reasoning in that comment is not machine-readable and never will be; the fact that somebody wrote
+  // it is.** Measured at `c945332`: **472 distinct ids named in comments, and 36 of them carried by no trait
+  // at all** — thirty-six criteria that were read, considered, and left untagged.
+  //
+  // ⚠ IT IS EVIDENCE OF ATTENTION AND NOT OF COVERAGE, AND THE DIFFERENCE IS THE WHOLE POINT. A discussed
+  // criterion may be discussed in order to REFUSE it. **Nothing here should ever be added to a cited count.**
+  //
+  // ---- ⚠⚠⚠ THIS POPULATION IS SELF-AFFECTING, AND THAT IS CORRECT RATHER THAN BROKEN. DO NOT "FIX" IT.
+  //
+  // ***WRITING ABOUT A CRITERION MAKES IT DISCUSSED. AN AUDITOR WHO TAKES NOTES MOVES THE POPULATION.***
+  // Measured: **36 at `c945332`, 38 at `f99a28c`** — and the two new members are the two ids the commit in
+  // between spelled out in its own prose. *The alternative, excluding the auditor's own writing, would make
+  // the measure depend on who counts as an auditor, which is worse than the property it removes.*
+  //
+  // ***SO THE CAVEAT IS PERMANENT AND BELONGS HERE RATHER THAN IN WHOEVER'S REPORT: THIS COUNT CANNOT BE A
+  // TREND LINE WITHOUT NAMING WHO WAS WRITING DURING THE INTERVAL.*** **A delta on it is a fact about
+  // somebody's attention, not about the tree — and the first person to diff two runs will read their own
+  // notes as the subject improving.**
+  //
+  // ---- ⚠⚠⚠ TWO BLINDNESSES, FOUND BY WORKING THE RESIDUE RATHER THAN BY READING THIS METHOD.
+  //
+  // ***BOTH MAKE THE COMPLEMENT — "declared, uncited, and in no comment" — OVERSTATE ITS SUBJECT. A BUCKET
+  // NAMED FOR WHAT THE MATCHER MISSED IS A LABEL ABOUT THE MATCHER, NOT ABOUT THE CRITERION.***
+  //
+  // **1. A DISPOSITION IN `docs/` IS INVISIBLE.** This scans `src/` and `tests/`. `AC-POS-0054` carries
+  // *"WITHDRAWN 2026-09-02"* and `AC-DEP-0016` carries *"SUPERSEDED, NOT MET (annotated 2026-08-22)"* — both
+  // fully reasoned, **in their own declarations**. ⚠ *Widening the scan to `docs/` would not fix this and
+  // would break the method: a criteria file names every criterion it declares, so every id would become
+  // "discussed" and this population would collapse into the declared set.* **The signal would have to be an
+  // ANNOTATION, which has no reliable form. Stated as a bound rather than chased.**
+  //
+  // **2. ⚠⚠ A HUMAN ABBREVIATION OF A LIST OF IDS MATCHES ONLY ITS FIRST MEMBER. TWO FORMS, BOTH PRESENT.**
+  //
+  //   ***THE RANGE***    `TenantLifecycleApplicationTests`: *"the `AC-TEN-0021..0030` block, deferred with
+  //                the endpoints"* — ten criteria considered, one id matched.
+  //   ***THE ELIDED PREFIX***  `PlatformSupportAuthenticationSurfaceArchitectureTests:163`:
+  //                ``  `AC-TEN-0012`, `0021`, `0022`, `0023`, `0026`, `0027` and `0028` all describe  ``
+  //                ``  AUTHORIZATION on `/api/platform/tenants` routes  `` — **seven considered, ONE matched.**
+  //
+  // ⚠⚠⚠ **CORRECTED 2026-09-05: THE RANGE WAS PUBLISHED AS THE CAUSE AND THE ELIDED PREFIX IS THE ONE THAT
+  // ACTUALLY HID THEM.** *`AC-TEN-0022`, `0023`, `0026`, `0027` and `0028` sat in the "nobody has ever written
+  // about this" bucket while the site above disposed of all seven over a CLOSED POPULATION — every
+  // `"/api/platform/…"` literal in `src/` resolving to something other than `tenants`.* **That is a stronger
+  // disposition than the range one, and it was invisible for a shallower reason: the author wrote the prefix
+  // once, the way anyone would.**
+  //
+  // ***THIS IS THE FIFTH MATCHER FAILURE MODE THIS PROJECT HAS LOGGED — after CASE, WORD-BOUNDARY, WINDOW and
+  // READING DIRECTION — AND IT IS NOTATION.*** **A range is not an enumeration; a list with the prefix written
+  // once is not an enumeration either.** *The remedy is the same writing convention for both and it cannot be
+  // a regex: a disposition covering several criteria must spell every id in full, because these are the forms
+  // no reader's grep and no instrument can expand.*
+  public static IReadOnlyCollection<string> DiscussedInComments() =>
+    [.. AllSources()
+      .SelectMany(file => AnyId.Matches(CommentsOnly(File.ReadAllText(file))))
+      .Select(match => match.Value)
+      .Distinct(StringComparer.Ordinal)
+      .OrderBy(id => id, StringComparer.Ordinal)];
+
+  // ---- ⚠⚠⚠ ONE STRUCTURAL BIT PER CITATION: IS THERE RECORDED REASONING BESIDE IT?
+  //
+  // `Cited()` answers *how many criteria are claimed*. It cannot answer *how many of those claims anybody
+  // examined*, and until this existed the census had **no anti-vacuity control of its own**: a trait typed
+  // in thirty seconds and a trait with four paragraphs of clause-by-clause analysis beside it were one
+  // number. ***A citation with nothing written beside it is one nobody has audited, and that is where a
+  // reader should go first.***
+  //
+  // Extracting the *content* of that reasoning is an NLP task over free prose and has no mechanical operand.
+  // **Asking whether any exists is one bit, and this counts it.**
+  //
+  // ---- ⚠⚠⚠ IT SCANS BOTH DIRECTIONS, AND THAT IS NOT THOROUGHNESS BUT A REPAIR.
+  //
+  // This tree puts the reasoning **above the attribute block** (`AC-ATT-0015`: thirty-nine comment lines,
+  // then `[Fact]`, then the trait) *and* **between the trait and the method signature** (`AC-TEN-0079`:
+  // the trait, then twenty-five lines, then the signature). **A one-directional scan reports whichever
+  // convention it does not face as BARE.**
+  //
+  // ***THAT IS NOT A HYPOTHETICAL. A `grep -A3` on the trait, run downward, produced four false "this clause
+  // is witnessed by nothing" verdicts in one sitting — every one of them refuted by prose sitting ABOVE the
+  // method, and three of them naming the real witness by path.*** A qualifier above a declaration is
+  // invisible to a forward reader, and this method exists partly to stop that being repeated at scale.
+  //
+  // ---- ⚠⚠ WHAT THE NUMBER IS: **ADJACENCY, NOT PRESENCE.** THE DIFFERENCE IS LOAD-BEARING.
+  //
+  // A file may be thick with reasoning that is nowhere near its citations. `PlatformAuthenticationPersistence
+  // Tests` holds **78 comment lines and scores 0 on all eight of its citations** — its traits sit under a
+  // `[Fact]` beneath a `const` declaration. **That file is not unexamined; its reasoning is simply not where
+  // a reader of the citation would find it**, which is a real and different finding.
+  //
+  // ***SO A ZERO HERE MEANS "NOTHING BESIDE THIS TRAIT", NEVER "NOBODY LOOKED".*** Calling the zero bucket
+  // unaudited is the fallback-branch error — a label describing the matcher rather than the subject — and
+  // the separation costs one whole-file question per member.
+  //
+  // ---- ⚠⚠⚠ POLARITY. THIS METHOD READS COMMENTS; `Cited()` STRIPS THEM. THEY RUN OVER ONE CORPUS UNDER
+  // OPPOSITE RULES, AND EACH IS THE OTHER'S FAILURE MODE.
+  //
+  // Run the census over raw source and it measures this prose-dense tree's DOCUMENTATION — the first version
+  // of that matcher reported criteria as covered on the strength of prose alone. Run this over stripped
+  // source and it returns zero everywhere, which reads exactly like *"nobody explains anything"*.
+  //
+  // **The trait MATCH here therefore uses `StripComments` exactly as `Cited()` does, so a commented-out trait
+  // is not a site — while the COUNTING reads the raw lines.** *Measured: without that, the site scan finds
+  // 518 distinct ids against the census's 517, and the single extra is one `[Trait(...)]` quoted inside a
+  // comment in `SubscriptionInvariantTests`. The two instruments reconcile to the unit, and the whole of the
+  // discrepancy was the polarity trap.*
+  //
+  // ---- ⚠⚠⚠ WHAT THIS BIT WAS BUILT TO DETECT, AND WHAT EIGHT HAND-READS ACTUALLY ESTABLISHED.
+  //
+  // It was built on the reasoning that **a citation with nothing written beside it is one nobody audited**.
+  // Eight of the always-bare ids were then read against the clause standard — *for each clause, name the
+  // fixture that would fail if it were false.* ***ALL EIGHT CITATIONS WERE SOUND.***
+  //
+  // ⚠⚠ **THAT IS NOT A NEGATIVE RESULT AND MUST NOT BE WRITTEN AS ONE. THE ARITHMETIC, SO A LATER READER CAN
+  // CHECK IT RATHER THAN TAKE IT:** the observed base rate of unsound citations in a random sample of twenty
+  // hand-reads was **1 in 20**, so eight reads expect **0.4**, and ***P(zero unsound in eight | THE SELECTION
+  // IS PURE NOISE) = 0.95⁸ ≈ 0.66.*** **Two-thirds of the time this exact result comes out of a random
+  // selection of eight cells: it is the single most likely observation under the null and it separates
+  // nothing, in either direction.**
+  //
+  // *The list was never large enough to expect a hit, and a count that cannot distinguish the hypotheses
+  // decides nothing however honestly it was collected.* **So the claim "this bit does not detect unsound
+  // citations" is unearned — and note its direction: it is the SELF-CRITICAL reading, which is the one
+  // neither author nor reviewer thinks to check.** ***The absence of the thing is not evidence that the
+  // thing is absent, and a sample too small fails exactly as a search window too small does.***
+  //
+  // ***SO THE HONEST STATEMENT IS: AS A DEFECT DETECTOR, UNDEMONSTRATED — NOT DISPROVED.***
+  //
+  // ---- AND AS A FINDING GENERATOR IT PAID, FOR A PURPOSE OTHER THAN THE ONE IT WAS BUILT FOR.
+  //
+  // Four results in eight cells, none of them an unsound citation and none reachable by the trait census:
+  //
+  //   `AC-TEN-0017`  **malformed rather than uncovered** — six of its ten requirements are gated on an
+  //                  operator reconciliation that has not run, so no citation could exist and the bare bit
+  //                  cannot tell *"nobody cited this"* from *"there is nothing to cite"*.
+  //   `AC-AUTH-0032` a tie-break exercised by no fixture: every seeded session has a distinct instant, so a
+  //                  comparer dropping the secondary key stays green.
+  //   `AC-AUTH-0029` *"persists no raw secret"* rests on a parameter type and is asserted nowhere.
+  //   `AC-CMP-0015`  a guard walking a **hand-written array of five event types** where its twin criterion's
+  //                  guard walks the assembly and pins the count — sound today, blind to the sixth event.
+  //
+  // ⚠ **Two false-positive classes are known**: a criterion whose disposition is recorded somewhere this
+  // scan cannot see, and a criterion with **no subject to cite**. *A zero from this bit is a prompt to read,
+  // never a verdict.*
+  //
+  // ---- ⚠⚠⚠ THE RULE THAT WOULD HAVE SAVED THE EIGHT READS, AND IT IS THE STATISTICAL FORM OF ONE WE
+  // ALREADY HOLD.
+  //
+  // *For each clause, name the fixture that would fail if it were false* has a counterpart for samples:
+  // ***COMPUTE WHAT THE NULL PREDICTS BEFORE YOU COLLECT THE SAMPLE.*** **A sample whose expected yield
+  // under the null is below one cannot produce a negative result — and you can know that in advance, for
+  // free, from a base rate you already measured.** *Eight cells at a 5% base rate expect 0.4 hits; the
+  // reads were spent on an experiment that could not have come out any other way.*
+  //
+  // ⚠ **The operand check applied to an experiment rather than to an instrument.** *Asking "what are this
+  // instrument's operands" before naming it is a rule this project learned three times over; asking "what
+  // is this sample's expected yield" before spending it is the same question about a different object.*
+  //
+  // ---- ⚠⚠ AND A SCOPING WARNING FOR ANY FUTURE INSTRUMENT, BECAUSE THIS TREE DEFEATS NAME-BASED SCOPING
+  // ON A SECOND AXIS.
+  //
+  // Feature locality by file name was already known to be unsound here. ***SO IS SECURITY-PLANE LOCALITY:
+  // "PLATFORM" MEANS THE ASSEMBLY IN ONE FILE NAME AND THE SECURITY PLANE IN ANOTHER.*** Measured —
+  // `PlatformAuthenticationPersistenceTests` carries **32 tenant-plane table references and 0 platform-plane**
+  // despite its name, while `PlatformAuthenticationSessionFlowSqlServerTests` carries **45 and 43**, so its
+  // methods cannot be assigned to a plane by file at all. **The tell was a TABLE name, never a file name.**
+  // *A file-level heuristic gets this wrong in the flattering direction, which is the standing direction of
+  // error for every shape-based shortcut in this audit.*
+  //
+  // ⚠ **NO COUNT IS ASSERTED ANYWHERE**, for the reason this file gives at the top: a number pinning a
+  // growing surface reddens on the next ordinary commit. The companion test checks the scan still finds
+  // sites and still distinguishes the two scopes.
+  //
+  // ==================================================================================================
+  // ---- ⚠⚠⚠ EXECUTION STATE, NOT CITATION STATE: THE TEN INTEGRATION BODIES WHOSE CURRENT ASSERTIONS
+  // HAVE NEVER RUN. **THIS BLOCK GOES STALE THE MOMENT INTEGRATION NEXT PASSES — SEE THE CONDITION BELOW.**
+  // ==================================================================================================
+  //
+  // Integration is excluded from the task gate, so its evidence is *green at a date*. Diffing every one of
+  // the **810** `[Fact]`/`[Theory]` bodies against the last green run (`ce9b28f`, 2026-09-01) splits them:
+  //
+  //     ***GREEN AT A DATE  778***    body unchanged since the baseline
+  //     ***NEVER EXECUTED    22***    the method did not exist then
+  //     ***PARTIAL           10***    it existed, and non-comment lines inside it changed
+  //
+  // ***THE TEN, BY PATH AND METHOD*** — for each, the assertions as they stand today have not been run:
+  //
+  //   `EmployeeBoundarySqlServerTests`    `R23_The_composed_model_filters_on_tenant_only`
+  //                                       `I3_Every_bad_row_is_reported_rather_than_the_first`
+  //                                       `H4_The_export_history_reports_the_column_set_and_never_the_scope_snapshot`
+  //                                       `H5_The_run_histories_are_gated_on_the_employee_read_permission`
+  //   `GlPostingChainSqlServerTests`      `Posting_a_persisted_draft_writes_the_journal_and_removes_the_draft_and_its_lines`
+  //   `PayrollChainSqlServerTests`        `The_journal_the_chain_posted_cannot_afterwards_be_modified`
+  //   `PositionSchemaSqlServerTests`      `No_position_table_stores_a_currency`
+  //   `TenantBranchLifecycleSqlServerTests` `An_update_carrying_a_stale_row_version_is_refused`
+  //   `TenantCompanyOrganizationSqlServerTests` `Company_migration_enforces_schema_uniqueness_and_cross_tenant_isolation`
+  //   `TenantCutoverCopySqlServerTests`   `The_template_every_test_restores_from_carries_only_what_the_migrations_wrote`
+  //
+  // ⚠⚠ **AND WHAT THE TWO EXAMINED CHANGES TURNED OUT TO BE IS THE REASON THIS IS WORTH KNOWING RATHER
+  // THAN ALARMING.** *`I3` gained "the fixture no longer contains a row with two errors, so this test can no
+  // longer tell `rejectedCount` counting DISTINCT ROWS from it counting ERRORS"; `No_position_table_stores_a_
+  // currency` gained "the column query found no amount columns on SalaryGrades, so its zeroes below mean
+  // nothing".* ***BOTH ADDITIONS ARE ANTI-VACUITY CONTROLS. THE RISK IS CONCENTRATED IN THE GUARD RATHER
+  // THAN IN THE CLAIM — unverified improvement, not decay.***
+  //
+  // ⚠ **THE CONDITION THAT RETIRES THIS BLOCK: the next green Integration run at or after HEAD.** *After
+  // that these ten are green-at-a-later-date and the list means nothing. **Delete it then rather than
+  // updating it** — a stale execution list is a false comment, and a false comment can be load-bearing.*
+  //
+  // ⚠⚠⚠ **HOW IT WAS DERIVED, BECAUSE THE INSTRUMENT FAILED ITS POSITIVE CONTROL TWICE FIRST.** A first pass
+  // reported **56** partial among the 176 trait-carrying methods where an independent body-hash comparison
+  // reported **2**. *Diagnosed as comment edits; filtering comment-only hunks moved it to **53**.* ***THAT
+  // THREE-OF-FIFTY-FOUR MOVEMENT REFUTED THE DIAGNOSIS AND WAS NOT READ AS REFUTING IT.*** The real cause:
+  // a method's span ran to the NEXT method's signature, so a newly added method's attribute block and prose
+  // landed inside the PRECEDING method's span. ***THE ERROR SCALED WITH NEW-METHOD GROWTH — THE VERY
+  // QUANTITY BEING MEASURED — WHICH IS WHY AN ELEVEN-FOLD OVER-COUNT LOOKED PLAUSIBLE.***
+  //
+  // ***THE RULE, WHICH IS THE HALF WE DID NOT HAVE: THE MAGNITUDE OF A CORRECTION TESTS THE DIAGNOSIS. IF
+  // THE REPAIR BARELY MOVES THE NUMBER, THE CAUSE YOU NAMED WAS NOT THE CAUSE — AND A FIX VALIDATED BY
+  // REASONING RATHER THAN BY RE-RUNNING THE CONTROL IS NOT VALIDATED AT ALL.***
+  public readonly record struct CitationSite(string File, string Id, int AdjacentCommentLines, bool IsTypeScoped);
+
+  public static IReadOnlyList<CitationSite> CitationSites()
+  {
+    var sites = new List<CitationSite>();
+
+    foreach (var file in TestSources())
+    {
+      var lines = System.IO.File.ReadAllText(file).Split('\n').Select(line => line.TrimEnd('\r')).ToArray();
+      var isComment = lines.Select(line => line.TrimStart().StartsWith("//", StringComparison.Ordinal)).ToArray();
+      var isAttribute = lines.Select(line => line.TrimStart().StartsWith('[')).ToArray();
+      var isBlank = lines.Select(string.IsNullOrWhiteSpace).ToArray();
+
+      for (var i = 0; i < lines.Length; i++)
+      {
+        var match = CitedTrait.Match(StripComments(lines[i]));
+        if (!match.Success)
+        {
+          continue;
+        }
+
+        // Upward through the attribute block. A blank line is tolerated only before the first comment is
+        // seen; once the run has started, a blank ends it — otherwise the previous method's trailing prose
+        // would be credited to this citation.
+        var adjacent = 0;
+        for (var j = i - 1; j >= 0; j--)
+        {
+          if (isComment[j]) { adjacent++; continue; }
+          if (isAttribute[j] || (isBlank[j] && adjacent == 0)) { continue; }
+          break;
+        }
+
+        // Downward to whatever is being tagged. The terminating line is the subject: a type-scoped trait
+        // covers every method in the file at once and has no method to attach reasoning to, which is why
+        // the scope is reported rather than inferred from the count.
+        var typeScoped = false;
+        for (var j = i + 1; j < lines.Length; j++)
+        {
+          if (isComment[j]) { adjacent++; continue; }
+          if (isAttribute[j] || isBlank[j]) { continue; }
+          typeScoped = TypeDeclaration.IsMatch(lines[j]);
+          break;
+        }
+
+        sites.Add(new CitationSite(file, match.Groups[1].Value, adjacent, typeScoped));
+      }
+    }
+
+    return sites;
+  }
+
+  private static readonly Regex TypeDeclaration = new(@"\b(class|record|struct|interface)\b");
+
+  private static SortedSet<string> Scan(Regex pattern)
+  {
+    var found = new SortedSet<string>(StringComparer.Ordinal);
+
+    foreach (var file in TestSources())
+    {
+      foreach (Match match in pattern.Matches(StripComments(File.ReadAllText(file))))
+      {
+        found.Add(match.Groups[1].Value);
+      }
+    }
+
+    return found;
+  }
+
+  public static IEnumerable<string> TestSources() => SourcesUnder("tests");
+
+  // ---- ⚠ `src/` AND `tests/`, WHICH IS A WIDER POPULATION THAN CITATION COUNTING USES, DELIBERATELY.
+  //
+  // A trait can only live in `tests/`, so `Cited()` scanning less is right. **A criterion is DISCUSSED
+  // wherever somebody wrote about it**, and production code carries as much of this project's reasoning as
+  // the tests do — `DepartmentManagerCommandHandlers` argues about `BRULE-DEP-0012` in a comment and no test
+  // file mentions it. *Narrowing this to `tests/` would measure where we look, not where the tree knows.*
+  //
+  // ---- ⚠⚠⚠ AND `tools/` IS EXCLUDED. ***THIS BOUNDARY IS ASSERTED HERE AND IS BACKED BY NO DECISION
+  // RECORD WE COULD FIND*** — SAID PLAINLY BECAUSE THE ALTERNATIVE IS AN UNGROUNDED SCOPE THAT READS AS A
+  // GROUNDED ONE.
+  //
+  // The repository has three `.cs` roots — **`src` 1133 files, `tests` 401, `tools` 9** — and this scans
+  // two. ***MEASURED, NOT REASONED: an id in the criterion shape that exists in no feature — described
+  // rather than quoted, for the reason below — was written into a `tools/` comment and the full gate stayed
+  // GREEN.*** **So a criterion id there is invisible both to
+  // `CriterionCommentGuardTests.Every_criterion_named_in_a_comment_is_one_that_exists` and to
+  // `DiscussedInComments()`.** *The exposure is currently empty — those nine files contain zero criterion
+  // ids — so the gap is real and inert.*
+  //
+  // ⚠⚠ **WIDENING WAS CONSIDERED AND REFUSED, FOR A REASON THAT OUTLIVES THE DECISION: `AllSources()` FEEDS
+  // TWO POPULATIONS THAT SHOULD NOT TRAVEL TOGETHER.** Adding `tools/` would police criterion ids there —
+  // arguably right — *and in the same stroke admit tooling prose into `DiscussedInComments()`, a count that
+  // is already self-affecting and already fragile.* ***THE COST IS CERTAIN AND THE BENEFIT IS HYPOTHETICAL.***
+  //
+  // ***IF SOMEONE LATER WANTS THE GUARD TO REACH `tools/`, THE CHANGE IS NOT TO WIDEN THIS METHOD — IT IS TO
+  // SPLIT THE SOURCE SET SO THE EXISTENCE GUARD AND THE DISCUSSION COUNT STOP SHARING ONE DEFINITION.***
+  // *An exemption must assert its grounds; where there are none, asserting that there are none is the
+  // honest discharge rather than a reason to stay quiet.*
+  //
+  // ⚠ **AND THE PLANTED ID IS DESCRIBED ABOVE RATHER THAN QUOTED, BECAUSE THIS FILE IS INSIDE THE SCANNED
+  // POPULATION.** *Writing it out would put a non-existent criterion id into a `src`-or-`tests` comment and
+  // redden `Every_criterion_named_in_a_comment_is_one_that_exists` — the guard doing exactly its job, on a
+  // paragraph that exists to report a hole in it.* **`CommentsOnly`'s own header records this trap catching
+  // the first draft of that guard; it very nearly caught this one, and the rule holds: *prose explaining the
+  // rule is not exempt from it.***
+  public static IEnumerable<string> AllSources() => SourcesUnder("src").Concat(SourcesUnder("tests"));
+
+  private static IEnumerable<string> SourcesUnder(string area) =>
+    Directory.EnumerateFiles(Path.Combine(RepositoryRoot(), area), "*.cs", SearchOption.AllDirectories)
+      .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+      .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal));
+
+  // Line comments only. A `[Trait(...)]` is written on one line in this tree, so a block-comment stripper
+  // would add failure modes without adding reach.
+  public static string StripComments(string source) =>
+    string.Join(
+      "\n",
+      source.Split('\n').Select(line =>
+      {
+        var comment = line.IndexOf("//", StringComparison.Ordinal);
+        return comment >= 0 ? line[..comment] : line;
+      }));
+
+  // ---- THE EXACT COMPLEMENT OF `StripComments`, AND WRITTEN BESIDE IT FOR THAT REASON.
+  //
+  // ⚠⚠ **THE TWO MUST AGREE ON WHAT A COMMENT IS, OR A LINE COULD BE NEITHER CODE NOR COMMENT AND FALL OUT
+  // OF BOTH POPULATIONS WITHOUT ANY SEAM BREAKING.** *Sharing the `//` rule by writing it twice is how that
+  // happens*, so the rule is written once and both callers take the same answer from it.
+  //
+  // ⚠ AND IT KEEPS THE TEXT AFTER `//`, NOT THE WHOLE LINE: `var x = 1; // AC-LOC-0005 explains this` is a
+  // code line carrying a comment, and the id in it is discussion.
+  //
+  // ---- ⚠⚠⚠ A LINE WITH A QUOTE BEFORE THE `//` IS DISCARDED, AND THE FIRST RUN OF THE GUARD IS WHY.
+  //
+  // **`CriterionInventoryTests.A_commented_trait_is_not_a_citation` builds its fixture as a string literal
+  // that CONTAINS `//` and two deliberately non-existent ids.** *Neither this method nor `StripComments`
+  // understands literals*, so the naive version read that code line as a comment and reported both ids as
+  // "discussed" — attention nobody had paid, to criteria that do not exist.
+  // ***THE GUARD'S FIRST RUN CAUGHT IT, WHICH IS THE ONLY REASON IT IS NOT STILL TRUE.***
+  //
+  // ⚠ **And the ids are described here rather than quoted, because quoting them would put them in a comment
+  // and the guard would catch this paragraph too — as it did, on the first attempt at writing it.** *The
+  // rule the guard enforces is "do not write an id that does not exist into a comment", and prose explaining
+  // the rule is not exempt from it.*
+  //
+  // ⚠⚠ **THE FIX IS DELIBERATELY CONSERVATIVE AND THE DIRECTION OF ITS ERROR IS THE WHOLE JUSTIFICATION.**
+  // Skipping any line whose `//` is preceded by a quote also drops genuine trailing comments on lines that
+  // contain a string — **so this UNDER-COLLECTS and can never INVENT.** *A discussed set missing an entry
+  // understates attention; one containing an entry nobody wrote claims a person looked at a criterion when
+  // nobody did, and that is the reading this population exists to support.* **The floor guard is what keeps
+  // the under-collection honest.**
+  //
+  // ⚠ `StripComments` has the SAME blindness and there the error runs the safe way — it strips a little too
+  // much, so a citation can be missed and never invented. **Left alone on purpose: changing it would move a
+  // published citation count as a side effect of fixing a different method.**
+  public static string CommentsOnly(string source) =>
+    string.Join(
+      "\n",
+      source.Split('\n').Select(line =>
+      {
+        var comment = line.IndexOf("//", StringComparison.Ordinal);
+        return comment >= 0 && !line[..comment].Contains('"') ? line[(comment + 2)..] : string.Empty;
+      }));
+
+  public static string RepositoryRoot()
+  {
+    for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
+    {
+      if (File.Exists(Path.Combine(directory.FullName, "SSAS.ERP.sln")))
+      {
+        return directory.FullName;
+      }
+    }
+
+    throw new DirectoryNotFoundException("Unable to locate the repository root containing SSAS.ERP.sln.");
+  }
+}

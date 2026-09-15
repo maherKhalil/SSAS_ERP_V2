@@ -1,3 +1,4 @@
+using SSAS.BuildingBlocks.SharedKernel;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Domain;
@@ -71,9 +72,32 @@ public sealed class CreateAccountCommandHandler(
     await accounts.AddAsync(account.Value, cancellationToken);
 
     var saved = await unitOfWork.SaveChangesAsync(cancellationToken);
-    return saved.IsFailure
-      ? Result.Failure<Guid>(saved.Error)
-      : Result.Success(account.Value.Id);
+    if (saved.IsFailure)
+    {
+      // ---- THE ACCOUNT-CODE RACE (T-177).
+      //
+      // `IAccountRepository.CodeExistsAsync` is a read, so two callers can pass it with the same value and both reach this
+      // save. **`UX_GlAccounts_Tenant_NormalizedCode` decides it at commit**, and the loser reached `GlApiErrorMapper` with an
+      // unmapped `Persistence.UniqueConstraint` — answered 500 for a plain business conflict, while
+      // `AccountErrors.DuplicateCode` sat mapped to 409 and unreturned on this path.
+      //
+      // ---- ⚠ THE SAME CODE HONESTLY SERVES THE CHECK AND THE RACE.
+      //
+      // **Both produce an identical caller-visible condition** — that code is taken — so one code answers
+      // both without lying about either. **Retrying the identical request fails again**; the caller must
+      // change the code. That is not the leave-entitlement shape, where a retry finds the winner's row
+      // and succeeds, nor the journal reversal, where two conditions collapse and neither can be named.
+      //
+      // ⚠ **REACHES EXACTLY ONE UNIQUE INDEX, WHICH IS WHY IT MAY NAME ONE.** This handler writes an `Account` and nothing else, and `Account` carries exactly one unique index.
+      if (saved.Error.Code == PersistenceErrorCodes.UniqueConstraint)
+      {
+        return Result.Failure<Guid>(AccountErrors.DuplicateCode);
+      }
+
+      return Result.Failure<Guid>(saved.Error);
+    }
+
+    return Result.Success(account.Value.Id);
   }
 }
 

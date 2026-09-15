@@ -20,13 +20,74 @@ public static class GlApiErrorMapper
 {
   public static readonly ApiError NotFound = new(404, "gl.not_found");
   public static readonly ApiError Conflict = new(409, "gl.conflict");
+
+  // ============================================================================================
+  // ⚠ THE UNCLASSIFIED UNIQUE VIOLATION -- `DEC-DEP-0027` AS AMENDED (T-245).
+  // ============================================================================================
+  //
+  // T-165 ruled this code must stay UNMAPPED here, and **most of that ruling stands**. GL has SIX unique
+  // indexes -- account code, fiscal-year code, draft line number, journal number, one-reversal-per-
+  // original, entry line number -- and one arm cannot tell which lost. Its principle is the binding one:
+  // **a handler that cannot tell which index it hit must not name one.**
+  //
+  // ---- WHAT CHANGED, AND IT IS ONE SENTENCE OF THAT DECISION.
+  //
+  // T-165 also said *"the 500 default is not the bug here; it is the house rule working"*. **That is
+  // overturned.** A 500 is not silence, it is a WRONG ASSERTION: it tells a caller the server broke when
+  // nothing broke, sends them to file a bug instead of examining their input, and inflates the one metric
+  // an operator pages on.
+  //
+  // **The forcing-function reading is refuted by this repository's own history.** T-171, T-173 and T-176
+  // each rediscovered this class and repaired a single path. A wrong status used as a reminder reminded
+  // nobody; it shipped 500s until someone tripped over it a fourth time.
+  //
+  // ---- WHY THIS ARM DOES NOT CONTRADICT THE PART THAT STANDS.
+  //
+  // **`gl.unique_conflict` names no index**, so it makes exactly the claim the evidence supports: a
+  // uniqueness rule was violated. T-165's objection was to the MESSAGE being false for five of six
+  // indexes -- a duplicate account code told a journal number already exists -- and it never considered a
+  // deliberately unnamed code, because the option before it was reusing a specific one.
+  //
+  // Context is still resolved **by the caller who knows the operation**: `PostJournalDraftCommandHandler`
+  // translates to `JournalErrors.NumberConflict` because it can reach exactly one index, and
+  // `ReverseJournalCommandHandler` still translates nothing because it can reach two. **This arm fires
+  // only where no handler resolved it** -- a floor under the unclassified, not a switch pretending to know.
+  public static readonly ApiError UniqueConflict = new(409, "gl.unique_conflict");
   public static readonly ApiError Unbalanced = new(422, "gl.journal_unbalanced");
   public static readonly ApiError PeriodClosed = new(409, "gl.period_closed");
   public static readonly ApiError AccountInactive = new(409, "gl.account_inactive");
   public static readonly ApiError Immutable = new(409, "gl.journal_immutable");
   public static readonly ApiError CompanyScopeDenied = new(403, "company.scope_denied");
 
-  public static ApiError Map(Error error)
+  // ⚠ A PRECONDITION, NOT A CORRECTION (T-268).
+  //
+  // 129 domain codes collapse into `request.invalid` and 128 of them say **fix your input**. This one
+  // says *an active company must be selected before company-scoped operations* -- **you are not in a
+  // state where this input means anything.** The remedy is a different call followed by the same request
+  // unchanged, and a client that cannot tell it from a bad field name cannot offer the company picker.
+  //
+  // The status stays 400: it IS a client error. **The status is the category; the code is the
+  // instruction**, and only the instruction differs.
+  //
+  // Declared here rather than in the shared `ApiErrors`, for the same reason `CompanyScopeDenied` above
+  // is: `The_shared_api_project_names_no_business_concept` refuses a business noun in BuildingBlocks.
+  // **The repetition across mappers is that rule being obeyed, not duplication** -- the gate refused the
+  // shared version of this very constant.
+  public static readonly ApiError CompanySelectionRequired = new(400, "company.selection_required");
+
+  // ⚠ THE DOMAIN MESSAGE IS ATTACHED HERE BECAUSE THIS IS THE LAST PLACE IT EXISTS (T-261).
+  //
+  // Ninety-six call sites hand an already-mapped `ApiError` straight to `ApiProblems.Problem` and never
+  // see the original `Error`. Attaching the message to the result is one edit per mapper; passing it
+  // alongside would have been ninety-six.
+  //
+  // `ApiError.ShowsDetail` decides whether it reaches the caller: an authorization refusal (401/403)
+  // drops it unless that code opted in, because `branch.scope_denied` has nine different messages behind
+  // it and showing them would separate a branch that does not exist from one that is forbidden.
+  public static ApiError Map(Error error) =>
+    MapCore(error).Explaining(error.Message, error.Field);
+
+  private static ApiError MapCore(Error error)
   {
     ArgumentNullException.ThrowIfNull(error);
 
@@ -64,6 +125,13 @@ public static class GlApiErrorMapper
       // ---- STATE CONFLICTS. The request was valid; the world was not in the required state.
       "Gl.AccountCodeConflict" => Conflict,
       "Gl.FiscalYearCodeConflict" => Conflict,
+      "Gl.FiscalCalendarBusy" => Conflict,
+      // 249. THE POSTING FENCE'S TWO SIDES. Both are RETRYABLE and both are 409 for the same reason
+      // `FiscalCalendarBusy` is: the request was well-formed and lost a race, so the caller repeats it.
+      // ⚠ Without these arms they answered 500 `request.failed`, which tells a caller to stop.
+      "Gl.FiscalPeriodStateChangeInProgress" => Conflict,
+      "Gl.FiscalPeriodPostingInProgress" => Conflict,
+      "Gl.FiscalCalendarAmbiguous" => Conflict,
       "Gl.FiscalYearOverlaps" => Conflict,
       "Gl.JournalNumberConflict" => Conflict,
       "Gl.JournalAlreadyReversed" => Conflict,
@@ -72,14 +140,13 @@ public static class GlApiErrorMapper
       "Gl.FiscalPeriodClosed" => PeriodClosed,
       "Gl.AccountInactive" => AccountInactive,
       "Gl.AccountCodeImmutable" => Immutable,
-      "Gl.JournalImmutable" => Immutable,
 
       // ---- AUTHORIZATION. Permission and scope are separate axes and answer separately.
       "Gl.ReadPermissionDenied" => ApiErrors.Forbidden,
       "Gl.WritePermissionDenied" => ApiErrors.Forbidden,
       "Gl.CompanyScopeDenied" => CompanyScopeDenied,
       "Company.InvalidSelection" => CompanyScopeDenied,
-      "Company.SelectionRequired" => ApiErrors.RequestInvalid,
+      "Company.SelectionRequired" => CompanySelectionRequired,
       "Company.InvalidSelectionFormat" => ApiErrors.RequestInvalid,
       "Company.ContextRequired" => ApiErrors.Forbidden,
 
@@ -92,6 +159,9 @@ public static class GlApiErrorMapper
       // wire. Surfacing it as a 500 makes that visible in a test run; defaulting to 400 would ship a
       // confident, wrong answer and nobody would look. `WriteFailure` is the house default for this arm --
       // `DepartmentApiErrorMapper` uses the same one.
+      // `DEC-DEP-0027` as amended -- see `UniqueConflict`. Fires only where no handler resolved the
+      // context; names no index, because this switch cannot know which one lost.
+      "Persistence.UniqueConstraint" => UniqueConflict,
       _ => ApiErrors.WriteFailure
     };
   }

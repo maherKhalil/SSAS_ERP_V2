@@ -1,6 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <ProjectReference Include="..\SSAS.HR.Contracts\SSAS.HR.Contracts.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\SSAS.BuildingBlocks.Domain\SSAS.BuildingBlocks.Domain.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\SSAS.BuildingBlocks.SharedKernel\SSAS.BuildingBlocks.SharedKernel.csproj" />
   </ItemGroup>

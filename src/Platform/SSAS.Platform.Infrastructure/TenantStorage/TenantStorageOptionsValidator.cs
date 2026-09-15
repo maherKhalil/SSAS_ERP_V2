@@ -54,6 +54,10 @@ public sealed class TenantStorageOptionsValidator : IValidateOptions<TenantStora
       {
         _ = new SqlConnectionStringBuilder(server.ConnectionString);
       }
+      // The exception text is dropped because the message built below is BETTER: it names the exact
+      // configuration path (`section:BackupServers:key:ConnectionString`) that has to be edited, which the
+      // parser's own message does not. Keeping both would put the raw connection string into a startup
+      // failure that gets pasted into tickets.
       catch (ArgumentException)
       {
         failures.Add($"{section}:{nameof(TenantStorageOptions.Servers)}:{serverKey}:{nameof(TenantStorageServerOptions.ConnectionString)} is not a valid SQL Server connection string.");
@@ -96,6 +100,8 @@ public sealed class TenantStorageOptionsValidator : IValidateOptions<TenantStora
       {
         _ = new SqlConnectionStringBuilder(server.ConnectionString);
       }
+      // Same trade as the connection-string check above: the built message names the configuration
+      // path to edit, and the parser's own message would carry the connection string into a log.
       catch (ArgumentException)
       {
         failures.Add($"{section}:{nameof(TenantStorageOptions.BackupServers)}:{serverKey}:{nameof(TenantStorageServerOptions.ConnectionString)} is not a valid SQL Server connection string.");

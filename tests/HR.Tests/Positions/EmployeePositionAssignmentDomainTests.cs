@@ -22,7 +22,12 @@ public sealed class EmployeePositionAssignmentDomainTests
   private const string Actor = "tester";
 
   // ---- THE INITIAL RECORD IS THE ONE WITH NO SOURCE, AND NOTHING ELSE IDENTIFIES IT.
+  // ⚠ CITED BY 269: `AC-POS-0033` — *the initial assignment record has a null `SourcePositionId`, AND NO
+  // OTHER RECORD DOES.* This is the first clause. The second is carried by `A_change_record_carries_both_
+  // ends` below, which asserts a CHANGE record always has one — the two together are the criterion, and
+  // this one alone would be satisfied by a model where every record had a null source.
   [Fact]
+  [Trait("Criterion", "AC-POS-0033")]
   public void The_initial_record_has_a_null_source()
   {
     var destination = Guid.NewGuid();
@@ -38,7 +43,11 @@ public sealed class EmployeePositionAssignmentDomainTests
     Assert.Null(record.Value.ReasonText);
   }
 
+  // ⚠ CITED BY 269: `AC-POS-0033`'s *AND NO OTHER RECORD DOES* clause. A change record always carries a
+  // source, so the null one identifies the initial record uniquely — which is the property the criterion
+  // states and the reason nothing else needs a marker column.
   [Fact]
+  [Trait("Criterion", "AC-POS-0033")]
   public void A_change_record_carries_both_ends()
   {
     var source = Guid.NewGuid();
@@ -166,14 +175,32 @@ public sealed class EmployeePositionAssignmentDomainTests
   [Fact]
   public void The_record_carries_no_row_version()
   {
-    Assert.Null(typeof(EmployeePositionAssignment).GetProperty("RowVersion"));
+    Assert.Null(typeof(EmployeePositionAssignment).GetProperty(nameof(SSAS.HR.Domain.Employees.Employee.RowVersion)));
   }
 
   // NO EffectiveToUtc. Closing an interval would mean UPDATING the previous row, which is precisely the
   // history mutation this model exists to prevent. The interval is derived by ordering.
+  //
+  // ⚠ THE LITERAL STAYS A BARE STRING, AND THE RESIDUAL IS NAMED HERE RATHER THAN LEFT IMPLICIT (273).
+  // `nameof` cannot be used because `EffectiveToUtc` EXISTS NOWHERE IN `src/`: a value search returns twelve
+  // occurrences and every one is a COMMENT recording its absence, across seven types in three modules.
+  // **There is no symbol to bind to, so a misspelling here would pass and nothing can prevent that.** Item
+  // `258` reached the identical conclusion for `UpdateName` — *"a value search finds it nowhere in src/, so
+  // no witness can exist and the residual is named at the site"* — and left it a string for this reason.
+  //
+  // ⚠⚠ SO THE CONTROL CLOSES THE OTHER FAILURE, WHICH IS THE ONE THAT IS CLOSEABLE. `Assert.Null` over a
+  // lookup passes when the property is ABSENT and equally when the lookup CANNOT SEE THIS TYPE'S PROPERTIES
+  // AT ALL — a changed binding flag, a renamed type, reflection returning an empty set. Proving the SAME
+  // call finds `EffectiveFromUtc` makes the null below mean *absent* rather than *blind*.
+  //
+  // Two failure modes, one instrument: the misspelling is unguardable and stated; the blind lookup is
+  // guarded and no longer possible.
   [Fact]
   public void The_record_carries_no_end_date()
   {
+    Assert.NotNull(typeof(EmployeePositionAssignment)
+      .GetProperty(nameof(EmployeePositionAssignment.EffectiveFromUtc)));
+
     Assert.Null(typeof(EmployeePositionAssignment).GetProperty("EffectiveToUtc"));
   }
 
@@ -187,8 +214,8 @@ public sealed class EmployeePositionAssignmentDomainTests
     Assert.Contains("ITenantOwnedEntity", interfaces);
     Assert.Contains("ICompanyOwnedEntity", interfaces);
     Assert.Contains("IAppendOnlyEntity", interfaces);
-    Assert.DoesNotContain("IBranchOwnedEntity", interfaces);
-    Assert.Null(typeof(EmployeePositionAssignment).GetProperty("BranchId"));
+    Assert.DoesNotContain(nameof(SSAS.BuildingBlocks.Domain.IBranchOwnedEntity), interfaces);
+    Assert.Null(typeof(EmployeePositionAssignment).GetProperty(nameof(SSAS.BuildingBlocks.Domain.IBranchOwnedEntity.BranchId)));
   }
 
   // ---- THE FACTORY PROTECTION ITSELF (DEC-POS-0008).

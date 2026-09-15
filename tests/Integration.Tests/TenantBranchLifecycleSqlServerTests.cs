@@ -128,6 +128,105 @@ public sealed class TenantBranchLifecycleSqlServerTests
     Assert.Equal("Riyadh One", (await service.GetAsync(branch.BranchId)).Value.BranchName);
   }
 
+  // ================================================================================================
+  // ⚠⚠⚠ A DEACTIVATED BRANCH CANNOT BE RENAMED — A LIVE METHOD WHOSE REFUSAL ARM HAD NEVER FIRED.
+  // ================================================================================================
+  //
+  // `Branch.Rename` refuses when `!IsActive` (`Branch.cs:97-100`). **Every one of the seven
+  // `UpdateBranchRequest` call sites in this repository targets an ACTIVE branch**, and the deactivated
+  // branches this suite creates are used only by session and scope tests, which never rename them.
+  //
+  // ⚠⚠ SO THE METHOD WAS EXERCISED AND THE GUARD WAS NOT. **Line coverage reports `Rename` as covered** —
+  // which is why coverage is not the instrument for this class of gap. An untested method is easy to find;
+  // a tested method with an untested refusal arm is not.
+  //
+  // ---- ⚠ THE ROWVERSION MUST BE RE-READ, AND GETTING THAT WRONG WOULD GREEN THIS TEST FOR THE WRONG GUARD.
+  //
+  // `UpdateAsync` checks the concurrency token at `:204`, BEFORE `Rename` at `:209`. Deactivation advances
+  // the token, so passing the pre-deactivation `RowVersion` would answer `ConcurrencyConflict` and never
+  // reach the guard under test. A test asserting only `IsFailure` would pass, having proved nothing.
+  // **Asserting the CODE is what distinguishes the two, and re-reading the token is what makes the
+  // assertion reachable at all.**
+  //
+  // ---- ⚠⚠ AND THE SIBLING GUARD IS UNREACHABLE, WHICH IS WHY NO TEST HERE COVERS IT.
+  //
+  // `Branch.MarkAsMainBranch` carries the SAME `!IsActive` refusal (`Branch.cs:113-116`), and **no caller
+  // can reach it with an inactive branch:**
+  //
+  //   `TenantBranchService:229`   `Rename` at `:209` already refused, so control never arrives
+  //   `TenantBranchService:368`   the replacement is loaded `&& candidate.IsActive` at `:338`
+  //
+  // So that arm is defence in depth, unreachable from outside the domain, and a test for it would have to
+  // manufacture a state the product cannot produce. **Recorded rather than covered** — mapped is not
+  // reachable, and writing the test anyway would assert against an invented world.
+  //
+  // ⚠⚠⚠ RELATEDLY, AND WORTH SOMEONE'S ATTENTION: `Branch.Reactivate()` (`Branch.cs:141-145`) IS CALLED BY
+  // NOTHING — not in `src`, not in `tests`, and `TenantBranchService` exposes no reactivation at all. **A
+  // deactivated branch cannot be brought back through any product path.** That is why this file has the
+  // refusal half of the rule and no capability half: the capability is not expressible, rather than
+  // untested. (Note too that `Reactivate` carries no already-active guard while `Deactivate` does — an
+  // asymmetry nothing has ever exercised.)
+  //
+  // ---- ⚠⚠⚠ AND THE CONTEXT THAT CHANGES HOW TO READ ALL OF THE ABOVE, AS AT 2026-09-02.
+  //
+  // **`ITenantBranchService` HAS NO CONSUMER.** Searched with no path filter and no cap, because it is an
+  // absence claim: it occurs in `src` at exactly three sites — the declaration, the implementation, and
+  // `PlatformPersistenceServiceCollectionExtensions.cs:300`, its DI registration. **Nothing injects it, and
+  // `SSAS.Platform.API` maps no branch routes at all.** `Branch.Create` likewise has ONE caller in `src`:
+  // `TenantBranchService:80`, inside that same unreachable service.
+  //
+  // ⚠⚠ **SO THE HONEST STATEMENT IS *NO WIRED CODE PATH CREATES, UPDATES OR DEACTIVATES A BRANCH* — NOT
+  // *branches do not exist*.** A migration, a seed or an operational script could insert rows, and that was
+  // not checked. The distinction is the whole difference between a reachability finding and a guess.
+  //
+  // **This test is still worth its weight: the guard is real, it is on a live method, and pinning it costs
+  // nothing whether or not the surface above it is wired today.** But a reader should not conclude from a
+  // green here that a user can reach any of it.
+  //
+  // ⚠ THE PRECEDENT, BECAUSE IT MAKES THIS A KNOWN CLASS RATHER THAN AN OVERSIGHT:
+  // `TenantUserEndpointRouteBuilderExtensions:37-52` records T-091 repairing exactly this shape — handlers
+  // that existed and were DI-registered while *neither was reachable from anything*, and permissions
+  // *catalog-defined, grantable, and required by no endpoint*. It names the general case and says the sweep
+  // was deliberately not widened. **Branch is the un-swept instance.**
+  [Fact]
+  public async Task A_deactivated_branch_cannot_be_renamed()
+  {
+    await using var fixture = await BranchFixture.CreateAsync();
+    var service = fixture.Service();
+    var riyadh = (await service.CreateAsync(new CreateBranchRequest("RUH", "Riyadh", true))).Value;
+    var jeddah = (await service.CreateAsync(new CreateBranchRequest("JED", "Jeddah", false))).Value;
+
+    Assert.True((await service.DeactivateAsync(
+      new DeactivateBranchRequest(jeddah.BranchId, null, jeddah.RowVersion))).IsSuccess);
+
+    // The CURRENT token, not the one held before the deactivation — see above.
+    var retired = (await service.GetAsync(jeddah.BranchId)).Value;
+    Assert.False(retired.IsActive, "the branch is still active, so the refusal below would prove nothing");
+
+    var refused = await service.UpdateAsync(
+      new UpdateBranchRequest(jeddah.BranchId, "JED", "Jeddah Renamed", false, retired.RowVersion));
+
+    // ⚠ THE MESSAGE IS NOT DECORATION. Planting this guard away made the rename SUCCEED, so THIS is the
+    // assertion that fires — and a bare `Assert.True` reds with `Expected: True / Actual: False`, which
+    // tells the next reader nothing about what broke. Measured: the bare form was written first and its
+    // output was exactly that useless.
+    Assert.True(refused.IsFailure, "a deactivated branch was renamed — Branch.Rename's activity guard is gone");
+    Assert.Equal(BranchErrors.Inactive.Code, refused.Error.Code);
+
+    // ---- ⚠⚠ ASSERTED THROUGH THE READ, NOT THE ROW. *Refused* means the caller cannot observe the change,
+    // so the check belongs where a caller looks. A rename that was refused but somehow persisted would
+    // satisfy the error assertion above and still be wrong — and the failure would be visible only here.
+    Assert.Equal("Jeddah", (await service.GetAsync(jeddah.BranchId)).Value.BranchName);
+
+    // ANTI-VACUITY: the active branch is still renameable, so this is a rule about INACTIVITY and not a
+    // service that had stopped renaming anything.
+    var allowed = await service.UpdateAsync(
+      new UpdateBranchRequest(riyadh.BranchId, "RUH", "Riyadh Renamed", true, riyadh.RowVersion));
+
+    Assert.True(allowed.IsSuccess, allowed.IsFailure ? allowed.Error.Code : null);
+    Assert.Equal("Riyadh Renamed", (await service.GetAsync(riyadh.BranchId)).Value.BranchName);
+  }
+
   // ---- H + N + O. DEACTIVATION RETIRES WITHOUT DELETING.
   [Fact]
   public async Task Deactivating_a_non_main_branch_retains_it_as_history()
@@ -796,6 +895,20 @@ public sealed class TenantBranchLifecycleSqlServerTests
       Task.Run(() => fixture.BranchSessions().SelectActiveBranchAsync(sessionId, jeddah.BranchId)));
 
     var stored = await fixture.StoredBranchAsync(sessionId);
+
+    // ⚠⚠⚠ THIS DISJUNCTION IS THE SOLE ASSERTION IN THE TEST, AND IT RULES OUT ALMOST NOTHING (2026-09-06).
+    //
+    // "Either branch may win" is honest — the race has no preferred outcome. But with no companion clause
+    // this passes for null-free garbage: it excludes an unset row and a third branch, and is silent on
+    // whether ONE selection won, whether both wrote, and whether anything serialized.
+    //
+    // The same shape done properly is `EmployeeBoundarySqlServerTests` ~2024: an identical
+    // `final == A || final == B` sitting under `Equal(1, successes)`, `Equal(1, failures)`,
+    // `Equal(2, history.Count)` and ***`Equal(finalDepartment, history[1].Destination)`*** — the last of
+    // which ties the log to whichever side actually won. **The disjunction is fine; it needs neighbours.**
+    //
+    // Not strengthened here: adding a cardinality assertion is a change to what this test claims, and this
+    // file is Integration-only, so a new clause lands green-at-a-date at best. Recorded for whoever revisits.
     Assert.True(stored == riyadh.BranchId || stored == jeddah.BranchId);
   }
 
@@ -853,6 +966,101 @@ public sealed class TenantBranchLifecycleSqlServerTests
     Assert.DoesNotContain("Table Scan", authorization.Operations, StringComparison.Ordinal);
   }
 
+  // ================================================================================================
+  // §8. THE BRANCH TOPOLOGY LOCK, ACTUALLY CONTENDED (T-195).
+  // ================================================================================================
+  //
+  // ---- ⚠ THIS LOCK WAS IN PRODUCTION WITH NO BEHAVIOURAL EVIDENCE, AND ITS REFUSAL HAD NEVER BEEN SEEN.
+  //
+  // `BranchTopologyLock` had one mention in a test tree: an architecture test naming the type. Worse than
+  // the two locks T-190 and T-193 covered, and worse in a specific way — **`BranchErrors.TopologyBusy` is
+  // produced at four sites in `src/` and was asserted NOWHERE**, so nothing had ever observed what a caller
+  // who loses this race is told.
+  //
+  // Found by enumerating every `sp_getapplock` site rather than trusting anyone's count of them. There are
+  // nine; four were already contended, including Attendance's leave-submission lock, which had the full
+  // shape before any of this. **The practice was inconsistently applied, not missing** — and nothing could
+  // see which sites had it.
+  //
+  // ---- THIS ONE IS SESSION-OWNED, SO "RELEASE" MEANS DROPPING THE CONNECTION.
+  //
+  // The other two are `@LockOwner = 'Transaction'`. This is `'Session'` on a dedicated connection, and the
+  // type says why: *"a dead process drops its connection and the lock with it, so there is no lease to
+  // expire and no stale owner to clean up."* **That sentence is a behavioural claim and the second test is
+  // the first thing to check it.**
+  [Fact]
+  public async Task A_second_session_cannot_take_the_branch_topology_lock()
+  {
+    await using var fixture = await BranchFixture.CreateAsync();
+    await using var holder = await fixture.OpenPlatformConnectionAsync();
+    await using var rival = await fixture.OpenPlatformConnectionAsync();
+
+    Assert.True(await BranchTopologyLock.TryAcquireForSessionAsync(
+      holder, fixture.TenantA, TimeSpan.FromSeconds(2)));
+
+    Assert.False(await BranchTopologyLock.TryAcquireForSessionAsync(
+      rival, fixture.TenantA, TimeSpan.FromSeconds(2)));
+  }
+
+  // ⚠ THE CONTROL. A lock that had failed SHUT refuses the rival above perfectly and would pass. Only
+  // showing the same acquisition SUCCEED once the holder is gone separates a working lock from a
+  // permanently closed door — and a closed door here means no branch can be renamed or retired, ever.
+  [Fact]
+  public async Task Closing_the_holding_connection_releases_the_branch_topology_lock()
+  {
+    await using var fixture = await BranchFixture.CreateAsync();
+    var holder = await fixture.OpenPlatformConnectionAsync();
+    Assert.True(await BranchTopologyLock.TryAcquireForSessionAsync(
+      holder, fixture.TenantA, TimeSpan.FromSeconds(2)));
+
+    // No release call anywhere: the connection simply goes away, as a killed process's would.
+    await holder.DisposeAsync();
+
+    await using var successor = await fixture.OpenPlatformConnectionAsync();
+    Assert.True(await BranchTopologyLock.TryAcquireForSessionAsync(
+      successor, fixture.TenantA, TimeSpan.FromSeconds(2)));
+  }
+
+  // The resource name is per TENANT, which the type states and nothing checked. Administering one tenant's
+  // branches must not stall another's.
+  [Fact]
+  public async Task Two_tenants_do_not_contend_for_branch_topology()
+  {
+    await using var fixture = await BranchFixture.CreateAsync();
+    await using var first = await fixture.OpenPlatformConnectionAsync();
+    await using var second = await fixture.OpenPlatformConnectionAsync();
+
+    Assert.True(await BranchTopologyLock.TryAcquireForSessionAsync(
+      first, fixture.TenantA, TimeSpan.FromSeconds(2)));
+    Assert.True(await BranchTopologyLock.TryAcquireForSessionAsync(
+      second, fixture.TenantB, TimeSpan.FromSeconds(2)));
+  }
+
+  // ---- ⚠ AND THE REFUSAL A CALLER ACTUALLY RECEIVES, OBSERVED FOR THE FIRST TIME.
+  //
+  // The three above prove the primitive. This proves the PATH: `TenantBranchService.UpdateAsync` takes the
+  // topology lease and answers `BranchErrors.TopologyBusy` when it cannot get it. That error is produced at
+  // four sites and, until this test, was asserted at none — a reachable code nobody had ever watched
+  // arrive, which is the mirror of the unreachable codes this loop keeps finding.
+  [Fact]
+  public async Task Branch_administration_answers_TopologyBusy_while_the_lock_is_held()
+  {
+    await using var fixture = await BranchFixture.CreateAsync();
+    var riyadh = (await fixture.Service().CreateAsync(
+      new CreateBranchRequest("RUH", "Riyadh", true))).Value;
+
+    // A competing administrator, mid-operation, holding the tenant's topology on its own session.
+    await using var competitor = await fixture.OpenPlatformConnectionAsync();
+    Assert.True(await BranchTopologyLock.TryAcquireForSessionAsync(
+      competitor, fixture.TenantA, TimeSpan.FromSeconds(2)));
+
+    var renamed = await fixture.Service().UpdateAsync(new UpdateBranchRequest(
+      riyadh.BranchId, "RUH", "Riyadh Central", true, riyadh.RowVersion));
+
+    Assert.True(renamed.IsFailure);
+    Assert.Equal(BranchErrors.TopologyBusy, renamed.Error);
+  }
+
   private sealed class BranchFixture : IAsyncDisposable
   {
     private const string ServerKey = "PrimarySqlServer";
@@ -875,6 +1083,17 @@ public sealed class TenantBranchLifecycleSqlServerTests
     public long AdministratorUserId { get; private set; }
 
     public long AdministratorUserIdB { get; private set; }
+
+    // Opens a DEDICATED platform connection. The topology lock is SESSION-owned, so each connection is an
+    // independent holder and closing one releases what it held — which is the property §8 exercises and the
+    // reason the type carries no lease and no cleanup.
+    public async Task<SqlConnection> OpenPlatformConnectionAsync()
+    {
+      var connection = new SqlConnection(ConnectionFor(platformCatalog));
+      await connection.OpenAsync();
+      return connection;
+    }
+
 
     public static async Task<BranchFixture> CreateAsync()
     {
@@ -1021,7 +1240,7 @@ public sealed class TenantBranchLifecycleSqlServerTests
         new TenantAdministratorAuthority(platform),
         new TenantBranchValidator(TenantContextFactory(TenantA)),
         new BranchTopologyGuard(platform),
-        new PlatformUnitOfWork(platform, new NoOpDomainEventDispatcher()),
+        TestUnitOfWork.Platform(platform, new NoOpDomainEventDispatcher()),
         new TestTenant(TenantA), new TestUser(), new TestClock());
     }
 
@@ -1034,7 +1253,7 @@ public sealed class TenantBranchLifecycleSqlServerTests
         new TenantAdministratorAuthority(platform),
         new TenantBranchValidator(TenantContextFactory(TenantA)),
         new BranchTopologyGuard(platform),
-        new PlatformUnitOfWork(platform, new NoOpDomainEventDispatcher()),
+        TestUnitOfWork.Platform(platform, new NoOpDomainEventDispatcher()),
         new TestTenant(TenantA), new TestUser());
     }
 
@@ -1392,7 +1611,6 @@ public sealed class TenantBranchLifecycleSqlServerTests
 
       public string? Email => null;
 
-      public Guid? CompanyId => null;
 
       public string? SessionId => null;
 

@@ -134,6 +134,10 @@ public sealed class EmployeeApiTestHost : IAsyncLifetime
 
   public StubUnitOfWork UnitOfWork { get; } = new();
 
+  // T-091's door out of HR, stubbed like the others. The real one writes the Platform database, which this
+  // host does not stand up.
+  public StubTenantUserDeactivator TenantUsers { get; } = new();
+
   public HttpClient Client => client ?? throw new InvalidOperationException("The test host has not started.");
 
   // ---- THE ROUTES THIS HOST ACTUALLY MAPPED.
@@ -216,6 +220,7 @@ public sealed class EmployeeApiTestHost : IAsyncLifetime
     builder.Services.AddScoped<IEmployeeScopeResolver, EmployeeScopeResolver>();
     builder.Services.AddScoped<CreateEmployeeCommandHandler>();
     builder.Services.AddScoped<UpdateEmployeeProfileCommandHandler>();
+    builder.Services.AddSingleton<SSAS.BuildingBlocks.Tenancy.ITenantUserDeactivator>(TenantUsers);
     builder.Services.AddScoped<TerminateEmployeeCommandHandler>();
     builder.Services.AddScoped<TransferEmployeeCommandHandler>();
     // FP-007 Phase 4: the change-department route resolves this per request, so the harness registers it
@@ -287,6 +292,8 @@ public sealed class EmployeeApiTestHost : IAsyncLifetime
     ExportRuns.Reset();
     RunHistory.Reset();
     UnitOfWork.Failure = null;
+    UnitOfWork.ResetTransactions();
+    TenantUsers.Reset();
     UnitOfWork.FailOnce = null;
   }
 

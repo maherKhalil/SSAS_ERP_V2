@@ -1,6 +1,8 @@
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
+using SSAS.GL.Application.Calendar;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Domain;
+using SSAS.BuildingBlocks.SharedKernel;
 using SSAS.BuildingBlocks.Tenancy.Persistence;
 using SSAS.GL.Application.Abstractions;
 using SSAS.GL.Application.Permissions;
@@ -33,7 +35,9 @@ public sealed class PostJournalDraftCommandHandler(
   IAccountRepository accounts,
   IFiscalCalendarRepository calendar,
   IGlScopeResolver scope,
+  IFiscalPeriodPostingLock postingLock,
   ITenantUnitOfWork unitOfWork,
+  ICurrentTenant currentTenant,
   ICurrentUser currentUser)
 {
   public async Task<Result<Guid>> HandleAsync(
@@ -63,8 +67,33 @@ public sealed class PostJournalDraftCommandHandler(
     //
     // `BR-GL-0003` and `BR-GL-0004` are read-then-act: a period read as open, or an account read as active,
     // must still be so when the row is written. Reading outside the transaction and writing inside it would
-    // leave exactly the window those rules exist to close, and `TS-GL-0011` asserts the closed-between case.
+    // leave exactly the window those rules exist to close.
+    //
+    // ⚠⚠ AND THE TRANSACTION ALONE NEVER CLOSED IT. This comment used to end "and `TS-GL-0011` asserts
+    // the closed-between case" -- `TS-GL-0011` HAS NO TEST, and under READ COMMITTED an open
+    // transaction does not hold the period read. THE TRANSACTION GIVES ATOMICITY; THE ISOLATION COMES
+    // FROM THE FENCE BELOW.
     await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
+
+    // ---- THE POSTING FENCE, TAKEN BEFORE THE PERIOD IS READ (249). See `IFiscalPeriodPostingLock`.
+    //
+    // ⚠ A RE-READ INSIDE THIS TRANSACTION WOULD NARROW THIS WINDOW AND NOT CLOSE IT under READ COMMITTED.
+    // THE READ MUST FOLLOW THE LOCK. Measured 2026-09-01: without this fence a second connection closed
+    // the period while this transaction held its read -- it did not block -- and the journal committed
+    // into a period whose status was `Closed`.
+    if (currentTenant.TenantId is not { } tenantId)
+    {
+      return Result.Failure<Guid>(GlScopeErrors.InvalidActor);
+    }
+
+    var fenced = await postingLock.AcquireForPostingAsync(
+      tenantId, draft.CompanyId, cancellationToken);
+
+    if (fenced.IsFailure)
+    {
+      return Result.Failure<Guid>(fenced.Error);
+    }
+
 
     // `BR-GL-0001` and the two-line minimum — the only checks the draft can make alone.
     var postable = draft.EnsurePostable();
@@ -104,6 +133,48 @@ public sealed class PostJournalDraftCommandHandler(
     var saved = await unitOfWork.SaveChangesAsync(cancellationToken);
     if (saved.IsFailure)
     {
+      // ---- THE JOURNAL-NUMBER RACE, NAMED HERE RATHER THAN IN THE MAPPER (T-165).
+      //
+      // `NextJournalNumberAsync` is a read-then-write, and `UX_GlJournalEntries_Tenant_Company_Year_Number`
+      // is what makes the race unwinnable. **Before this, the loser answered 500**: the unit of work
+      // returns the generic `Persistence.UniqueConstraint`, `GlApiErrorMapper` has no arm for it, and the
+      // default is `WriteFailure` — while `JournalErrors.NumberConflict`, mapped to 409, was returned by
+      // nothing.
+      //
+      // ⚠ **TRANSLATED HERE AND NOT IN THE MAPPER, AND THAT IS `DEC-DEP-0027` LITERALLY.** GL has SIX
+      // unique indexes. A module-wide arm would answer *"a journal with this number already exists"* to a
+      // duplicate account code, a duplicate fiscal-year code, and — worst — a double-reversal race, which
+      // owns `JournalErrors.AlreadyReversed`. **A confident wrong answer is what the 500 default exists to
+      // prevent.** Only the caller knows which index it could have hit.
+      //
+      // **This handler can hit exactly one.** `UX_GlJournalLines_Entry_LineNumber` is deterministic from
+      // the draft, and `UX_GlJournalEntries_OneReversalPerOriginal` is FILTERED to
+      // `ReversesJournalEntryId IS NOT NULL`, which a posting never sets.
+      //
+      // ⚠ **THAT FILTER IS LOAD-BEARING FOR THIS TRANSLATION, IN A FILE NOBODY WOULD THINK TO CHECK.**
+      //
+      // `JournalConfigurations.cs` declares `UX_GlJournalEntries_OneReversalPerOriginal` with
+      // `.HasFilter("[ReversesJournalEntryId] IS NOT NULL")`. **Remove that filter and this translation
+      // becomes wrong**: every posting would then contend on the index's NULLs, and the loser would be
+      // told a journal number already exists when the real collision was elsewhere — the exact confident
+      // wrong answer that keeping this out of the mapper avoided.
+      //
+      // **A schema filter and a handler's correctness are coupled here.** Stated because the coupling is
+      // silent, and "tidying" an index filter is a plausible unrelated change.
+      // ⚠ COMPARED ON THE CODE STRING, BECAUSE `ADR-012` FORBIDS THE TYPE.
+      //
+      // `Persistence.UniqueConstraint` is declared as `IdentityAccessErrors.UniqueConstraintViolation` in
+      // `SSAS.Platform.Domain`, which GL may not reference. **The code STRING is the only vocabulary the
+      // two share across that boundary**, and GL is the first module to need it — no other handler in
+      // `src/Modules` compares on a `Persistence.*` code today.
+      //
+      // **A shared constant in BuildingBlocks would be better and is not mine to introduce**: it would be
+      // a new cross-module vocabulary, which is an architecture decision rather than a defect fix.
+      if (saved.Error.Code == PersistenceErrorCodes.UniqueConstraint)
+      {
+        return Result.Failure<Guid>(JournalErrors.NumberConflict);
+      }
+
       return Result.Failure<Guid>(saved.Error);
     }
 
@@ -114,7 +185,19 @@ public sealed class PostJournalDraftCommandHandler(
   private async Task<Result<FiscalPeriod>> ResolvePeriodAsync(
     JournalDraft draft, CancellationToken cancellationToken)
   {
-    var year = await calendar.GetCoveringAsync(draft.CompanyId, draft.EntryDateUtc, cancellationToken);
+    var covering = await calendar.GetCoveringAsync(
+      draft.CompanyId, draft.EntryDateUtc, cancellationToken);
+
+    // ---- AMBIGUITY IS NOT ABSENCE (T-187).
+    //
+    // A failure here means MORE THAN ONE fiscal year covers this date. Answering `PeriodNotFound`
+    // would send an operator to define a calendar when the remedy is to repair one.
+    if (covering.IsFailure)
+    {
+      return Result.Failure<FiscalPeriod>(covering.Error);
+    }
+
+    var year = covering.Value;
     if (year is null)
     {
       return Result.Failure<FiscalPeriod>(CalendarErrors.PeriodNotFound);
@@ -172,7 +255,9 @@ public sealed class ReverseJournalCommandHandler(
   IJournalEntryRepository journals,
   IFiscalCalendarRepository calendar,
   IGlScopeResolver scope,
+  IFiscalPeriodPostingLock postingLock,
   ITenantUnitOfWork unitOfWork,
+  ICurrentTenant currentTenant,
   ICurrentUser currentUser)
 {
   public async Task<Result<Guid>> HandleAsync(
@@ -200,6 +285,26 @@ public sealed class ReverseJournalCommandHandler(
 
     await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
 
+    // ---- THE POSTING FENCE, TAKEN BEFORE THE PERIOD IS READ (249). See `IFiscalPeriodPostingLock`.
+    //
+    // ⚠ A RE-READ INSIDE THIS TRANSACTION WOULD NARROW THIS WINDOW AND NOT CLOSE IT under READ COMMITTED.
+    // THE READ MUST FOLLOW THE LOCK. Measured 2026-09-01: without this fence a second connection closed
+    // the period while this transaction held its read -- it did not block -- and the journal committed
+    // into a period whose status was `Closed`.
+    if (currentTenant.TenantId is not { } tenantId)
+    {
+      return Result.Failure<Guid>(GlScopeErrors.InvalidActor);
+    }
+
+    var fenced = await postingLock.AcquireForPostingAsync(
+      tenantId, original.CompanyId, cancellationToken);
+
+    if (fenced.IsFailure)
+    {
+      return Result.Failure<Guid>(fenced.Error);
+    }
+
+
     // ---- CHECKED HERE, AND MADE UNWINNABLE BY A FILTERED UNIQUE INDEX.
     //
     // This read gives the user a named refusal for the double-click case. Two concurrent requests can both
@@ -214,8 +319,21 @@ public sealed class ReverseJournalCommandHandler(
     // The reversal lands in the period covering ITS OWN date, not the original's. Reversing into a closed
     // period is exactly what `BR-GL-0003` forbids, and a correction dated today belongs in today's period —
     // which is also why the caller supplies the date rather than inheriting it.
-    var year = await calendar.GetCoveringAsync(
+    var covering = await calendar.GetCoveringAsync(
       original.CompanyId, command.ReversalDateUtc, cancellationToken);
+
+    // ⚠ THIS IS THE SITE THAT MADE REFUSING NECESSARY RATHER THAN MERELY CLEANER (T-187).
+    //
+    // The reversal resolves its OWN date in a SEPARATE call from the entry it cancels. With an
+    // unordered pick over two overlapping years, the original could land in year A and this in
+    // year B - different period, different number sequence, for the entry whose whole purpose is
+    // to cancel the first.
+    if (covering.IsFailure)
+    {
+      return Result.Failure<Guid>(covering.Error);
+    }
+
+    var year = covering.Value;
     if (year is null)
     {
       return Result.Failure<Guid>(CalendarErrors.PeriodNotFound);

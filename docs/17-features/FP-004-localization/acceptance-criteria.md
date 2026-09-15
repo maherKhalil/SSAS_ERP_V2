@@ -9,7 +9,7 @@ module: Platform
 
 # Acceptance Criteria
 
-### AC-LOC-0001 - Complete bilingual catalog
+### AC-LOC-0001 - An Active resource is accepted in Production only with both `en` and `ar`
 Production validation accepts an Active resource only with both `en` and `ar`; incomplete non-Production output is flagged, diagnoses culture, uses English fallback, and is not promotable.
 ### AC-LOC-0002 - Immutable key boundary
 Manifest validation rejects duplicate/reordered, invalid, renamed, or reused retired ResourceKeys and generates byte-deterministic artifacts.
@@ -21,7 +21,7 @@ Every read/write/history/cache path derives TenantId from trusted context and re
 The four-step chain reports exact source/cultures and neutral Production output never exposes ResourceKey.
 ### AC-LOC-0006 - Default changes flow through
 A wording-only default release changes unoverridden/restored results and preserves compatible overrides.
-### AC-LOC-0007 - Placeholder compatibility
+### AC-LOC-0007 - Placeholder reorder is accepted; missing, unknown or malformed placeholders are rejected
 Exact parser/escaping/repetition/case/set rules accept reorder and reject every missing/unknown/malformed placeholder.
 ### AC-LOC-0008 - Text safety and limits
 PlainText/MultilineText enforce exact control and 512/4000 UTF-16 limits before persistence and use format-matching `nvarchar(512)`/`nvarchar(4000)` columns while preserving valid text.
@@ -33,7 +33,7 @@ Localization changes no code, key, status/type, authorization, validation, claim
 Each mutation appends one unmodifiable, uniquely numbered version and atomically advances current/settings versions.
 ### AC-LOC-0012 - Deterministic undo
 Only the advertised compatible lineage predecessor plus matching rowversion succeeds; repeated Undo walks explicit lineage.
-### AC-LOC-0013 - Restore default
+### AC-LOC-0013 - Restore keeps one inactive row, nulls the value, appends `RestoredDefault`, and resolves the default
 Restore retains one inactive row, null current value, appends RestoredDefault, and resolves current default.
 ### AC-LOC-0014 - Reapply after restore
 A later PUT requires expected rowversion and reactivates the same aggregate identity.
@@ -45,7 +45,7 @@ Anonymous/authenticated precedence is exact, unsupported values fall through, sw
 View, Manage, and ViewHistory grant only their exact operations under trusted live Active Tenant scope.
 ### AC-LOC-0018 - Safe management contracts
 Strict DTOs reject unknown/TenantId fields and bounded projections disclose no foreign state.
-### AC-LOC-0019 - Cache coherence
+### AC-LOC-0019 - Revalidation and eviction observe their bounds and never cross tenant or culture
 Version revalidation/eviction observes 15s/30s/5m/60s bounds and never crosses Tenant/culture.
 ### AC-LOC-0020 - Release compatibility
 Validation reports incompatible retained overrides, blocks sensitive incompatibility, and requires ordinary review.

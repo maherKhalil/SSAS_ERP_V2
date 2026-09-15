@@ -66,8 +66,8 @@ the file confirmed it was correct.
 
 1. **Read the whole spec** at `.claude/handoff/tasks/T-###.md` before touching anything.
    Ambiguity that changes the design is a `QUESTION` now, not a guess you defend later.
-2. **Branch** from an up-to-date `main`:
-   `git checkout main && git pull --ff-only && git checkout -b agent/T-###-<slug>`
+2. **Branch** from an up-to-date `ClaudeBranch` (`DEC-L-058` — **not `main`**):
+   `git checkout ClaudeBranch && git pull --ff-only && git checkout -b agent/T-###-<slug>`
    (If the branch exists from a revision round, check it out instead of recreating it.)
 3. **Find the existing pattern first.** This codebase has settled conventions for aggregates,
    handlers, EF configurations, permission contributors and tenant scoping. Read the nearest
@@ -134,25 +134,20 @@ the working tree; edit it mid-run and the result describes a tree that no longer
 Use a second worktree: `git worktree add ../SSAS_gate <branch>`. Run the gate in one directory, write
 code in the other. Two constraints, both real:
 
-- **ONE GATE AT A TIME, AND NO GUARD WILL STOP YOU.** This is the constraint that bites, and the
-  first version of this rule described it wrongly — corrected 2026-08-27 by the coder, before it
-  cost a run.
+- **ONE GATE AT A TIME, AND THE GATE NOW ENFORCES IT** (`T-056`, 2026-08-27). A second gate refuses
+  with **exit 7** and names the holder — root path, pid, scope and start time. It reclaims
+  automatically **only when the holding gate's process is provably dead**, pairing the pid with the
+  recorded start time so a reused pid is not mistaken for a live gate.
 
-  `reap_to_zero` drops **every** `SSAS[_]%` catalog on the box before each leg, under **every**
-  scope including `TASK`. So a 72-second `TASK` gate started in a worktree **destroys the catalogs
-  a 69-minute `PHASE` run is using, mid-leg.**
+  **What it protects, and what it does not.** The lock is on the **SQL Server instance**, which is the
+  resource `reap_to_zero` actually contends for — it drops every `SSAS[_]%` catalog under every scope,
+  including a 72-second `TASK` run. **The guard does not protect the working tree and it does not
+  protect the memory floor.** Both of those are still yours.
 
-  The sibling-`testhost` precondition does **not** catch it: it matches on `basename "$ROOT"`, so a
-  worktree named `SSAS_gate` and a tree named `SSAS_ERP_V2` each judge the other's testhost to
-  belong to someone else and proceed. The guard is deliberately narrow for the reason in note 1, and
-  **a second worktree is exactly the case it does not cover.**
+  The old `basename "$ROOT"` check could never see a differently-named sibling; that is the case the
+  guard was built against and the case it was verified on. **Four trees exist on this box**, one of
+  them a `codex/` branch this loop does not control.
 
-  The shared resource is the **SQL Server instance**, not the repository — so a second clone or
-  anyone else's checkout on this box collides the same way. Until T-056 closes it, this is a rule
-  you keep by hand and nothing will warn you.
-
-  **Note the interaction, because it is the whole trap:** `DEC-L-051` made a per-task gate cost 72
-  seconds. Something that cheap does not feel like an action that needs checking first. It is.
 - **Build sparingly during a run.** The LEAN floor is 2048 MB and note 7 records that this box
   *"hosts resident agent sessions alongside the suite"*. Writing code is nearly free; a second
   `--no-incremental` build is not, and dropping below the floor aborts the gate you were waiting for.
@@ -204,7 +199,7 @@ the task had a gate at all**, not on how confident you feel.
 **Green gate → merge immediately. Do not wait for the architect.**
 
 ```bash
-gh pr create --base main --head agent/T-###-<slug> --title "..." --body "..."
+gh pr create --base ClaudeBranch --head agent/T-###-<slug> --title "..." --body "..."
 gh pr merge --merge --delete-branch
 ```
 
@@ -212,40 +207,68 @@ Merge commits, not squash — it is what every prior package used (PRs #40 … #
 `START-HERE.md` point at them.
 
 The architect reviews **after** the merge and raises a follow-up task if something is wrong. That is
-the owner's accepted trade: a faster loop, with correction happening on `main` rather than on a branch.
+the owner's accepted trade: a faster loop, with correction happening on `ClaudeBranch` rather than on a branch.
 
 ### What "green" means — all four, not the first one
 
 Tightened by the owner on 2026-08-25 (`DEC-L-008`) after the first three merges. **Green is not
 "the build succeeded".** It is all four of these, and a merge on anything less is a defect:
 
-1. **The build succeeds at zero warnings.** A warning you introduced is a failure.
-2. **Every suite in the gate ran in this session and passed** — Architecture, Platform, HR, API, plus
-   the suite for the module you changed. Not "the ones I thought were relevant".
-3. **`Integration.Tests` ran and passed** if the task touched persistence, a migration, an EF
-   configuration, or the Shared→Dedicated cutover inventory. Run it through
-   `GATE_SCOPE=TASK scripts/gate.sh`, which holds the memory preconditions and the catalog reaping
-   — do not invoke that leg by hand. **Integration does NOT run under `TASK` unless you ask for
-   it:** `GATE_INTEGRATION=1 GATE_SCOPE=TASK scripts/gate.sh`, and it then runs in **one**
-   configuration (`DEC-L-051`). The script cannot evaluate condition 3 and you can, which is why it
-   is opt-in rather than inferred from the diff. Under `PHASE` Integration always runs and
-   `GATE_INTEGRATION` is reported as **ignored** rather than silently obeyed or silently dropped.
-   **Do not export `MSYS_NO_PATHCONV` in the shell you launch the gate from** (`DEC-L-056`) — it
-   kills the memory sampler and the gate still reports green.
-4. **The tests the task required exist in this diff and pass.** This is the one that is easy to miss
-   and it is why the rule was tightened: *a suite that is green because nothing exercises your new
-   code is not green.* If you added an aggregate, a handler, an endpoint or an invariant and the
-   test count did not move, you have proved that the code you did not test did not break the code
-   you did not change. That is not evidence and it is not a merge.
+**Each condition below says whether the GATE enforces it or whether it rests on you.** That
+distinction was invisible until 2026-08-27, and two of these turned out to be neither enforced nor
+labelled as unenforced.
+
+0. **The build succeeds — ENFORCED.** A failing build skips that configuration's suites and goes RED.
+   **Until 2026-08-27 it did neither:** the exit status was discarded and the suites ran `--no-build`
+   against the previous build's assemblies, so a run whose build failed with `1 Error(s)` reported
+   2752 passing tests and `[GATE GREEN]`. It was never listed as a condition at all.
+
+1. **Zero warnings — ENFORCED.** The gate builds `--no-incremental` and goes RED on any warning.
+   **`--no-incremental` is not a performance setting.** MSBuild skips up-to-date projects, so the
+   compiler never re-runs and never re-emits their warnings: a planted `CS0219` reported `1 Warning(s)`
+   on the build that introduced it and `0 Warning(s)` on the very next build. A gate run after an IDE
+   build would otherwise report clean over code that is not. It costs about 13 seconds. Do not remove
+   it to save them.
+
+2. **Every suite in the gate ran and passed — ENFORCED.** All seven non-Integration suites run under
+   `TASK`, all eight under `PHASE`, and any failure sets the verdict RED. **There is no selection by
+   diff**: Finance, Payroll and Attendance cost 23, 24 and 25 milliseconds, and choosing between them
+   would trade an inference over the diff for under a tenth of a second.
+
+3. **`Integration.Tests` when the task touched persistence — CONVENTION, NOT ENFORCED.** The gate
+   cannot evaluate this and you can. **Nothing will stop you merging without it.** Persistence, a
+   migration, an EF configuration or the Shared→Dedicated cutover inventory: run
+   `GATE_INTEGRATION=1 GATE_SCOPE=TASK scripts/gate.sh`, one configuration (`DEC-L-051`). Under
+   `PHASE` it always runs and `GATE_INTEGRATION` is reported as **ignored** rather than silently
+   obeyed or dropped. **Do not export `MSYS_NO_PATHCONV` in the launching shell** (`DEC-L-056`) — it
+   kills the memory sampler, and the gate says so rather than going quiet.
+
+4. **The tests the task required exist in this diff and pass — PARTIALLY ENFORCED, and the part that
+   is not enforced is the part that matters.**
+
+   **What the gate checks:** whether any suite total moved, when non-comment lines under `src/`
+   changed against the merge-base with `ClaudeBranch` — your uncommitted **and untracked** work
+   included. It compares against a baseline it wrote itself on its last green run.
+
+   **What it cannot check:** whether the tests your task required exist, or whether the tests that
+   moved cover what you wrote. **The gate does not know what your task required.** It can tell that
+   you changed code and no count moved. **It cannot tell you the count that moved was the right one.**
+
+   **It warns; it never goes red** — not because it matters less, but because the only remedy for a
+   wrong fire (a refactor existing tests already cover) would be to write a test you do not believe
+   in, and a red answerable that way manufactures exactly the tests that make a suite worthless.
+
+   **Commit `.claude/handoff/test-baseline.txt` with your work.** The gate rewrites it on every green
+   run so it cannot go stale, which also puts your count delta in the diff where review sees it.
 
 **Report the counts, before and after.** `Failed: 0, Passed: N` for each suite, and say what N was
-on `main` before your change. The baseline is recorded on the board. A code task whose totals are
+on `ClaudeBranch` before your change. The baseline is recorded on the board. A code task whose totals are
 unchanged is one I will ask about.
 
 If any of the four fails — a suite did not run, `API.Tests` could not reach SQL Server, a leg timed
 out, you ran out of time — **the gate is not green**, you do not merge, and you report `PARTIAL`
 naming exactly which suites ran and which did not. A gate you did not finish is not a gate you
-passed, and under this rule that mistake lands on `main` instead of costing a review cycle.
+passed, and under this rule that mistake lands on `ClaudeBranch` instead of costing a review cycle.
 
 ### A non-gated task — no file under `src/` or `tests/` in scope
 
@@ -261,7 +284,7 @@ returned a real finding.
 - Merge with a red, partial, or unrun gate.
 - Merge with `--admin`, or with any flag that bypasses a check.
 - Merge a branch that is not the one this task named.
-- Push directly to `main`. It is denied in `.claude/settings.json` and it stays denied — merging is
+- Push directly to `ClaudeBranch`, and **never touch `main` at all** (`DEC-L-058`). Merging is
   something GitHub does on your behalf, through a PR that leaves a record.
 
 ### Reporting a merge

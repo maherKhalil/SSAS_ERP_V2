@@ -10,6 +10,43 @@ namespace SSAS.Platform.Tests.Subscriptions;
 // fail**: a plan is shared, so amending its modules changes the entitlement of every tenant whose
 // in-force record names it, and an invalidation keyed only on `TenantId` leaves all of them stale —
 // the one case where `BR-SUB-0012` fails for tenants nobody touched.
+// ==================================================================================================
+// ⚠⚠⚠ `AC-SUB-0014` IS UNCITED BECAUSE NOTHING IN `src/` EVER CALLS EITHER INVALIDATION. THE FOUR CALL
+// SITES IN THIS FILE ARE THE ENTIRE CALL GRAPH. RE-VERIFIED AT HEAD, 2026-09-05.
+// ==================================================================================================
+//
+// *"Appending a grant makes the granted module reachable on the **next request**, with the same token and
+// without restarting the host."*
+//
+// **`InvalidateTenant` and `InvalidatePlan` are declared on `ITenantEntitlementCache`, implemented in
+// `InMemoryTenantEntitlementCache` (`:67`, `:77`), and registered in `Program.cs`.** ***THE ONLY CALLS TO
+// EITHER, ANYWHERE IN THE REPOSITORY, ARE THE FOUR IN THE TESTS BELOW.*** `TenantModuleEntitlement` takes
+// the cache and reads it; **no write path invalidates it.**
+//
+// ⚠ **ESTABLISHED BY DELETION, NOT BY SEARCH** — the members were removed from the interface and the
+// solution built clean with `--no-incremental`. *A name search cannot be complete over a call graph; a
+// compiler is.*
+//
+// ***SO THE CRITERION'S MECHANISM IS ABSENT: A GRANT APPENDED WHILE A TENANT'S ENTITLEMENT IS CACHED IS NOT
+// VISIBLE ON THE NEXT REQUEST, AND `AC-SUB-0015` — THE SHARED-PLAN CASE — FAILS THE SAME WAY FOR EVERY
+// TENANT ON AN AMENDED PLAN.*** **This file's tests prove the cache CAN be invalidated correctly. They say
+// nothing about anything invalidating it, and that gap is invisible from inside them.**
+//
+// ⚠⚠ **THE INTERFACE ITSELF ARGUES FOR THE MEMBER THAT NOTHING CALLS** — `ITenantEntitlementCache.cs:9`:
+// *"`InvalidatePlan` covers the one that is easy to miss. A plan is shared, so amending its modules…"*
+// ***A CORRECT, WELL-REASONED DESIGN NOTE BESIDE A METHOD WITH NO PRODUCTION CALLER. The reasoning is right
+// and the wiring was never done, and the note is exactly what stops a reader asking.***
+//
+// ⚠⚠⚠ **AND WHY IT IS WRITTEN HERE RATHER THAN REPORTED AGAIN: IT HAD ALREADY BEEN FOUND.**
+// `.claude/handoff/results/item-165-interface-members-without-consumers.md:76` records it, and
+// `item-170-dynamic-member-reach.md` lists both members. ***THAT IS A HANDOFF ARTEFACT, NOT A PLACE ANY
+// READER OF THIS FILE WILL EVER OPEN*** — so the finding existed, was correct, and reached nobody. **A
+// tree-wide sweep then classified `AC-SUB-0014` as a criterion nobody had ever written about, and it was
+// right about the tree.**
+//
+// **NOT CITED, and no tripwire either**: a tripwire asserts a subject does not exist, and this subject —
+// entitlement changing on the next request — is *specified* and *partially built*. **The honest state is a
+// wiring gap with an owner decision behind it, not an absence to alarm on.**
 public sealed class TenantEntitlementCacheTests
 {
   private static readonly DateTimeOffset Noon = new(2026, 8, 26, 12, 0, 0, TimeSpan.Zero);

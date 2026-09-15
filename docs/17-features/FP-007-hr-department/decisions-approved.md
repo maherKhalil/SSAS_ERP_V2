@@ -8,8 +8,13 @@ version: 1.0
 # FP-007 — Decisions
 
 > **Approved for Implementation, and built.** This document recorded decisions *proposed* by the FP-007A
-> analysis. All five owner decisions (`OD-DEP-001` … `OD-DEP-005`) were closed between 2026-08-20 and
-> 2026-08-21, and FP-007 shipped in four phases. The decisions below are binding.
+> analysis. **All five owner decisions — `OD-DEP-001`, `OD-DEP-002`, `OD-DEP-003`, `OD-DEP-004` and
+> `OD-DEP-005` — were closed between 2026-08-20 and 2026-08-21**, and FP-007 shipped in four phases. The
+> decisions below are binding. *(Enumerated 2026-09-07; this read `OD-DEP-001 … OD-DEP-005`.* ⚠ ***A RANGE
+> NAMES ITS ENDPOINTS AND IMPLIES ITS INTERIOR, so as written this head disposition covered `001` and `005`
+> and nothing between them.*** *It was load-bearing nowhere only because the Classification summary twelve
+> lines below happens to enumerate all five against their `DEC-DEP-` ids — but a reader or a checker taking
+> the head sentence as the disposition would have found three of the five uncovered.)*
 >
 > **The original decision text is preserved verbatim.** Where a ruling changed or closed a decision, an
 > amendment is appended beneath it rather than rewritten over it — a decision record whose history is
@@ -23,7 +28,7 @@ version: 1.0
 | `DEC-DEP-0001` | Department ownership | **CLOSED** (`OD-DEP-002`, 2026-08-20) — recommendation adopted |
 | `DEC-DEP-0005` | Hierarchy representation | **ENGINEERING-SETTLED** |
 | `DEC-DEP-0006` | Acyclicity invariant | **ENGINEERING-SETTLED** |
-| `DEC-DEP-0009` | `BR-HR-0005` enforcement | **CLOSED** (`OD-DEP-001`, 2026-08-20) — Option A, fail-loud |
+| `DEC-DEP-0009` | `BR-HR-0005` enforcement | **CLOSED** (`OD-DEP-001`, 2026-08-20) — **Option A**; the migration back-fills an `UNASSIGNED` department. ⚠ **CORRECTED 2026-09-01: this cell read *Option A, fail-loud*, and *fail-loud* IS OPTION D's DESCRIPTION IN `AC-DEP-0039` — so the summary named one option's letter with another's behaviour.** **The fail-loud rule belongs ONLY to the UNASSIGNED-collision case in the amendment below, not to the strategy.** |
 | `DEC-DEP-0014` | `BR-HR-0007` scope | **CLOSED** (`OD-DEP-003`, 2026-08-20) — reading (iii) adopted |
 | `DEC-DEP-0016` | Department history | **CLOSED** (`OD-DEP-004`, 2026-08-20) — deferral reversed |
 | `DEC-DEP-0019` | Department read visibility | **CLOSED** (`OD-DEP-005`, 2026-08-20) — recommendation adopted |

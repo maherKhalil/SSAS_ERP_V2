@@ -93,3 +93,5 @@ Milestone 4 implements the authentication transport-security slice:
 The authoritative Milestone 4 clarifications are `DEC-AUTH-0048` through `DEC-AUTH-0063` in `decisions-approved.md`.
 
 Deferred beyond Milestone 4 are Angular authentication, browser route guards and frontend token storage implementation, session listing, revoke-another-session, logout-all, authenticated password change, password-reset/invitation email delivery and public routes, Platform-support authentication, MFA, external identity providers, OAuth/OIDC provider behavior, JWKS, native/mobile clients, service authentication, API keys, impersonation, notification delivery, immutable audit storage, full live validation of all non-Tenant authorization state on every ordinary request, and high-risk business-operation policies beyond the reusable foundation.
+
+status: UNSTARTED

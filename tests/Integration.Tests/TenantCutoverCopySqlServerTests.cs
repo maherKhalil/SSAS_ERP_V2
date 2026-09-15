@@ -23,6 +23,8 @@ using SSAS.Platform.Infrastructure.Persistence.TenantErp;
 using SSAS.Platform.Infrastructure.TenantStorage;
 using Xunit.Abstractions;
 
+using SSAS.TestSupport.CutoverModel;
+
 namespace SSAS.Integration.Tests;
 
 // THE SHARED → DEDICATED COPY, AGAINST REAL SQL (ADR-020, TS-Storage Phase E3).
@@ -40,14 +42,31 @@ namespace SSAS.Integration.Tests;
 // allocation budget that once failed at 287MB under parallel load was removed on 2026-08-21 precisely
 // because it could not discriminate, so the founding parallel-load argument no longer describes this
 // class.
-public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
+//
+// ---- ⚠ EACH TEST'S CATALOGS ARE RESTORED FROM A TEMPLATE, NOT MIGRATED. SEE THE SAME NOTE IN E5.
+//
+// Twenty of the twenty-six tests here build three private catalogs, and each one used to run the migrations:
+// 18 tenant migrations twice and 26 platform migrations once. Measured on an idle instance that is 75.5 s of
+// a ~108 s test, and it measures the same under full-suite load, so the cost is intrinsic rather than
+// contention. The migrations now run ONCE per class into a template which is restored per test at ~1.9 s a
+// catalog. **Every test still gets its own three catalogs under a unique token and still drops them**, so the
+// isolation is exactly what it was; only the way the schema arrives has changed.
+//
+// ⚠ **`migrateTarget: false` STILL MEANS AN EMPTY CATALOG WITH NO SCHEMA.** One test exists to prove the copy
+// refuses an unprepared target, so that path takes a bare `CREATE DATABASE` and no restore. Restoring a
+// template into it would destroy the only test that covers it, silently and while staying green.
+//
+// The six model-level tests in this class build no fixture at all and cost 0.0 s; nothing here affects them.
+public sealed class TenantCutoverCopySqlServerTests(
+  ITestOutputHelper output, TenantCutoverCopySqlServerTests.CopyCatalogTemplate template)
+  : IClassFixture<TenantCutoverCopySqlServerTests.CopyCatalogTemplate>
 {
   // ---- A. The load-bearing test: one tenant moves, the other is untouched on both sides.
   [Fact]
   [Trait("Decision", "ADR-020")]
   public async Task Copying_one_tenant_moves_only_that_tenant_and_leaves_its_co_tenant_alone()
   {
-    await using var fixture = await CopyFixture.CreateAsync();
+    await using var fixture = await CopyFixture.CreateAsync(template);
     await fixture.SeedCompaniesAsync(fixture.TenantA, 3, "AAA");
     await fixture.SeedCompaniesAsync(fixture.TenantB, 2, "BBB");
     var operationId = await fixture.BeginAndFreezeAsync();
@@ -65,7 +84,7 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
     // in FP-009 Phase 1. Only Company holds rows in this fixture, so TotalRows is unchanged while the table
     // count is not — and this count is precisely what would have stayed at two while a promotion silently
     // left every employee behind.
-    Assert.Equal(34, copied.Value.TablesCopied);
+    Assert.Equal(35, copied.Value.TablesCopied);
     Assert.Equal(0, copied.Value.TablesAlreadyComplete);
     Assert.Equal(
       [
@@ -94,6 +113,7 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
         "LeaveBalance",
         "LeaveRequest",
         "LeaveType",
+        "OneOffPayment",
         "PayElement",
         "PayElementAssignment",
         "PayrollPeriod",
@@ -122,7 +142,7 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
   [Trait("Decision", "ADR-020")]
   public async Task Audit_values_are_copied_verbatim_and_rowversion_is_target_generated()
   {
-    await using var fixture = await CopyFixture.CreateAsync();
+    await using var fixture = await CopyFixture.CreateAsync(template);
     await fixture.SeedCompaniesAsync(fixture.TenantA, 4, "AUD");
     var operationId = await fixture.BeginAndFreezeAsync();
 
@@ -177,7 +197,7 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
   [Trait("Decision", "ADR-020")]
   public async Task A_retry_revalidates_completed_tables_and_never_duplicates_them()
   {
-    await using var fixture = await CopyFixture.CreateAsync();
+    await using var fixture = await CopyFixture.CreateAsync(template);
     await fixture.SeedCompaniesAsync(fixture.TenantA, 5, "RTY");
     var operationId = await fixture.BeginAndFreezeAsync();
 
@@ -187,7 +207,7 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
     // model added in FP-006C6, the three FP-007 Phase 1 added, the four FP-008 Phase 1 added, the two
     // run records FP-009 Phase 1 added, and the SEVEN GL tables FP-011 added — the largest single
     // contribution since the platform itself.
-    Assert.Equal(34, first.Value.TablesCopied);
+    Assert.Equal(35, first.Value.TablesCopied);
 
     // The retry a dead process's replacement would perform.
     var second = await fixture.CopyService().CopyAsync(operationId);
@@ -198,7 +218,10 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
     // rather than a gap: an empty table is indistinguishable from one that was never copied, so the engine
     // copies each again, moving nothing. The retry's safety claim is about not DUPLICATING rows, which the
     // counts below still prove exactly.
-    Assert.Equal(33, second.Value.TablesCopied);
+    // 34 = 35 total less the ONE recognised complete. Read 33 until T-140, and it stayed hidden after the
+    // count above was corrected: a test stops at its FIRST failing assertion, so the eight failures the
+    // suite reported were first failures rather than all stale expectations.
+    Assert.Equal(34, second.Value.TablesCopied);
     Assert.Equal(1, second.Value.TablesAlreadyComplete);
     Assert.Equal(5, second.Value.TotalRows);
 
@@ -211,7 +234,7 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
   [Trait("Decision", "ADR-020")]
   public async Task A_partially_populated_target_is_refused_rather_than_completed()
   {
-    await using var fixture = await CopyFixture.CreateAsync();
+    await using var fixture = await CopyFixture.CreateAsync(template);
     await fixture.SeedCompaniesAsync(fixture.TenantA, 4, "PRT");
     var operationId = await fixture.BeginAndFreezeAsync();
 
@@ -236,7 +259,7 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
   [Trait("Decision", "ADR-020")]
   public async Task An_extra_target_row_is_detected_and_refused()
   {
-    await using var fixture = await CopyFixture.CreateAsync();
+    await using var fixture = await CopyFixture.CreateAsync(template);
     await fixture.SeedCompaniesAsync(fixture.TenantA, 3, "XTR");
     var operationId = await fixture.BeginAndFreezeAsync();
 
@@ -260,7 +283,7 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
   [Trait("Decision", "ADR-020")]
   public async Task The_only_tenant_trigger_is_a_delete_guard_that_the_copy_neither_fires_nor_disturbs()
   {
-    await using var fixture = await CopyFixture.CreateAsync();
+    await using var fixture = await CopyFixture.CreateAsync(template);
     await fixture.SeedCompaniesAsync(fixture.TenantA, 3, "TRG");
     var operationId = await fixture.BeginAndFreezeAsync();
 
@@ -291,7 +314,7 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
   [Trait("Decision", "ADR-020")]
   public async Task Exact_validation_detects_a_changed_target_business_value()
   {
-    await using var fixture = await CopyFixture.CreateAsync();
+    await using var fixture = await CopyFixture.CreateAsync(template);
     await fixture.SeedCompaniesAsync(fixture.TenantA, 3, "CHG");
     var operationId = await fixture.BeginAndFreezeAsync();
 
@@ -312,7 +335,7 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
   [Trait("Decision", "ADR-020")]
   public async Task A_target_containing_another_tenants_rows_refuses_the_copy_and_writes_nothing()
   {
-    await using var fixture = await CopyFixture.CreateAsync();
+    await using var fixture = await CopyFixture.CreateAsync(template);
     await fixture.SeedCompaniesAsync(fixture.TenantA, 3, "CON");
     await fixture.SeedTargetCompaniesAsync(fixture.TenantB, 1, "FOREIGN");
     var operationId = await fixture.BeginAndFreezeAsync();
@@ -333,7 +356,7 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
   [Trait("Decision", "ADR-020")]
   public async Task A_cutover_that_is_not_frozen_cannot_be_copied()
   {
-    await using var fixture = await CopyFixture.CreateAsync();
+    await using var fixture = await CopyFixture.CreateAsync(template);
     await fixture.SeedCompaniesAsync(fixture.TenantA, 2, "NFZ");
 
     // Preparing: the source is still writable, so copying from it would read a moving database.
@@ -356,7 +379,7 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
   [Trait("Decision", "ADR-020")]
   public async Task A_source_the_tenant_no_longer_routes_to_refuses_the_copy()
   {
-    await using var fixture = await CopyFixture.CreateAsync();
+    await using var fixture = await CopyFixture.CreateAsync(template);
     await fixture.SeedCompaniesAsync(fixture.TenantA, 2, "DRF");
     var operationId = await fixture.BeginAndFreezeAsync();
 
@@ -375,7 +398,15 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
   [Trait("Decision", "ADR-020")]
   public async Task An_unmigrated_target_refuses_the_copy_rather_than_migrating_itself()
   {
-    await using var fixture = await CopyFixture.CreateAsync(migrateTarget: false);
+    // ⚠ `migrateTarget: false` IS LOAD-BEARING AND THIS IS THE ONLY CALL SITE THAT PASSES IT. The target must
+    // have NO SCHEMA, because its absence is what this test is about. Restoring the class template here — the
+    // obvious tidy-up, since every other call site does — would give this test a migrated target and it would
+    // still pass, proving nothing.
+    //
+    // **It cannot, however, pass for the wrong reason in the other direction:** a migrated target would let
+    // the copy SUCCEED, and the refusal asserted below would fail. So a green here really does mean the
+    // target was bare. That property is worth keeping and is easy to destroy from the fixture side.
+    await using var fixture = await CopyFixture.CreateAsync(template, migrateTarget: false);
     await fixture.SeedCompaniesAsync(fixture.TenantA, 2, "SCH");
     var operationId = await fixture.BeginAndFreezeAsync();
 
@@ -393,7 +424,7 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
   [Trait("Decision", "ADR-020")]
   public async Task Only_one_instance_can_execute_a_cutover_copy_at_a_time()
   {
-    await using var fixture = await CopyFixture.CreateAsync();
+    await using var fixture = await CopyFixture.CreateAsync(template);
     await fixture.SeedCompaniesAsync(fixture.TenantA, 6, "OWN");
     var operationId = await fixture.BeginAndFreezeAsync();
 
@@ -422,7 +453,7 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
   [Trait("Decision", "ADR-020")]
   public async Task Two_concurrent_copies_cannot_corrupt_or_duplicate_the_target()
   {
-    await using var fixture = await CopyFixture.CreateAsync();
+    await using var fixture = await CopyFixture.CreateAsync(template);
     await fixture.SeedCompaniesAsync(fixture.TenantA, 8, "RACE");
     var operationId = await fixture.BeginAndFreezeAsync();
 
@@ -446,7 +477,7 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
   [Trait("Decision", "ADR-020")]
   public async Task A_freeze_cannot_be_released_while_a_copy_owns_the_operation()
   {
-    await using var fixture = await CopyFixture.CreateAsync();
+    await using var fixture = await CopyFixture.CreateAsync(template);
     await fixture.SeedCompaniesAsync(fixture.TenantA, 3, "REL");
     var operationId = await fixture.BeginAndFreezeAsync();
 
@@ -495,7 +526,7 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
   [Trait("Decision", "ADR-020")]
   public async Task Identity_keys_and_foreign_key_order_survive_a_real_copy()
   {
-    await using var fixture = await CopyFixture.CreateAsync();
+    await using var fixture = await CopyFixture.CreateAsync(template);
     await CopyFixture.CreateProbeTablesAsync(fixture.SourceCatalog);
     await CopyFixture.CreateProbeTablesAsync(fixture.TargetCatalog);
     await fixture.SeedProbeDataAsync(fixture.TenantA);
@@ -549,7 +580,7 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
   [Trait("Decision", "ADR-020")]
   public async Task A_large_tenant_copies_by_streaming_and_every_query_seeks()
   {
-    await using var fixture = await CopyFixture.CreateAsync();
+    await using var fixture = await CopyFixture.CreateAsync(template);
     const int rows = 20_000;
     await fixture.SeedCompaniesAsync(fixture.TenantA, rows, "PERF");
     await fixture.SeedCompaniesAsync(fixture.TenantB, 5_000, "NOISE");
@@ -688,232 +719,6 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
       }
     }
   }
-
-  // ================================================================================================
-  // C6 — SHARED → DEDICATED CARRIES THE MODULE-CONTRIBUTED ENTITIES (FP-006C6, ADR-020, ADR-017).
-  // ================================================================================================
-  //
-  // ---- WHAT WAS ACTUALLY BROKEN, AND WHY NOTHING CAUGHT IT.
-  //
-  // The copy manifest is derived from the tenant model, which is the right design — a hand-written table
-  // list is wrong the moment someone adds an entity, and wrong silently. But the model it derived from was
-  // built with NO contributors, so it could not contain Employee no matter what HR registered.
-  //
-  // A promotion therefore copied Companies and Branches, validated every row it copied, reported success,
-  // and left every employee and every branch-assignment record behind. There was no error to notice: the
-  // copy was faithful to the model it was given, and the model was the wrong one.
-  //
-  // These proofs run the REAL copy service against real SQL Server with the contributor set the Host
-  // registers.
-
-  // ---- C6-1 / C6-2. THE MODEL THE CUTOVER PLANS FROM IS THE ONE THE APPLICATION PERSISTS THROUGH.
-  [Fact]
-  [Trait("Decision", "ADR-020")]
-  public void C6_1_C6_2_The_cutover_manifest_covers_every_contributed_tenant_owned_entity()
-  {
-    var composed = CutoverTenantModel.Source.Model;
-
-    // The runtime model contains all twenty — two from Platform, two from FP-006, three from FP-007
-    // Phase 1, four from FP-008 Phase 1, and the two run records from FP-009 Phase 1...
-    var derived = composed.GetEntityTypes()
-      .Where(entity => !entity.IsOwned())
-      .Where(entity => typeof(ITenantOwnedEntity).IsAssignableFrom(entity.ClrType))
-      .Where(entity => entity.GetTableName() is not null)
-      .Select(entity => entity.ClrType.Name)
-      .OrderBy(name => name, StringComparer.Ordinal)
-      .ToArray();
-
-    // AN EXACT LIST, DELIBERATELY. The derivation guarantees the engine cannot MISS a table; this
-    // guarantees a human SEES a new one, because a new tenant-owned entity may need ordering, identity or
-    // column decisions that "it compiles" does not settle. FP-007 Phase 1 added three, FP-008 Phase 1 added
-    // four, FP-009 Phase 1 adds two, and this is one of the three places that has to say so.
-    //
-    // ---- SalaryGrade IS HERE AND ITS BAND IS NOT, WHICH IS THE OWNED-TYPE FILTER DOING ITS JOB.
-    //
-    // `SalaryGrade.Band` is an optional OWNED type (`DEC-POS-0027`), so its three money columns live in the
-    // `SalaryGrades` table and it is not a separate entity to copy. The `!entity.IsOwned()` filter above is
-    // what keeps it out of this list; without it the manifest would name a table that does not exist.
-    Assert.Equal(
-      [
-        "Account",
-        "AttendancePeriod",
-        "AttendanceRecord",
-        "Branch",
-        "CalendarHoliday",
-        "Company",
-        "Department",
-        "DepartmentManager",
-        "Employee",
-        "EmployeeBranchAssignment",
-        "EmployeeCompensation",
-        "EmployeeDepartmentAssignment",
-        "EmployeeExportRun",
-        "EmployeeImportRun",
-        "EmployeePositionAssignment",
-        "FiscalPeriod",
-        "FiscalYear",
-        "JobGrade",
-        "JournalDraft",
-        "JournalDraftLine",
-        "JournalEntry",
-        "JournalLine",
-        "LeaveBalance",
-        "LeaveRequest",
-        "LeaveType",
-        "PayElement",
-        "PayElementAssignment",
-        "PayrollPeriod",
-        "PayrollRun",
-        "PayrollRunDraftLine",
-        "PayrollRunLine",
-        "Position",
-        "SalaryGrade",
-        "WorkingCalendar"
-      ],
-      derived);
-
-    // ...and the plan derived for the copy covers exactly that set, with nothing declared by hand.
-    var plan = TenantCutoverCopyPlan.Build(composed);
-    Assert.True(plan.IsSuccess);
-    Assert.Equal(
-      derived,
-      plan.Value.Select(table => table.EntityName).OrderBy(name => name, StringComparer.Ordinal));
-  }
-
-  // ================================================================================================
-  // C6-15. THE COPY ORDER PUTS DEPARTMENTS BEFORE EMPLOYEES (FP-007 Phase 3).
-  // ================================================================================================
-  //
-  // Employee gained a REQUIRED foreign key to Department, so a copy that inserted employees first would
-  // fail on that constraint against a target where the departments did not exist yet. The plan is a
-  // topological sort over the model's foreign keys, so the ordering is derived rather than declared — and
-  // derived means nobody wrote it down, which is exactly why it is worth asserting.
-  //
-  // ---- AND WHY THIS IS NOT MERELY THE SQL TESTS RESTATED.
-  //
-  // The real-SQL copies below would fail if the order were wrong, but only for the tables the fixture
-  // happens to populate, and only after twenty minutes. This reads the order directly out of the plan, in
-  // milliseconds, for every pair that matters — including DepartmentManagers and
-  // EmployeeDepartmentAssignments, which point at BOTH principals.
-  //
-  // It is also the guard for the ADR-026 decision 7 split. If DepartmentManager were ever folded back onto
-  // Department as a ManagerEmployeeId column, Department would depend on Employee while Employee depends on
-  // Department, the sort would find a cycle, and Build would fail with CutoverCopyOrderUndecidable rather
-  // than producing a wrong order.
-  [Fact]
-  [Trait("Decision", "ADR-020")]
-  public void C6_15_The_copy_order_places_every_principal_before_its_dependents()
-  {
-    var plan = TenantCutoverCopyPlan.Build(CutoverTenantModel.Source.Model);
-
-    Assert.True(plan.IsSuccess, plan.IsFailure ? plan.Error.Code : null);
-
-    var order = plan.Value.Select(table => table.EntityName).ToArray();
-
-    int PositionOf(string entity)
-    {
-      var index = Array.IndexOf(order, entity);
-
-      Assert.True(index >= 0, $"{entity} is absent from the copy manifest entirely.");
-
-      return index;
-    }
-
-    // Company and Branch are Platform's, and everything HR-owned depends on one or both.
-    Assert.True(PositionOf(nameof(Company)) < PositionOf("Department"));
-    Assert.True(PositionOf(nameof(Company)) < PositionOf(nameof(Employee)));
-    Assert.True(PositionOf(nameof(Branch)) < PositionOf(nameof(Employee)));
-
-    // ---- THE FP-007 PHASE 3 EDGE. This is the one the new foreign key created.
-    Assert.True(
-      PositionOf("Department") < PositionOf(nameof(Employee)),
-      "Departments must be copied before Employees: Employee.DepartmentId is a required foreign key.");
-
-    // The two tables that depend on BOTH must come after both.
-    Assert.True(PositionOf("Department") < PositionOf("DepartmentManager"));
-    Assert.True(PositionOf(nameof(Employee)) < PositionOf("DepartmentManager"));
-    Assert.True(PositionOf("Department") < PositionOf("EmployeeDepartmentAssignment"));
-    Assert.True(PositionOf(nameof(Employee)) < PositionOf("EmployeeDepartmentAssignment"));
-
-    Assert.True(PositionOf(nameof(Employee)) < PositionOf(nameof(EmployeeBranchAssignment)));
-
-    // ================================================================================================
-    // THE FP-008 PHASE 1 EDGES. A THREE-LINK CHAIN, AND A HISTORY THAT DEPENDS ON BOTH ENDS.
-    // ================================================================================================
-    //
-    // SalaryGrade -> JobGrade -> Position is the longest dependency chain in the tenant model, and every
-    // link is a nullable foreign key — so a copy that got the order wrong would fail only for the rows that
-    // happened to use the reference. Asserting the ORDER catches it regardless of what the fixture
-    // populates.
-    Assert.True(
-      PositionOf("SalaryGrade") < PositionOf("JobGrade"),
-      "Salary grades must be copied before job grades: JobGrade.SalaryGradeId is a foreign key.");
-    Assert.True(
-      PositionOf("JobGrade") < PositionOf("Position"),
-      "Job grades must be copied before positions: Position.JobGradeId is a foreign key.");
-
-    // The history depends on BOTH Employee and Position, so it must come after both.
-    Assert.True(PositionOf("Position") < PositionOf("EmployeePositionAssignment"));
-    Assert.True(PositionOf(nameof(Employee)) < PositionOf("EmployeePositionAssignment"));
-
-    Assert.True(PositionOf(nameof(Company)) < PositionOf("Position"));
-    Assert.True(PositionOf(nameof(Company)) < PositionOf("JobGrade"));
-    Assert.True(PositionOf(nameof(Company)) < PositionOf("SalaryGrade"));
-
-    // ---- THE FP-008 PHASE 3 EDGE. This is the one the new foreign key created.
-    //
-    // Phase 1 recorded this assertion as a FORWARD OBLIGATION and refused to write it early: at that point
-    // nothing linked the two, so the assertion would have passed or failed on the sort's tie-breaking
-    // rather than on a constraint — green for the wrong reason. `Employee.PositionId` is now a required
-    // foreign key, so the edge exists and the claim is finally provable.
-    //
-    // The obligation's other half moved in the same commit: `data-model.md`'s "not ordered against
-    // Employee" caveat is gone, because the assertion and the claim became true together.
-    Assert.True(
-      PositionOf("Position") < PositionOf(nameof(Employee)),
-      "Positions must be copied before Employees: Employee.PositionId is a required foreign key.");
-
-    // ================================================================================================
-    // THE FP-009 PHASE 1 EDGES. TWO TABLES THAT DEPEND ON COMPANY AND ON NOTHING ELSE.
-    // ================================================================================================
-    //
-    // A run record names WHO RAN WHAT, never WHICH EMPLOYEES RESULTED, so neither points at Employee and
-    // neither lengthens the dependency chain. Both carry a company foreign key, which is the only edge
-    // they have and the only ordering claim provable about them.
-    Assert.True(
-      PositionOf(nameof(Company)) < PositionOf("EmployeeImportRun"),
-      "Companies must be copied before import runs: EmployeeImportRun.CompanyId is a foreign key.");
-    Assert.True(
-      PositionOf(nameof(Company)) < PositionOf("EmployeeExportRun"),
-      "Companies must be copied before export runs: EmployeeExportRun.CompanyId is a foreign key.");
-
-    // ---- AND NEITHER RUN RECORD IS ORDERED AGAINST Employee, DELIBERATELY AND PERMANENTLY.
-    //
-    // `data-model.md` predicts they "sort ahead of Employees", and they do — but on the SORT'S TIE-BREAK,
-    // not on a constraint, because there is no path between them. Asserting that order would be green for
-    // the wrong reason, exactly as FP-008 Phase 1 refused to assert Position before Employee before the
-    // foreign key existed. What IS assertable is that no such edge exists in either direction.
-    foreach (var runRecord in new[] { typeof(EmployeeImportRun), typeof(EmployeeExportRun) })
-    {
-      var principals = CutoverTenantModel.Source.Model.FindEntityType(runRecord)!
-        .GetForeignKeys()
-        .Select(key => key.PrincipalEntityType.ShortName())
-        .ToArray();
-
-      Assert.Equal([nameof(Company)], principals);
-    }
-
-    // ---- AND POSITION IS UNORDERED WITH RESPECT TO DEPARTMENT, PERMANENTLY (OD-POS-003).
-    //
-    // Position is independent of Department: no `Position.DepartmentId` exists, so neither can precede the
-    // other for any reason a constraint would enforce. If this ever becomes assertable, something has grown
-    // the second source of truth for an employee's department that `OD-POS-003` refused.
-    Assert.Null(
-      CutoverTenantModel.Source.Model.FindEntityType(typeof(SSAS.HR.Domain.Positions.Position))!
-        .GetForeignKeys()
-        .FirstOrDefault(key => key.PrincipalEntityType.ShortName() == "Department"));
-  }
-
   // ================================================================================================
   // FP-009. THE FIRST `nvarchar(max)` IN THE TENANT MODEL ACTUALLY CROSSES.
   // ================================================================================================
@@ -937,7 +742,7 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
   [Trait("Decision", "ADR-020")]
   public async Task An_export_run_scope_snapshot_crosses_the_cutover_intact()
   {
-    await using var fixture = await CopyFixture.CreateAsync();
+    await using var fixture = await CopyFixture.CreateAsync(template);
     await fixture.SeedCompaniesAsync(fixture.TenantA, 1, "LOB");
 
     var companyId = (await CopyFixture.ReadCompaniesAsync(fixture.SourceCatalog, fixture.TenantA))
@@ -967,137 +772,6 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
     // run, not two, and none for the tenant that stayed.
     Assert.Null(await CopyFixture.ReadExportScopeAsync(fixture.TargetCatalog, fixture.TenantB));
   }
-
-  // ---- C6-14. AND THE OLD, CONTRIBUTOR-FREE MODEL DEMONSTRABLY DOES NOT.
-  //
-  // The regression detector. It proves the fix is load-bearing rather than incidental: without the
-  // contributor set the manifest silently loses every HR table, which is exactly what shipped before this
-  // slice. If these two ever agreed, the composition would have collapsed back and every proof below would
-  // still pass while production quietly lost data again.
-  //
-  // FP-007 Phase 1 made the gap wider rather than different, FP-008 Phase 1 wider again and FP-009 Phase 1
-  // wider once more — eleven HR tables now, not two — which is the point: each new contributed entity
-  // increases what a contributor-free
-  // manifest would silently leave behind.
-  [Fact]
-  [Trait("Decision", "ADR-020")]
-  public void C6_14_A_contributor_free_plan_silently_omits_both_hr_tables()
-  {
-    var composed = TenantCutoverCopyPlan.Build(CutoverTenantModel.Source.Model);
-    var contributorFree = TenantCutoverCopyPlan.Build(CutoverTenantModel.ContributorFreeSource.Model);
-
-    Assert.True(composed.IsSuccess);
-
-    // It SUCCEEDS. That is the danger: an incomplete manifest is not an error, it is a shorter list.
-    Assert.True(contributorFree.IsSuccess);
-
-    Assert.DoesNotContain(contributorFree.Value, table => table.EntityName == nameof(Employee));
-    Assert.DoesNotContain(
-      contributorFree.Value, table => table.EntityName == nameof(EmployeeBranchAssignment));
-    Assert.DoesNotContain(contributorFree.Value, table => table.EntityName == "Department");
-    Assert.DoesNotContain(contributorFree.Value, table => table.EntityName == "DepartmentManager");
-    Assert.DoesNotContain(
-      contributorFree.Value, table => table.EntityName == "EmployeeDepartmentAssignment");
-    Assert.DoesNotContain(contributorFree.Value, table => table.EntityName == "SalaryGrade");
-    Assert.DoesNotContain(contributorFree.Value, table => table.EntityName == "JobGrade");
-    Assert.DoesNotContain(contributorFree.Value, table => table.EntityName == "Position");
-    Assert.DoesNotContain(
-      contributorFree.Value, table => table.EntityName == "EmployeePositionAssignment");
-    Assert.DoesNotContain(contributorFree.Value, table => table.EntityName == "EmployeeImportRun");
-    Assert.DoesNotContain(contributorFree.Value, table => table.EntityName == "EmployeeExportRun");
-
-    // ---- EIGHTEEN MODULE TABLES MISSING, AND ONLY PLATFORM'S COMPANY AND BRANCH LEFT.
-    //
-    // Eleven from HR, SEVEN from GL (FP-011), SEVEN from Payroll (FP-012) and SEVEN from Attendance
-    // (FP-013). The subtraction is written against the composed count
-    // rather than as a literal so the two halves cannot drift: if a module adds a table and forgets this
-    // test, the count on the left moves and the assertion fails, which is the whole point of the guard.
-    Assert.Equal(
-      composed.Value.Count - 32,
-      contributorFree.Value.Count);
-    Assert.Equal(2, contributorFree.Value.Count);
-  }
-
-  // ---- C6-6 / C6-11. DEPENDENCY ORDER, DERIVED FROM FOREIGN KEYS.
-  //
-  // Employee references Company and Branch; the assignment references Employee. Inserting a dependent
-  // before its principal would violate referential integrity with constraints ON, which the engine keeps on
-  // throughout — so the order is a correctness requirement, not a preference.
-  [Fact]
-  [Trait("Decision", "ADR-020")]
-  public void C6_6_Employee_is_ordered_after_company_and_branch_and_history_after_employee()
-  {
-    var plan = TenantCutoverCopyPlan.Build(CutoverTenantModel.Source.Model);
-    Assert.True(plan.IsSuccess);
-
-    var order = plan.Value.Select(table => table.EntityName).ToArray();
-
-    var company = Array.IndexOf(order, nameof(Company));
-    var branch = Array.IndexOf(order, nameof(Branch));
-    var employee = Array.IndexOf(order, nameof(Employee));
-    var history = Array.IndexOf(order, nameof(EmployeeBranchAssignment));
-
-    Assert.True(employee > company, $"Employee must follow Company. Order: {string.Join(", ", order)}");
-    Assert.True(employee > branch, $"Employee must follow Branch. Order: {string.Join(", ", order)}");
-    Assert.True(history > employee, $"History must follow Employee. Order: {string.Join(", ", order)}");
-
-    // ---- AND THE ORDER IS PRODUCED BY THE FK GRAPH, NOT BY THE NAMES.
-    //
-    // "EmployeeBranchAssignments" sorts BEFORE "Employees" alphabetically, so an alphabetical ordering would
-    // place the dependent first. That it does not is the proof the topological sort is doing the work.
-    Assert.True(
-      string.CompareOrdinal("EmployeeBranchAssignments", "Employees") < 0,
-      "The premise of this assertion no longer holds.");
-  }
-
-  // ---- C6-12. THE HISTORY STILL CARRIES NO BRANCH FOREIGN KEY.
-  //
-  // ADR-024 classifies the assignment as company-owned but NOT branch-owned: it names a source and a
-  // destination and belongs to neither. Adding a branch FK would have made the copy ordering marginally
-  // easier to reason about and would have broken that classification, so it was not done — and this records
-  // that the convenience was declined.
-  [Fact]
-  [Trait("Decision", "ADR-024")]
-  public void C6_12_The_assignment_has_no_branch_foreign_key()
-  {
-    var assignment = CutoverTenantModel.Source.Model.FindEntityType(typeof(EmployeeBranchAssignment));
-    Assert.NotNull(assignment);
-
-    var principals = assignment!.GetForeignKeys()
-      .Select(foreignKey => foreignKey.PrincipalEntityType.ClrType.Name)
-      .ToArray();
-
-    Assert.DoesNotContain(nameof(Branch), principals);
-    Assert.Contains(nameof(Employee), principals);
-  }
-
-  // ---- C6-7. ROWVERSION IS NOT CARRIED ACROSS.
-  //
-  // It is the TARGET's concurrency state, generated by the target on insert. Copying the source's bytes
-  // would hand the new database a token describing a different database's history.
-  [Fact]
-  [Trait("Decision", "ADR-020")]
-  public void C6_7_The_employee_rowversion_is_excluded_from_the_copy_projection()
-  {
-    var plan = TenantCutoverCopyPlan.Build(CutoverTenantModel.Source.Model);
-    var employees = Assert.Single(plan.Value, table => table.EntityName == nameof(Employee));
-
-    // A live exclusion: Employee genuinely carries a rowversion, so this is not vacuous.
-    var model = CutoverTenantModel.Source.Model.FindEntityType(typeof(Employee));
-    Assert.Contains(
-      model!.GetProperties(),
-      property => property.IsConcurrencyToken && property.ValueGenerated == ValueGenerated.OnAddOrUpdate);
-
-    Assert.DoesNotContain(nameof(Employee.RowVersion), employees.Columns);
-
-    // The assignment carries none at all — it is append-only and never updated — so there is nothing to
-    // exclude and nothing to transport.
-    var assignments = Assert.Single(
-      plan.Value, table => table.EntityName == nameof(EmployeeBranchAssignment));
-
-    Assert.DoesNotContain("RowVersion", assignments.Columns);
-  }
-
   // ================================================================================================
   // C6-3 / C6-4 / C6-5 / C6-8 / C6-9 / C6-10 — THE REAL CUTOVER.
   // ================================================================================================
@@ -1106,9 +780,16 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
   // database is not. Everything below is read back from the destination database with raw SQL.
   [Fact]
   [Trait("Decision", "ADR-020")]
+  // ⚠ CITED BY 265: `AC-DEP-0049`'s FIRST clause only — *a real cutover CARRIES departments, department
+  // managers, employees and branch history*. The second clause, *source and destination counts agree for
+  // every one of them*, is NOT asserted here for departments or managers: this test's seed leaves both of
+  // those tables EMPTY. It is carried by
+  // `C6_The_department_tables_reconcile_row_for_row_across_a_real_cutover`, and NEITHER CITATION IS HONEST
+  // ALONE — the same rule `AC-DEP-0029` set.
+  [Trait("Criterion", "AC-DEP-0049")]
   public async Task C6_3_To_C6_10_A_real_cutover_carries_the_employee_and_its_whole_history()
   {
-    await using var fixture = await CopyFixture.CreateAsync();
+    await using var fixture = await CopyFixture.CreateAsync(template);
 
     var moving = await fixture.SeedEmployeeStoryAsync(fixture.TenantA, "MOV");
 
@@ -1142,7 +823,7 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
     // terms for Positions and their grades, and FP-009 Phase 1 to thirteen for the two run records — which
     // carry the audit trail of who imported and exported employee data, and would otherwise have been the
     // one thing a promoted tenant could not prove about itself.
-    Assert.Equal(34, copied.Value.TablesCopied);
+    Assert.Equal(35, copied.Value.TablesCopied);
     Assert.Equal(
       [
         "Account",
@@ -1170,6 +851,7 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
         "LeaveBalance",
         "LeaveRequest",
         "LeaveType",
+        "OneOffPayment",
         "PayElement",
         "PayElementAssignment",
         "PayrollPeriod",
@@ -1261,6 +943,80 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
     Assert.Equal(staying.EmployeeId, (await fixture.SourceEmployeesAsync(fixture.TenantB)).Single().EmployeeId);
   }
 
+  // ================================================================================================
+  // AC-DEP-0049's SECOND CLAUSE — THE COUNTS ACTUALLY AGREE, FOR THE DEPARTMENT TABLES
+  // ================================================================================================
+  //
+  // ⚠⚠ THE TEST ABOVE ASSERTS THAT `DepartmentManager` AND `EmployeeDepartmentAssignment` APPEAR IN THE
+  // COPIED-TABLES LIST WHILE BOTH ARE EMPTY AT THE SOURCE. `SeedEmployeeStoryAsync` inserts one Department
+  // and no rows at all in the other two, so no test has ever copied a row of either. The manifest entry is
+  // derived from the model, so it is REAL — and it is not EVIDENCE. A copier that silently dropped every
+  // manager assignment and the entire employee department history passes that test completely, because
+  // `TablesCopied` counts TABLES rather than rows.
+  //
+  // THAT IS THE VACUITY SHAPE ONE LEVEL BELOW THE ASSERTION: the collection is non-empty, the table is
+  // present, and the data the criterion is about does not exist. In production the failure it hides is
+  // silent data loss during a Shared→Dedicated cutover — and it is the history rows, the ones that cannot
+  // be reconstructed afterwards, because the employee row survives and says only where they are NOW.
+  //
+  // THE COUNTS ARE READ FROM THE TWO DATABASES, NEVER FROM THE COPY REPORT, which is the copier's own
+  // account of its own work.
+  //
+  // AND THE CO-TENANT IS SEEDED IDENTICALLY. Without it "the destination holds the right number of rows"
+  // would also be true of a copy that took everything.
+  [Fact]
+  [Trait("Decision", "ADR-020")]
+  // ⚠ CITED BY 265: `AC-DEP-0049`'s SECOND clause — *source and destination counts agree*. Paired with
+  // `C6_3_To_C6_10`, which carries the first. Neither citation is honest alone.
+  [Trait("Criterion", "AC-DEP-0049")]
+  public async Task C6_The_department_tables_reconcile_row_for_row_across_a_real_cutover()
+  {
+    string[] tables = ["Departments", "DepartmentManagers", "EmployeeDepartmentAssignments"];
+
+    await using var fixture = await CopyFixture.CreateAsync(template);
+
+    var moving = await fixture.SeedEmployeeStoryAsync(fixture.TenantA, "RECA");
+    await fixture.SeedDepartmentGraphAsync(fixture.TenantA, moving, "RECA");
+
+    var staying = await fixture.SeedEmployeeStoryAsync(fixture.TenantB, "RECB");
+    await fixture.SeedDepartmentGraphAsync(fixture.TenantB, staying, "RECB");
+
+    var operationId = await fixture.BeginAndFreezeAsync();
+
+    var copied = await fixture.CopyService().CopyAsync(operationId);
+    Assert.True(copied.IsSuccess, copied.IsFailure ? copied.Error.Code : null);
+
+    var source = new Dictionary<string, int>(StringComparer.Ordinal);
+    var target = new Dictionary<string, int>(StringComparer.Ordinal);
+
+    foreach (var table in tables)
+    {
+      source[table] = await fixture.SourceTenantRowsAsync(table, fixture.TenantA);
+      target[table] = await fixture.TargetTenantRowsAsync(table, fixture.TenantA);
+
+      // THE ANTI-VACUITY LEG. Without it every assertion below is satisfied by 0 == 0, which is precisely
+      // the defect this test exists to close. Greater than ONE, not merely non-zero: one row cannot
+      // distinguish a copy from a copy that moved a single row and stopped.
+      Assert.True(
+        source[table] > 1,
+        $"[tenant].[{table}] holds {source[table]} row(s) for the moving tenant, so this test would " +
+        "prove nothing about whether they were carried.");
+    }
+
+    // Compared as DICTIONARIES so a failure names the table that disagrees rather than only a number.
+    Assert.Equal(source, target);
+
+    // ---- AND THE CO-TENANT DID NOT TRAVEL, in the same three tables.
+    foreach (var table in tables)
+    {
+      Assert.True(
+        await fixture.SourceTenantRowsAsync(table, fixture.TenantB) > 1,
+        $"[tenant].[{table}] holds too few co-tenant rows for the leakage control to mean anything.");
+
+      Assert.Equal(0, await fixture.TargetTenantRowsAsync(table, fixture.TenantB));
+    }
+  }
+
   // ---- RESUME. THE HR TABLES PARTICIPATE IN IDEMPOTENT RE-RUN.
   //
   // Cutover copy is resumable: a second run must prove each table already complete rather than duplicate it.
@@ -1269,7 +1025,7 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
   [Trait("Decision", "ADR-020")]
   public async Task C6_Retrying_a_completed_copy_verifies_the_hr_tables_instead_of_duplicating_them()
   {
-    await using var fixture = await CopyFixture.CreateAsync();
+    await using var fixture = await CopyFixture.CreateAsync(template);
     await fixture.SeedEmployeeStoryAsync(fixture.TenantA, "RTY");
     var operationId = await fixture.BeginAndFreezeAsync();
 
@@ -1310,7 +1066,7 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
     // six and the copied count moves 7 -> 14. That asymmetry is the retry's safety claim working: it
     // re-copies what it cannot verify and moves nothing.
     Assert.Equal(6, retried.Value.TablesAlreadyComplete);
-    Assert.Equal(28, retried.Value.TablesCopied);
+    Assert.Equal(29, retried.Value.TablesCopied);
 
     // And the destination still holds exactly one of each, so "already complete" was a verification rather
     // than a shrug.
@@ -1326,7 +1082,7 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
   [Trait("Decision", "ADR-020")]
   public async Task C6_Source_and_destination_counts_agree_for_both_hr_tables()
   {
-    await using var fixture = await CopyFixture.CreateAsync();
+    await using var fixture = await CopyFixture.CreateAsync(template);
     await fixture.SeedEmployeeStoryAsync(fixture.TenantA, "CNT");
     await fixture.SeedEmployeeStoryAsync(fixture.TenantB, "OTH");
     var operationId = await fixture.BeginAndFreezeAsync();
@@ -1358,6 +1114,263 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
 
   // Three real catalogs: the Platform registry, a SHARED source holding two tenants, and a DEDICATED
   // target. The separation is what makes "only tenant A moved" checkable by querying each catalog directly.
+  // ---- ⚠ THE TEMPLATE CARRIES WHAT THE MIGRATIONS PRODUCE AND NOT ONE ROW MORE.
+  //
+  // Twenty tests restore byte-for-byte copies of these two catalogs, so a row in a template is a row in sixty.
+  // **The failure this exists to catch is not that the tests would break — it is that they would NOT:** a
+  // seeding step added here gives every test rows it never created and a suite that passes differently.
+  //
+  // The platform catalog is NOT empty after migrating and never has been. `AddTrialSubscriptionSeed` (T-041,
+  // `DEC-L-034`) writes an all-module trial plan so an existing estate is not locked out when the entitlement
+  // resolver goes live, and `AddLocalizationCore` writes a catalogue state. **These counts were verified
+  // against this class's own template rather than copied from E5's** — same migrations, so the same eleven
+  // rows were expected, but expecting is not knowing and this fixture's shape differs.
+  //
+  // EXACT COUNTS, because a new seeding migration is a DECISION — somebody authoring rows every test inherits
+  // — and it should redden here and be ratified. The table floor below is a FLOOR, because that number moves
+  // as a SIDE EFFECT of unrelated migrations.
+  private static readonly (string Table, int Rows)[] MigrationSeeded =
+  [
+    ("platform.LocalizationCatalogStates", 1),
+    ("platform.ModuleDefinitions", 4),
+    ("platform.SubscriptionPlanModules", 4),
+    ("platform.SubscriptionPlanPrices", 1),
+    ("platform.SubscriptionPlans", 1),
+  ];
+
+  [Fact]
+  public async Task The_template_every_test_restores_from_carries_only_what_the_migrations_wrote()
+  {
+    var platformSeeds = new Dictionary<string, int>(StringComparer.Ordinal);
+    foreach (var (table, rows) in MigrationSeeded)
+    {
+      platformSeeds[table] = rows;
+    }
+
+    // ⚠ THE SEEDS ARE PLATFORM-ONLY, so the tenant template expects an EMPTY set. Applying the platform
+    // expectations to the tenant catalog would report all five as missing and make half this guard
+    // permanently, meaninglessly red.
+    var expectations = new[]
+    {
+      (Catalog: template.TenantTemplateCatalog, Expected: new Dictionary<string, int>(StringComparer.Ordinal)),
+      (Catalog: template.PlatformTemplateCatalog, Expected: platformSeeds),
+    };
+
+    foreach (var (catalog, expected) in expectations)
+    {
+      var counts = await CopyCatalogTemplate.RowCountsAsync(catalog);
+
+      // ⚠ ANTI-VACUITY. A catalog with no tables satisfies "nothing unexpected has rows" perfectly, so the
+      // checks below are worthless without evidence the schema is really there.
+      Assert.True(counts.Count >= 30,
+        $"{catalog} reports only {counts.Count} tables, so this guard is inspecting an empty or " +
+        "half-restored catalog rather than the migrated schema.");
+
+      var unexpected = counts
+        .Where(entry => entry.Value > 0
+          && !entry.Key.EndsWith("__EFMigrationsHistory", StringComparison.Ordinal)
+          && !expected.ContainsKey(entry.Key))
+        .OrderBy(entry => entry.Key, StringComparer.Ordinal)
+        .ToArray();
+
+      Assert.True(unexpected.Length == 0,
+        $"the {catalog} template carries rows every test would inherit and no migration wrote: " +
+        string.Join(", ", unexpected.Select(entry => $"{entry.Key}={entry.Value}")) +
+        ". The template must carry only migration output — move the seeding into the fixture that needs it.");
+
+      // ⚠ ITERATES `expected`, NOT THE POPULATED TABLES. Written the other way it reads only tables that
+      // still have rows, so a seed falling to ZERO drops out of the collection and fires nothing — and a
+      // seeded table silently emptying is precisely what this must catch. Absent counts as zero.
+      var drifted = expected
+        .Where(entry => counts.GetValueOrDefault(entry.Key, 0) != entry.Value)
+        .Select(entry => new { entry.Key, Found = counts.GetValueOrDefault(entry.Key, 0) })
+        .OrderBy(entry => entry.Key, StringComparer.Ordinal)
+        .ToArray();
+
+      Assert.True(drifted.Length == 0,
+        $"a migration-seeded table in {catalog} changed row count: " +
+        string.Join(", ", drifted.Select(entry =>
+          $"{entry.Key} expected {expected[entry.Key]} but found {entry.Found}")) +
+        ". Ratify the new seed by updating MigrationSeeded, having checked what every test now inherits.");
+    }
+  }
+
+  // ================================================================================================
+  // THE MIGRATED SCHEMA, BUILT ONCE PER CLASS AND HANDED OUT AS TWO BACKUP DEVICES.
+  // ================================================================================================
+  //
+  // Created once by xUnit before the first test and disposed after the last. It holds no tenant state and
+  // nothing a test can mutate: after `InitializeAsync` the devices are only ever read.
+  public sealed class CopyCatalogTemplate : IAsyncLifetime
+  {
+    private readonly string token = Guid.NewGuid().ToString("N")[..12];
+    private readonly List<string> catalogs = [];
+
+    public string TenantDevice { get; private set; } = string.Empty;
+
+    public string PlatformDevice { get; private set; } = string.Empty;
+
+    public string TenantTemplateCatalog { get; private set; } = string.Empty;
+
+    public string PlatformTemplateCatalog { get; private set; } = string.Empty;
+
+    public string DataPath { get; private set; } = string.Empty;
+
+    public string LogPath { get; private set; } = string.Empty;
+
+    public async Task InitializeAsync()
+    {
+      // Reachable by BOTH the test process (which creates the folder) and the SQL Server service identity
+      // (which writes the backup into it) — the asymmetry ADR-022 §11 describes.
+      var backupRoot = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "SSAS_BackupTests");
+      Directory.CreateDirectory(backupRoot);
+
+      TenantTemplateCatalog = $"SSAS_E3_TplTenant_{token}";
+      PlatformTemplateCatalog = $"SSAS_E3_TplPlatform_{token}";
+      TenantDevice = Path.Combine(backupRoot, $"SSAS_E3_Tpl_{token}_tenant.bak");
+      PlatformDevice = Path.Combine(backupRoot, $"SSAS_E3_Tpl_{token}_platform.bak");
+
+      DataPath = await ScalarAsync(
+        "SELECT CAST(SERVERPROPERTY('InstanceDefaultDataPath') AS nvarchar(400))") ?? string.Empty;
+      LogPath = await ScalarAsync(
+        "SELECT CAST(SERVERPROPERTY('InstanceDefaultLogPath') AS nvarchar(400))") ?? string.Empty;
+
+      foreach (var catalog in new[] { TenantTemplateCatalog, PlatformTemplateCatalog })
+      {
+        await ExecuteAsync("master", $"CREATE DATABASE [{catalog}]");
+        catalogs.Add(catalog);
+      }
+
+      await using (var tenant = TenantContext(TenantTemplateCatalog))
+      {
+        await tenant.Database.MigrateAsync();
+      }
+
+      await using (var platform = TemplatePlatformContext(PlatformTemplateCatalog))
+      {
+        await platform.Database.MigrateAsync();
+      }
+
+      await ExecuteAsync("master",
+        $"BACKUP DATABASE [{TenantTemplateCatalog}] TO DISK = N'{TenantDevice}' " +
+        "WITH INIT, COPY_ONLY, CHECKSUM");
+      await ExecuteAsync("master",
+        $"BACKUP DATABASE [{PlatformTemplateCatalog}] TO DISK = N'{PlatformDevice}' " +
+        "WITH INIT, COPY_ONLY, CHECKSUM");
+    }
+
+    public async Task DisposeAsync()
+    {
+      foreach (var catalog in catalogs)
+      {
+        try
+        {
+          await ExecuteAsync("master",
+            $"IF DB_ID(N'{catalog}') IS NOT NULL BEGIN " +
+            $"ALTER DATABASE [{catalog}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; " +
+            $"DROP DATABASE [{catalog}]; END");
+        }
+        catch (SqlException error)
+        {
+          TestCatalogJanitor.RecordLeak(catalog, error);
+        }
+      }
+
+      foreach (var device in new[] { TenantDevice, PlatformDevice })
+      {
+        try
+        {
+          if (!string.IsNullOrWhiteSpace(device) && File.Exists(device))
+          {
+            File.Delete(device);
+          }
+        }
+        catch (IOException)
+        {
+          // A left-behind backup file is not a leaked catalog and must not fail a passing run.
+        }
+      }
+    }
+
+    // ⚠ ONE CONNECTION FOR ALL ~37 COUNTS. Fixtures here resolve with `Pooling = false` deliberately — a
+    // pooled connection outlives its test and can hold a catalog open against `DROP DATABASE` — so every
+    // open is a real handshake. Opening one per table cost 63 s when this was first written in E5.
+    public static async Task<Dictionary<string, int>> RowCountsAsync(string catalog)
+    {
+      await using var connection = new SqlConnection(ConnectionFor(catalog));
+      await connection.OpenAsync();
+
+      var tables = new List<(string Schema, string Name)>();
+      await using (var command = connection.CreateCommand())
+      {
+        command.CommandText =
+          "SELECT SCHEMA_NAME([schema_id]), [name] FROM sys.tables ORDER BY [name]";
+        command.CommandTimeout = 600;
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+          tables.Add((reader.GetString(0), reader.GetString(1)));
+        }
+      }
+
+      var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+      foreach (var (schema, name) in tables)
+      {
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"SELECT COUNT(*) FROM [{schema}].[{name}]";
+        command.CommandTimeout = 600;
+        counts[$"{schema}.{name}"] =
+          Convert.ToInt32(await command.ExecuteScalarAsync(), CultureInfo.InvariantCulture);
+      }
+
+      return counts;
+    }
+
+    private static TenantDbContext TenantContext(string catalog)
+    {
+      var options = new DbContextOptionsBuilder<TenantDbContext>()
+        .UseSqlServer(ConnectionFor(catalog), sql => sql.MigrationsHistoryTable(
+          TenantPersistenceConstants.MigrationHistoryTable,
+          TenantPersistenceConstants.MigrationHistorySchema))
+        .Options;
+      return new TenantDbContext(options, new TestUser(), new TestTenant(null), new TestClock());
+    }
+
+    private static PlatformDbContext TemplatePlatformContext(string catalog)
+    {
+      var options = new DbContextOptionsBuilder<PlatformDbContext>()
+        .UseSqlServer(ConnectionFor(catalog),
+          sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "platform"))
+        .Options;
+      return new PlatformDbContext(options, new TestUser(), new TestTenant(null), new TestClock());
+    }
+
+    private static string ConnectionFor(string catalog) =>
+      new SqlConnectionStringBuilder(IntegrationSqlEnvironment.BaseConnectionString)
+      { InitialCatalog = catalog, Pooling = false }.ConnectionString;
+
+    private static async Task ExecuteAsync(string catalog, string sql)
+    {
+      await using var connection = new SqlConnection(ConnectionFor(catalog));
+      await connection.OpenAsync();
+      await using var command = connection.CreateCommand();
+      command.CommandText = sql;
+      command.CommandTimeout = 600;
+      await command.ExecuteNonQueryAsync();
+    }
+
+    private static async Task<string?> ScalarAsync(string sql, string catalog = "master")
+    {
+      await using var connection = new SqlConnection(ConnectionFor(catalog));
+      await connection.OpenAsync();
+      await using var command = connection.CreateCommand();
+      command.CommandText = sql;
+      command.CommandTimeout = 600;
+      return (await command.ExecuteScalarAsync())?.ToString();
+    }
+  }
+
   private sealed class CopyFixture : IAsyncDisposable
   {
     private const string ServerKey = "PrimarySqlServer";
@@ -1387,12 +1400,13 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
 
     public string PlatformConnectionString => ConnectionFor(platformCatalog);
 
-    public static async Task<CopyFixture> CreateAsync(bool migrateTarget = true)
+    public static async Task<CopyFixture> CreateAsync(
+      CopyCatalogTemplate template, bool migrateTarget = true)
     {
       var fixture = new CopyFixture();
       try
       {
-        await fixture.InitialiseAsync(migrateTarget);
+        await fixture.InitialiseAsync(template, migrateTarget);
         return fixture;
       }
       catch
@@ -1402,33 +1416,43 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
       }
     }
 
-    private async Task InitialiseAsync(bool migrateTarget)
+    private async Task InitialiseAsync(CopyCatalogTemplate template, bool migrateTarget)
     {
       platformCatalog = $"SSAS_E3_Platform_{token}";
       SourceCatalog = $"SSAS_E3_Shared_{token}";
       TargetCatalog = $"SSAS_E3_Dedicated_{token}";
       freeze.WriteAdmissionTimeout = TimeSpan.FromSeconds(2);
 
-      foreach (var catalog in new[] { platformCatalog, SourceCatalog, TargetCatalog })
-      {
-        await ExecuteAsync("master", $"CREATE DATABASE [{catalog}]");
-      }
+      await RestoreAsync(template.PlatformDevice, platformCatalog, template);
+      await RestoreAsync(template.TenantDevice, SourceCatalog, template);
 
-      await MigrateTenantAsync(SourceCatalog);
+      // ⚠ `migrateTarget: false` MEANS A CATALOG WITH NO SCHEMA, AND THAT IS THE SUBJECT OF A TEST.
+      //
+      // `An_unmigrated_target_refuses_the_copy_rather_than_migrating_itself` proves the copy refuses a target
+      // that was never prepared. **Restoring the template here would give that test a fully migrated target
+      // and it would keep passing — for a reason that no longer exists.** A fixture's job is not to produce a
+      // good state, it is to produce the state the test NAMES, and here the good state is the wrong one.
       if (migrateTarget)
       {
-        await MigrateTenantAsync(TargetCatalog);
+        await RestoreAsync(template.TenantDevice, TargetCatalog, template);
+      }
+      else
+      {
+        await ExecuteAsync("master", $"CREATE DATABASE [{TargetCatalog}]");
       }
 
       storage.Servers[ServerKey] = new TenantStorageServerOptions { ConnectionString = Configured() };
 
       await using var platform = PlatformContext();
-      await platform.Database.MigrateAsync();
 
       SourceDatabaseId = await RegisterAsync(
         platform, TenantDatabaseStorageMode.Shared, SourceCatalog);
       TargetDatabaseId = await RegisterAsync(
         platform, TenantDatabaseStorageMode.Dedicated, TargetCatalog);
+      // REGISTERED BUT NEVER CREATED, AND THAT IS CORRECT. Only `A_source_the_tenant_no_longer_routes_to…`
+      // uses it, to repoint the tenant's assignment at a DIFFERENT database so the copy meets endpoint drift.
+      // The copy refuses at the eligibility check before it would ever open a connection, so the catalog
+      // behind this registration is never needed — creating it would add a database per test for nothing.
       SecondSharedDatabaseId = await RegisterAsync(
         platform, TenantDatabaseStorageMode.Shared, $"SSAS_E3_SharedTwo_{token}");
 
@@ -1436,18 +1460,6 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
       TenantB = await SeedTenantAsync(platform, "E3BBB");
     }
 
-    private static async Task MigrateTenantAsync(string catalog)
-    {
-      await using var connection = new SqlConnection(ConnectionFor(catalog));
-      var options = new DbContextOptionsBuilder<TenantDbContext>()
-        .UseSqlServer(connection, sql => sql.MigrationsHistoryTable(
-          TenantPersistenceConstants.MigrationHistoryTable,
-          TenantPersistenceConstants.MigrationHistorySchema))
-        .Options;
-      await using var context = new TenantDbContext(
-        options, new TestUser(), new TestTenant(null), new TestClock());
-      await context.Database.MigrateAsync();
-    }
 
     private static async Task<long> RegisterAsync(
       PlatformDbContext platform, TenantDatabaseStorageMode storageMode, string databaseName)
@@ -1705,6 +1717,95 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
       }
 
       await command.ExecuteNonQueryAsync();
+    }
+
+    // ---- THE DEPARTMENT GRAPH, SEEDED ON TOP OF A STORY AND NEVER INSIDE IT (`AC-DEP-0049`, 265).
+    //
+    // ⚠ THIS IS DELIBERATELY NOT PART OF `SeedEmployeeStoryAsync`. Five tests share that seed, one of them
+    // the co-tenant LEAKAGE CONTROL. Adding manager and department-history rows there would silently
+    // re-scope all five: the control would begin making a claim about manager leakage that nobody wrote,
+    // nobody reviewed and nobody planted for -- and it would be green either way, so nothing would say
+    // which claim it was making. `TablesCopied == 35` would also need re-deriving.
+    //
+    // MORE THAN ONE ROW IN EVERY TABLE, because a single row cannot tell COPIED from COPIED ONE.
+    public async Task SeedDepartmentGraphAsync(Guid tenantId, EmployeeStory story, string prefix)
+    {
+      // Two ADDITIONAL departments, so this tenant holds three including the story's own.
+      var second = Guid.NewGuid();
+      var third = Guid.NewGuid();
+
+      foreach (var (departmentId, code) in new[] { (second, $"{prefix}D2"), (third, $"{prefix}D3") })
+      {
+        await ExecuteAsync(SourceCatalog, $"""
+          INSERT INTO [tenant].[Departments]
+            ([DepartmentId], [TenantId], [CompanyId], [Code], [NormalizedCode], [Name], [NormalizedName],
+             [ParentDepartmentId], [Status], [StatusChangedUtc], [StatusChangedBy], [CreatedUtc],
+             [CreatedBy], [ModifiedUtc], [ModifiedBy])
+          VALUES
+            ('{departmentId}', '{tenantId}', '{story.CompanyId}', N'{code}', N'{code}',
+             N'Department {code}', N'DEPARTMENT {code}', NULL, N'Active', SYSDATETIMEOFFSET(), N'{Actor}',
+             SYSDATETIMEOFFSET(), N'{Actor}', SYSDATETIMEOFFSET(), N'{Actor}');
+          """);
+      }
+
+      // TWO MANAGER ROWS. The primary key is the DepartmentId, so two managers means two DEPARTMENTS
+      // managed by this employee rather than two managers of one department.
+      foreach (var departmentId in new[] { story.DepartmentId, second })
+      {
+        await ExecuteAsync(SourceCatalog, $"""
+          INSERT INTO [tenant].[DepartmentManagers]
+            ([DepartmentId], [TenantId], [CompanyId], [EmployeeId], [AssignedUtc], [AssignedBy],
+             [CreatedUtc], [CreatedBy], [ModifiedUtc], [ModifiedBy])
+          VALUES
+            ('{departmentId}', '{tenantId}', '{story.CompanyId}', '{story.EmployeeId}',
+             SYSDATETIMEOFFSET(), N'{Actor}', SYSDATETIMEOFFSET(), N'{Actor}', SYSDATETIMEOFFSET(),
+             N'{Actor}');
+          """);
+      }
+
+      // THREE HISTORY ROWS: the initial placement, which has no source, and two moves. This is the record
+      // that cannot be reconstructed if a cutover drops it -- the employee's row survives and says only
+      // where they are NOW.
+      foreach (var (source, destination) in new (Guid?, Guid)[]
+      {
+        (null, story.DepartmentId),
+        (story.DepartmentId, second),
+        (second, third)
+      })
+      {
+        await ExecuteAsync(SourceCatalog, $"""
+          INSERT INTO [tenant].[EmployeeDepartmentAssignments]
+            ([EmployeeDepartmentAssignmentId], [TenantId], [CompanyId], [EmployeeId],
+             [SourceDepartmentId], [DestinationDepartmentId], [EffectiveFromUtc], [ChangedBy],
+             [CreatedUtc], [CreatedBy])
+          VALUES
+            ('{Guid.NewGuid()}', '{tenantId}', '{story.CompanyId}', '{story.EmployeeId}',
+             {(source is null ? "NULL" : $"'{source}'")}, '{destination}', SYSDATETIMEOFFSET(),
+             N'{Actor}', SYSDATETIMEOFFSET(), N'{Actor}');
+          """);
+      }
+    }
+
+    // ---- ONE TENANT'S ROWS IN ONE TABLE, ON EITHER SIDE.
+    //
+    // The reconciliation `AC-DEP-0049` asks for is a comparison of TWO DATABASES. It cannot be served by
+    // the copy report: that is the copier's own account of what it did, and asking it whether it copied
+    // everything is asking the subject to mark its own work.
+    public Task<int> SourceTenantRowsAsync(string table, Guid tenantId) =>
+      TenantRowsAsync(SourceCatalog, table, tenantId);
+
+    public Task<int> TargetTenantRowsAsync(string table, Guid tenantId) =>
+      TenantRowsAsync(TargetCatalog, table, tenantId);
+
+    private static async Task<int> TenantRowsAsync(string catalog, string table, Guid tenantId)
+    {
+      await using var connection = new SqlConnection(ConnectionFor(catalog));
+      await connection.OpenAsync();
+      await using var command = connection.CreateCommand();
+      command.CommandText = $"SELECT COUNT(*) FROM [tenant].[{table}] WHERE [TenantId] = @TenantId";
+      command.Parameters.AddWithValue("@TenantId", tenantId);
+
+      return Convert.ToInt32(await command.ExecuteScalarAsync(), CultureInfo.InvariantCulture);
     }
 
     public Task<IReadOnlyList<EmployeeRow>> SourceEmployeesAsync(Guid? tenantId) =>
@@ -2219,6 +2320,37 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
       new SqlConnectionStringBuilder(Configured()) { InitialCatalog = catalog, Pooling = false }
         .ConnectionString;
 
+    // One catalog restored from a template device. The backup carries the template's LOGICAL file names, so
+    // every copy must MOVE them to physical paths of its own or the second restore collides with the first.
+    private static async Task RestoreAsync(string device, string catalog, CopyCatalogTemplate template)
+    {
+      var files = new List<(string Logical, string Type)>();
+      await using (var connection = new SqlConnection(ConnectionFor("master")))
+      {
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"RESTORE FILELISTONLY FROM DISK = N'{device}'";
+        command.CommandTimeout = 600;
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+          files.Add((reader.GetString(reader.GetOrdinal("LogicalName")),
+            reader.GetString(reader.GetOrdinal("Type"))));
+        }
+      }
+
+      var moves = files.Select((file, index) =>
+      {
+        var isLog = file.Type.Equals("L", StringComparison.OrdinalIgnoreCase);
+        var root = isLog ? template.LogPath : template.DataPath;
+        var extension = isLog ? ".ldf" : ".mdf";
+        return $"MOVE N'{file.Logical}' TO N'{Path.Combine(root, $"{catalog}_{index}{extension}")}'";
+      });
+
+      await ExecuteAsync("master",
+        $"RESTORE DATABASE [{catalog}] FROM DISK = N'{device}' WITH {string.Join(", ", moves)}, RECOVERY");
+    }
+
     private static async Task ExecuteAsync(string catalog, string sql)
     {
       await using var connection = new SqlConnection(ConnectionFor(catalog));
@@ -2309,7 +2441,6 @@ public sealed class TenantCutoverCopySqlServerTests(ITestOutputHelper output)
     public string? UserId => "cutover-copy-tests";
     public string? UserName => null;
     public string? Email => null;
-    public Guid? CompanyId => null;
     public string? SessionId => null;
     public string? TokenId => null;
     public IReadOnlyCollection<string> Roles => [];

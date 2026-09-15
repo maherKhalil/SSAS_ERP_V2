@@ -74,6 +74,63 @@ internal sealed class PayElementRepository(ITenantDbContextAccessor contextAcces
   }
 }
 
+internal sealed class OneOffPaymentRepository(ITenantDbContextAccessor contextAccessor)
+  : IOneOffPaymentRepository
+{
+  // UNCONSUMED ONLY. The consumption rule lives here and in the aggregate, and nowhere else — a handler that
+  // loaded everything and filtered would be a third place for it to drift.
+  public async Task<IReadOnlyList<OneOffPayment>> GetUnconsumedForPeriodAsync(
+    Guid companyId, Guid payrollPeriodId, CancellationToken cancellationToken = default)
+  {
+    var context = await contextAccessor.GetRequiredAsync(cancellationToken);
+
+    // ---- CONSUMED MEANS AN APPROVED, **UNREVERSED** RUN HOLDS IT (T-123).
+    //
+    // T-110 ruled this predicate and could not implement it: a reversal wrote nothing on the run, so
+    // "unreversed" was not a question Payroll's own data could answer. **T-112 added `ReversedUtc`, and this
+    // is the ruling becoming implementable rather than a new decision.**
+    //
+    // ---- IT IS A JOIN, NOT A RESET, AND THAT IS THE WHOLE DESIGN.
+    //
+    // The alternative was clearing `ConsumedByPayrollRunId` when a run is reversed. **That destroys the
+    // record of which run paid it** — the reason T-110 chose a reference over a boolean was that *"every
+    // payroll question about a payment is which run"* — **and it is a second write that can fail after the
+    // reversal has already posted to the ledger.**
+    //
+    // **Derived, so there is no state to get out of step.** A reversed run stops satisfying the predicate on
+    // its own, exactly as the ruling described.
+    var reversedRuns = context.Set<PayrollRun>()
+      .Where(run => run.ReversedUtc != null)
+      .Select(run => (Guid?)run.Id);
+
+    return await context.Set<OneOffPayment>()
+      .Where(payment => payment.CompanyId == companyId
+        && payment.PayrollPeriodId == payrollPeriodId
+        && (payment.ConsumedByPayrollRunId == null
+          || reversedRuns.Contains(payment.ConsumedByPayrollRunId)))
+      .OrderBy(payment => payment.EmployeeId)
+      .ThenBy(payment => payment.Id)
+      .ToListAsync(cancellationToken);
+  }
+
+  public async Task<OneOffPayment?> GetByIdAsync(
+    Guid oneOffPaymentId, CancellationToken cancellationToken = default)
+  {
+    var context = await contextAccessor.GetRequiredAsync(cancellationToken);
+
+    return await context.Set<OneOffPayment>()
+      .FirstOrDefaultAsync(payment => payment.Id == oneOffPaymentId, cancellationToken);
+  }
+
+  public async Task AddAsync(OneOffPayment payment, CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(payment);
+
+    var context = await contextAccessor.GetRequiredAsync(cancellationToken);
+    await context.Set<OneOffPayment>().AddAsync(payment, cancellationToken);
+  }
+}
+
 internal sealed class EmployeeCompensationRepository(ITenantDbContextAccessor contextAccessor)
   : IEmployeeCompensationRepository
 {
@@ -188,9 +245,14 @@ internal sealed class PayrollRunRepository(ITenantDbContextAccessor contextAcces
   {
     var context = await contextAccessor.GetRequiredAsync(cancellationToken);
 
+    // UNREVERSED ONLY (T-112). A reversed run no longer claims the period — that is what `OD-PAY-0011`'s
+    // option 1 means, and until now this matched any run in any state and refused the rerun half of
+    // reverse-and-rerun. The filtered unique index states the same rule to SQL Server.
     return await context.Set<PayrollRun>()
       .AnyAsync(
-        run => run.CompanyId == companyId && run.PayrollPeriodId == payrollPeriodId,
+        run => run.CompanyId == companyId
+          && run.PayrollPeriodId == payrollPeriodId
+          && run.ReversedUtc == null,
         cancellationToken);
   }
 
@@ -200,5 +262,27 @@ internal sealed class PayrollRunRepository(ITenantDbContextAccessor contextAcces
 
     var context = await contextAccessor.GetRequiredAsync(cancellationToken);
     await context.Set<PayrollRun>().AddAsync(run, cancellationToken);
+  }
+
+  // See the port for why this exists: the platform sets every foreign key to `Restrict` AFTER the module
+  // configurations run, so an orphaned draft line is a row nothing deletes and the save fails.
+  //
+  // Called BEFORE `SetCalculation` clears the collection. Removing them afterwards would mean EF's
+  // navigation fixer had already seen the severance and already tried to null a non-nullable foreign key —
+  // which is the exact failure this method exists to prevent, arriving one step earlier.
+  public async Task RemoveDraftLinesAsync(PayrollRun run, CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(run);
+
+    if (run.DraftLines.Count == 0)
+    {
+      return;
+    }
+
+    var context = await contextAccessor.GetRequiredAsync(cancellationToken);
+
+    // Materialized before RemoveRange: the navigation and the tracker are the same objects, and removing
+    // from one while enumerating the other is how this becomes an intermittent bug instead of a fixed one.
+    context.Set<PayrollRunDraftLine>().RemoveRange([.. run.DraftLines]);
   }
 }

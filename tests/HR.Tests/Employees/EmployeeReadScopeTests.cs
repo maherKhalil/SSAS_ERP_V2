@@ -1,4 +1,5 @@
-﻿using SSAS.BuildingBlocks.Application.Abstractions.Identity;
+using System.Reflection;
+using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Pagination;
 using SSAS.BuildingBlocks.Domain;
@@ -46,6 +47,9 @@ public sealed class EmployeeReadScopeTests
   // company and branch in the tenant — and grants NO operation. An administrator who was never given the HR
   // permission cannot read an employee, and the scope they would have had is irrelevant to that.
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: the administrator alone is refused with `ReadPermissionDenied` -- "grants scope, NEVER operations",
+  // which is the whole of the criterion's second half.
+  [Trait("Criterion", "AC-EMP-0041")]
   public async Task Tenant_administration_does_not_grant_the_employee_read()
   {
     var resolver = Resolver(
@@ -190,6 +194,9 @@ public sealed class EmployeeReadScopeTests
   // Unauthorized, inactive and nonexistent are indistinguishable, so the read cannot be used to probe for
   // the existence of a branch identifier.
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: ⚠ `Assert.Equal(unauthorized.Error, unknown.Error)` -- the criterion's word is IDENTICAL, and this
+  // asserts the two errors are the SAME rather than merely both failures.
+  [Trait("Criterion", "AC-EMP-0028")]
   public async Task An_unknown_branch_is_refused_identically_to_an_unauthorized_one()
   {
     var unauthorized = await Resolver(branches: [BranchA]).ResolveAsync(new EmployeeScopeRequest(
@@ -216,7 +223,18 @@ public sealed class EmployeeReadScopeTests
     Assert.Equal([BranchA, BranchB, BranchC], scope.Value.Branches.BranchIds);
   }
 
+  // ---- ⚠⚠ CITED FOR `AC-DOC-0012`'s SECOND CLAUSE: *"An empty authorized branch set answers `403`, not
+  // an unfiltered file."* `EmployeeErrors.BranchScopeDenied` maps to `new(403, "branch.scope_denied")` in
+  // `EmployeeApiErrorMapper` — checked in the EMPLOYEE mapper, not the department one, which defines a
+  // same-shaped 403 and would have been the convincing wrong answer.
+  //
+  // ⚠⚠⚠ THIS TEST CARRIES MORE WEIGHT THAN ITS COMPANY TWIN ABOVE, AND THE ASYMMETRY IS MEASURED:
+  // ***`AuthorizedCompanyScope.Create` THROWS ON AN EMPTY LIST; `AuthorizedBranchScope.Create` DOES NOT.***
+  // The branch type's comment says *"NEVER EMPTY, and never writeable"* — **never-writeable is enforced by
+  // the type, never-empty is enforced only by this refusal happening first.** *So the company half of the
+  // criterion is protected twice and the branch half is protected here alone.*
   [Fact]
+  [Trait("Criterion", "AC-DOC-0012")]
   public async Task An_empty_authorized_branch_set_refuses_the_read()
   {
     var resolver = Resolver(branches: []);
@@ -343,6 +361,8 @@ public sealed class EmployeeReadScopeTests
   // Out of scope and nonexistent give the same answer, so the read cannot confirm that an employee exists
   // in a company or branch the caller cannot reach.
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: an out-of-scope employee returns `EmployeeErrors.NotFound`.
+  [Trait("Criterion", "AC-EMP-0028")]
   public async Task An_employee_outside_the_scope_is_reported_as_not_found()
   {
     var handler = new GetEmployeeQueryHandler(Resolver(), new RecordingReadService());
@@ -351,6 +371,128 @@ public sealed class EmployeeReadScopeTests
 
     Assert.True(result.IsFailure);
     Assert.Equal(EmployeeErrors.NotFound, result.Error);
+  }
+
+  // ================================================================================================
+  // AN EMPLOYEE THAT EXISTS AND IS OUT OF SCOPE, WHICH IS THE CASE THE SIBLING ABOVE CANNOT CONSTRUCT
+  // ================================================================================================
+  //
+  // ---- WHY THIS EXISTS ALONGSIDE `An_employee_outside_the_scope_is_reported_as_not_found`.
+  //
+  // That test passes `new GetEmployeeQuery(Guid.NewGuid())` to `RecordingReadService`, whose
+  // `GetEmployeeAsync` returns `null` unconditionally. ***A RANDOM IDENTIFIER IS NOT AN OUT-OF-SCOPE
+  // IDENTIFIER***, and no fixture in it distinguishes the two: a read service with the company predicate
+  // deleted passes it unchanged. It asserts that an employee NOBODY can see is `NotFound`, which is true
+  // and is not the clause its name states.
+  //
+  // This one constructs the case the name promises: an employee that EXISTS, in a company the caller
+  // cannot reach, and asserts the answer is byte-identical to the answer for one that does not exist at
+  // all. Absence and inaccessibility must be the same word, or the read is an existence oracle.
+  //
+  // ---- THE FOURTH ARM IS THE WHOLE TEST, AND WITHOUT IT THIS IS THE SIBLING AGAIN.
+  //
+  // A double that returned `null` for everything would satisfy arms 1 to 3 perfectly. ***ARM 4 ASKS FOR
+  // THE SAME EMPLOYEE UNDER A SCOPE THAT ADMITS THEIR COMPANY AND REQUIRES A SUCCESS*** — the same record,
+  // a different caller, a different outcome. That is what makes arm 1's failure attributable to the SCOPE
+  // rather than to the fixture having nothing to give. It is the widening control that
+  // `DepartmentApplicationSqlServerTests.A_department_member_count_includes_only_employees_inside_the_
+  // callers_scope` uses for the same reason, and the discipline the Attendance third-code control names:
+  // the discriminating answer must come from the code under test, never from the double.
+  //
+  // ---- WHAT THIS DOES NOT PROVE, STATED SO NOBODY READS IT WIDER.
+  //
+  // `ScopedReads` below applies the company predicate BECAUSE THIS TEST WRITES IT. That mirrors
+  // `EmployeeReadService.Scoped` — `.Where(employee => scope.Companies.CompanyIds.Contains(…))`, applied
+  // before the identifier — but it does not verify it. ***WHETHER THE SHIPPED SQL COMPOSES THAT PREDICATE
+  // IS `Integration.Tests`' QUESTION*** and is answered there by `R1_R3` (the generated command text) and
+  // `R9` (a sibling company in the same branch, with a raw-table count separating exclusion from absence).
+  // What is proven HERE is the handler's half: given a scope that excludes the row, the caller is told
+  // nothing that distinguishes it from absence.
+  [Fact]
+  public async Task An_employee_that_exists_outside_the_scope_is_answered_exactly_as_a_nonexistent_one()
+  {
+    var employeeId = Guid.NewGuid();
+    var reads = new ScopedReads(employeeId, CompanyB, BranchA);
+
+    // ⚠ THE CALLER IS AUTHORIZED FOR BOTH COMPANIES AND HAS SELECTED CompanyA, WHICH IS THE WHOLE POINT
+    // OF THE SETUP. Using a company the caller cannot reach AT ALL would make this pass under a resolver
+    // that widened `CurrentCompany` to every authorized company — the exact regression `ADR-025` decision
+    // 10 forbids for an identifier lookup. Authorized-but-not-selected is the state that discriminates.
+    static EmployeeScopeResolver Caller() => Resolver(selectedCompany: CompanyA, companies: [CompanyA, CompanyB]);
+
+    // 1. The employee EXISTS, in CompanyB, and the caller has CompanyA established.
+    var outOfScope = await new GetEmployeeQueryHandler(Caller(), reads)
+      .HandleAsync(new GetEmployeeQuery(employeeId));
+
+    // 2. The same caller asks for an identifier that exists nowhere.
+    var nonexistent = await new GetEmployeeQueryHandler(Caller(), reads)
+      .HandleAsync(new GetEmployeeQuery(Guid.NewGuid()));
+
+    Assert.True(outOfScope.IsFailure);
+    Assert.True(nonexistent.IsFailure);
+
+    // 3. INDISTINGUISHABLE. Not "both are NotFound" — the SAME error, so no future divergence can open a
+    //    channel here without reddening this line.
+    Assert.Equal(nonexistent.Error, outOfScope.Error);
+    Assert.Equal(EmployeeErrors.NotFound, outOfScope.Error);
+
+    // 4. THE CONTROL. Same employee, same double, a caller whose company admits them: SUCCESS.
+    //    If this ever fails, arms 1 to 3 are vacuous and this test is proving nothing.
+    var inScope = await new GetEmployeeQueryHandler(
+        Resolver(selectedCompany: CompanyB, companies: [CompanyB]), reads)
+      .HandleAsync(new GetEmployeeQuery(employeeId));
+
+    Assert.True(inScope.IsSuccess, inScope.IsFailure ? inScope.Error.Code : null);
+    Assert.Equal(employeeId, inScope.Value.EmployeeId);
+    Assert.Equal(CompanyB, inScope.Value.CompanyId);
+  }
+
+  // A read service FAITHFUL ON THE COMPANY AXIS — it holds one employee and applies the caller's company
+  // scope to it, which is the one behaviour `RecordingReadService` cannot express. Deliberately mirrors the
+  // shipped composition order in `EmployeeReadService`: the SCOPE is applied first and the identifier last.
+  private sealed class ScopedReads(Guid employeeId, Guid companyId, Guid branchId) : IEmployeeReadService
+  {
+    public Task<EmployeeDetail?> GetEmployeeAsync(
+      EmployeeReadScope scope, Guid requestedId, CancellationToken cancellationToken = default)
+    {
+      if (!scope.Companies.CompanyIds.Contains(companyId) || requestedId != employeeId)
+      {
+        return Task.FromResult<EmployeeDetail?>(null);
+      }
+
+      return Task.FromResult<EmployeeDetail?>(new EmployeeDetail(
+        employeeId, companyId, branchId,
+        new EmployeeDepartmentSummary(Guid.NewGuid(), "FIN", "Finance"),
+        "EMP-00147", "Layla Haddad", null,
+        new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero), null,
+        EmployeeStatus.Active, EmployeeStatusChangeReason.Created,
+        new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero), [0, 0, 0, 0, 0, 0, 7, 209]));
+    }
+
+    public Task<PagedResult<EmployeeSummary>> SearchEmployeesAsync(
+      EmployeeReadScope scope, EmployeeSearchCriteria criteria, CancellationToken cancellationToken = default) =>
+      Task.FromResult(new PagedResult<EmployeeSummary>([], criteria.PageNumber, criteria.PageSize, 0));
+
+    public Task<IReadOnlyList<EmployeeBranchHistoryEntry>?> GetEmployeeBranchHistoryAsync(
+      EmployeeReadScope scope, Guid id, CancellationToken cancellationToken = default) =>
+      Task.FromResult<IReadOnlyList<EmployeeBranchHistoryEntry>?>(null);
+
+    public Task<IReadOnlyList<EmployeePositionHistoryEntry>?> GetEmployeePositionHistoryAsync(
+      EmployeeReadScope scope, Guid id, CancellationToken cancellationToken = default) =>
+      Task.FromResult<IReadOnlyList<EmployeePositionHistoryEntry>?>(null);
+
+    public Task<int> CountEmployeesByPositionAsync(
+      EmployeeReadScope scope, Guid positionId, CancellationToken cancellationToken = default) =>
+      Task.FromResult(0);
+
+    public Task<int> CountEmployeesByDepartmentAsync(
+      EmployeeReadScope scope, Guid departmentId, CancellationToken cancellationToken = default) =>
+      Task.FromResult(0);
+
+    public Task<IReadOnlyList<EmployeeExportRow>> ExportEmployeesAsync(
+      EmployeeReadScope scope, EmployeeSearchCriteria criteria, int ceiling,
+      CancellationToken cancellationToken = default) =>
+      Task.FromResult<IReadOnlyList<EmployeeExportRow>>([]);
   }
 
   // Cross-company reach exists to make a SEARCH meaningful. An identifier lookup has no such need, so
@@ -378,12 +520,17 @@ public sealed class EmployeeReadScopeTests
   //
   // Silently reducing 5000 to 200 would return a page the caller did not ask for while letting them believe
   // they had seen the rest.
+  // ⚠ EACH ROW NOW NAMES THE PARAMETER IT REFUSES (T-260). One code for three conditions meant this
+  // theory asserted the same thing four times; a client fixing the wrong parameter retried and failed
+  // identically, and the test could not have told the difference either.
   [Theory]
-  [InlineData(0, 50)]
-  [InlineData(1, 0)]
-  [InlineData(1, 201)]
-  [InlineData(-1, 50)]
-  public async Task Out_of_range_paging_is_refused(int pageNumber, int pageSize)
+  [InlineData(0, 50, false)]
+  [InlineData(1, 0, true)]
+  [InlineData(1, 201, true)]
+  [InlineData(-1, 50, false)]
+  // ⚠ CITED BY B18, body-confirmed: the "rejects out-of-range paging" clause -- a Theory over several bad shapes.
+  [Trait("Criterion", "AC-EMP-0027")]
+  public async Task Out_of_range_paging_is_refused(int pageNumber, int pageSize, bool sizeIsTheFault)
   {
     var reads = new RecordingReadService();
     var handler = new SearchEmployeesQueryHandler(Resolver(), reads);
@@ -391,11 +538,29 @@ public sealed class EmployeeReadScopeTests
     var result = await handler.HandleAsync(new SearchEmployeesQuery(PageNumber: pageNumber, PageSize: pageSize));
 
     Assert.True(result.IsFailure);
-    Assert.Equal(EmployeeErrors.InvalidPagination, result.Error);
+    Assert.Equal(
+      sizeIsTheFault ? EmployeeErrors.InvalidPageSize : EmployeeErrors.InvalidPageNumber,
+      result.Error);
     Assert.Equal(0, reads.Calls);
   }
 
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: the "documented paging defaults" clause -- asserts `PageNumber == 1`.
+  //
+  // ⚠⚠⚠ CLAUSE COVERAGE FOR `AC-EMP-0027`, RECORDED 2026-09-05. **THE CLAUSE LIST IS INCOMPLETE.**
+  //
+  // *"Search returns **bounded**, **deterministically ordered** **safe projections** with **documented
+  // paging defaults and maxima**, and **rejects out-of-range paging**."*
+  //
+  // **Three cited tests carry three clauses, each naming which one — this one the DEFAULTS,
+  // `The_maximum_page_size_is_accepted` the MAXIMA, `Out_of_range_paging_is_refused` the REJECTION.**
+  // ***CLAUSE-LEVEL ATTRIBUTION IS THE RIGHT METHOD AND IS WORTH KEEPING.***
+  //
+  // ⚠⚠ ***BUT TWO CLAUSES CARRY NO CITED WITNESS: "DETERMINISTICALLY ORDERED" AND "SAFE PROJECTIONS".***
+  // *The criterion is cited and counted as covered while two of its five clauses are unwitnessed by the
+  // cited set.* **The failure is an incomplete clause list, not a bad method** — and it is invisible to any
+  // count, because a partial citation and a complete one are the same trait.
+  [Trait("Criterion", "AC-EMP-0027")]
   public async Task The_search_defaults_are_the_documented_ones()
   {
     var reads = new RecordingReadService();
@@ -414,6 +579,9 @@ public sealed class EmployeeReadScopeTests
   }
 
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: the "maxima" clause -- the documented maximum is ACCEPTED, the other side of
+  // out-of-range being refused.
+  [Trait("Criterion", "AC-EMP-0027")]
   public async Task The_maximum_page_size_is_accepted()
   {
     var handler = new SearchEmployeesQueryHandler(Resolver(), new RecordingReadService());
@@ -435,6 +603,66 @@ public sealed class EmployeeReadScopeTests
 
     Assert.True(result.IsSuccess);
     Assert.Equal([CompanyA, CompanyB], reads.LastScope!.Companies.CompanyIds);
+  }
+
+  // ================================================================================================
+  // THERE IS NO UNSCOPED EXPORT PATH (AC-DOC-0012).
+  // ================================================================================================
+  //
+  // *"No route, parameter or permission produces an export whose SQL omits the tenant, company or branch
+  // predicate. An empty authorized branch set answers `403`, not an unfiltered file."*
+  //
+  // ---- ⚠⚠⚠ CLAUSE 1 IS AN ABSENCE OVER ROUTES × PARAMETERS × PERMISSIONS, WHICH IS OPEN AND UNSEARCHABLE.
+  //
+  // **What is closed is the CONSTRUCTION path.** An export filters by the `EmployeeReadScope` it is given,
+  // so *"no route produces an unscoped export"* holds if **no caller can build an unscoped scope**. That is
+  // a statement about a type, and the assertions below check it rather than searching for counterexamples.
+  //
+  // ⚠⚠ A TYPE-SYSTEM GUARANTEE IS TRUE WHILE THE CONSTRUCTORS ARE THE ONLY WRITERS, so the ways it could
+  // stop being true are named — and three of the four are ASSERTED rather than left as prose:
+  //
+  //     a second public factory appearing   → **asserted**: exactly one factory per scope type
+  //     a public constructor appearing      → **asserted**: no public constructors
+  //     a setter appearing (ORM, mapper)    → **asserted**: every scope property is get-only
+  //     reflection writing a private field  → ***NOT asserted. Nothing here can prevent it.***
+  //
+  // ⚠⚠⚠ AND ONE RESIDUAL IS NOT THEORETICAL — IT IS MEASURED AND IT IS AN ASYMMETRY:
+  // ***`AuthorizedCompanyScope.Create` THROWS ON AN EMPTY LIST. `AuthorizedBranchScope.Create` DOES NOT.***
+  // Its comment says *"NEVER EMPTY, and never writeable"*, and never-writeable is enforced by the type while
+  // **never-empty is enforced only by the resolver refusing first** — which the test below pins. *So the
+  // branch half of this criterion rests on a caller check where the company half rests on the type.* **That
+  // is the honest boundary of the clause-1 argument and it is stated rather than glossed.**
+  [Fact]
+  [Trait("Criterion", "AC-DOC-0012")]
+  public void No_scope_type_can_be_built_or_widened_from_outside_the_read_layer()
+  {
+    Type[] scopeTypes = [typeof(EmployeeReadScope), typeof(AuthorizedCompanyScope), typeof(AuthorizedBranchScope)];
+
+    foreach (var type in scopeTypes)
+    {
+      // NO PUBLIC CONSTRUCTOR. A caller outside this assembly cannot assemble one directly.
+      Assert.Empty(type.GetConstructors(BindingFlags.Public | BindingFlags.Instance));
+
+      // EXACTLY ONE FACTORY, and it is not public. A second one added later fails here rather than
+      // quietly becoming a second way to produce a scope.
+      var factories = type
+        .GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)
+        .Where(method => method.Name == "Create")
+        .ToArray();
+
+      Assert.Single(factories);
+      Assert.False(factories[0].IsPublic, type.Name + ".Create must not be public");
+
+      // GET-ONLY. An ORM materialising through a setter, or a mapper widening a scope after the fact,
+      // would both need one.
+      Assert.All(
+        type.GetProperties(BindingFlags.Public | BindingFlags.Instance),
+        property => Assert.Null(property.SetMethod));
+    }
+
+    // MATCHER CONTROL: the reflection really read these types and they really have members, so the
+    // assertions above are not passing over an empty set.
+    Assert.NotEmpty(typeof(EmployeeReadScope).GetProperties(BindingFlags.Public | BindingFlags.Instance));
   }
 
   private static EmployeeScopeResolver Resolver(
@@ -620,7 +848,6 @@ public sealed class EmployeeReadScopeTests
 
     public string? Email => null;
 
-    public Guid? CompanyId => null;
 
     public string? SessionId => null;
 

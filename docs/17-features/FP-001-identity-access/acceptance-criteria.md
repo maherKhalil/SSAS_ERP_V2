@@ -55,7 +55,7 @@ An eligible same-tenant role can be assigned exactly once to an active tenant us
 
 A role from one tenant cannot be assigned to a user in another tenant.
 
-### AC-IAM-0013 — Permission assignment
+### AC-IAM-0013 — Only catalog permissions are assignable, and only to an eligible role
 
 Only code-catalog permissions can be assigned to an eligible role.
 

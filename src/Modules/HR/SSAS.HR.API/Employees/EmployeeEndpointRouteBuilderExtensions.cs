@@ -84,11 +84,11 @@ public static class EmployeeEndpointRouteBuilderExtensions
       .RequirePermission(HrPermissionNames.ViewEmployees)
       .WithName("HrEmployeesSearch");
 
-    group.MapGet("/{employeeId:guid}", GetByIdAsync)
+    group.MapGet("/{employeeId}", GetByIdAsync)
       .RequirePermission(HrPermissionNames.ViewEmployees)
       .WithName("HrEmployeesGetById");
 
-    group.MapPut("/{employeeId:guid}", UpdateAsync)
+    group.MapPut("/{employeeId}", UpdateAsync)
       .RequirePermission(HrPermissionNames.UpdateEmployees)
       .WithName("HrEmployeesUpdate");
 
@@ -96,25 +96,25 @@ public static class EmployeeEndpointRouteBuilderExtensions
     //
     // Activate and deactivate carry Update authority; termination carries its own, because it is terminal
     // and a user permitted to correct a profile is not thereby permitted to end employment.
-    group.MapPost("/{employeeId:guid}/activate", ActivateAsync)
+    group.MapPost("/{employeeId}/activate", ActivateAsync)
       .RequirePermission(HrPermissionNames.UpdateEmployees)
       .WithName("HrEmployeesActivate");
 
-    group.MapPost("/{employeeId:guid}/deactivate", DeactivateAsync)
+    group.MapPost("/{employeeId}/deactivate", DeactivateAsync)
       .RequirePermission(HrPermissionNames.UpdateEmployees)
       .WithName("HrEmployeesDeactivate");
 
-    group.MapPost("/{employeeId:guid}/terminate", TerminateAsync)
+    group.MapPost("/{employeeId}/terminate", TerminateAsync)
       .RequirePermission(HrPermissionNames.TerminateEmployees)
       .WithName("HrEmployeesTerminate");
 
     // Transfer moves a record across a security partition and is the only operation permitted to change
     // BranchId, so it holds a permission of its own (BRULE-EMP-0015).
-    group.MapPost("/{employeeId:guid}/transfer", TransferAsync)
+    group.MapPost("/{employeeId}/transfer", TransferAsync)
       .RequirePermission(HrPermissionNames.TransferEmployees)
       .WithName("HrEmployeesTransfer");
 
-    group.MapGet("/{employeeId:guid}/branch-history", GetBranchHistoryAsync)
+    group.MapGet("/{employeeId}/branch-history", GetBranchHistoryAsync)
       .RequirePermission(HrPermissionNames.ViewEmployees)
       .WithName("HrEmployeesBranchHistory");
 
@@ -703,6 +703,20 @@ public static class EmployeeEndpointRouteBuilderExtensions
     // `StrictCsvReader` returns null for a body that is not `text/csv`, declares a charset other than UTF-8,
     // or is not valid UTF-8. All three refuse the REQUEST rather than the file's contents, so none reaches
     // the handler and none writes a run record — there was no import to record.
+    // ⚠ THE FORMAT GATE IS ANSWERED SEPARATELY FROM THE CONTENT GATE (T-274).
+    //
+    // `ReadStrictCsvAsync` returns null for three different failures and cannot say which. Two of them --
+    // invalid UTF-8 bytes and an oversized body -- are a MALFORMED FILE, which FP-009 answers with
+    // `request.invalid`. The third, a body that is not `text/csv` or declares another charset, is an
+    // UNSUPPORTED FORMAT, and `DEC-DOC-0001` requires that answer to NAME CSV.
+    //
+    // `HasCsvContentType` was already public, so the split needs no change to the reader: ask it first,
+    // and what remains is the content failure.
+    if (!StrictCsvReader.HasCsvContentType(context.Request))
+    {
+      return ApiProblems.Problem(context, EmployeeApiErrorMapper.ImportFormatUnsupported, ResourceKey);
+    }
+
     var content = await StrictCsvReader.ReadStrictCsvAsync(context, cancellationToken);
     if (content is null)
     {

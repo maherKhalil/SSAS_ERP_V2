@@ -54,6 +54,10 @@ public sealed class HrTenantModelContributor : ITenantModelContributor
     // they sort ahead of `Employees` and introduce no new ordering constraint and no cycle.
     modelBuilder.ApplyConfiguration(new EmployeeImportRunConfiguration());
     modelBuilder.ApplyConfiguration(new EmployeeExportRunConfiguration());
+    
+    // ---- FP-010 HR EMPLOYEE DOCUMENTS
+    modelBuilder.ApplyConfiguration(new EmployeeDocumentConfiguration());
+    modelBuilder.ApplyConfiguration(new EmployeeDocumentContentConfiguration());
 
     // ---- THE FOREIGN KEYS TO PLATFORM-OWNED PRINCIPALS.
     //
@@ -141,6 +145,12 @@ public sealed class HrTenantModelContributor : ITenantModelContributor
       .HasOne("SSAS.Platform.Domain.Companies.Company", navigationName: null)
       .WithMany()
       .HasForeignKey(nameof(EmployeeExportRun.CompanyId))
+      .OnDelete(DeleteBehavior.Restrict);
+
+    modelBuilder.Entity(typeof(SSAS.HR.Domain.EmployeeDocuments.EmployeeDocument))
+      .HasOne("SSAS.Platform.Domain.Companies.Company", navigationName: null)
+      .WithMany()
+      .HasForeignKey(nameof(SSAS.HR.Domain.EmployeeDocuments.EmployeeDocument.CompanyId))
       .OnDelete(DeleteBehavior.Restrict);
   }
 }

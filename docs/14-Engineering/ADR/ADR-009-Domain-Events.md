@@ -29,6 +29,172 @@ used_by:
 
 ---
 
+## ⚠ WITHDRAWN 2026-08-30 — THE EARLIER "NOT IMPLEMENTED" NOTE HERE WAS FALSE
+
+**An annotation added earlier this day said domain-event dispatch was specified here and not implemented,
+and that there was no dispatcher in the product. Every clause of that was wrong, and it is withdrawn.**
+
+**The flow exists and has since 2026-07-31**, verified link by link in `src/`:
+
+`AggregateRoot<TId> : Entity<TId>, IHasDomainEvents` raises events (65 call sites) → the aggregate is
+tracked by its `DbContext` → `ITenantUnitOfWork` / `IPlatformUnitOfWork` are injected in **122 places**
+across the modules → both delegate to `EfUnitOfWork`, whose `SaveChangesAsync` calls
+`DispatchDomainEventsAsync` → that reads `dbContext.ChangeTracker.Entries().OfType<IHasDomainEvents>()`
+where `DomainEvents.Count > 0` → `IDomainEventDispatcher.DispatchAsync` → each registered
+`IDomainEventConsumer` → `ClearDomainEvents()`.
+
+`DomainEventDispatcher` is registered (`AddScoped<IDomainEventDispatcher, DomainEventDispatcher>()`) and
+carries correlation id, user, request id and trace id as dispatch metadata.
+
+⚠ **How the false finding was produced, because the mechanism matters more than the correction.** The
+instrument searched for production readers of **`DequeueDomainEvents`** and found none — which is true.
+**The dispatch path does not use that method.** It reads the `DomainEvents` property and calls
+`ClearDomainEvents()`. **A complete, correct enumeration of the wrong member was reported as the absence
+of the whole mechanism** — and the conclusion was then stated three ways (*"nothing consumes them"*,
+*"there is no dispatcher"*, *"checked three ways"*), which made it read as corroborated rather than
+repeated.
+
+**What is true, and is a much smaller thing:** exactly **one** `IDomainEventConsumer` is registered —
+`LocalizationCacheDomainEventConsumer`. **That is a question about handler coverage, not about whether
+the mechanism exists.**
+
+**Nothing in the decision below was ever in doubt.** A handler written against this ADR will be
+delivered to.
+
+---
+
+### ⚠ Confirmed by exercise, not by reading — item 166 (PR #384), 2026-08-30
+
+**The withdrawal above was established by reading, which is the method that produced the original error.**
+Five tests now exercise the flow through **real infrastructure** — real `EfUnitOfWork`, real
+`DomainEventDispatcher`, real `PlatformDbContext`, a registered consumer — asserting that the consumer
+receives the event with `CorrelationId`, `ActorId` and `RequestId` populated, and that events are cleared
+so a second save announces nothing.
+
+**Events raised inside a transaction are WITHHELD AND THEN RELEASED, not dropped.** `SaveChangesAsync`
+guards its dispatch with `if (transaction is null)`; `ITransaction.CommitAsync` saves, commits, **then**
+dispatches. Rollback or dispose-without-commit never dispatches — **and that is the point of the design,**
+not a gap in it: an event announcing a termination that was then rolled back is worse than no event.
+
+⚠ **The hazard that would have made this real does not occur, and only a two-type reading settles it.**
+Had `TenantUnitOfWork` opened its transaction on the `DbContext` directly, `EfUnitOfWork`'s own
+`transaction` field would have stayed null and **events would have dispatched before commit — announcing
+work that could still roll back, the inverse bug.** It does not: `TenantUnitOfWork` caches one inner
+`EfUnitOfWork` and delegates **both** `BeginTransactionAsync` and `SaveChangesAsync` to it, so the field
+they test is the same field. **Reading `EfUnitOfWork` alone cannot establish that.**
+
+**Both halves are asserted deliberately.** A test pinning only the withholding half would have recorded
+*"not dispatched"* as the whole truth and read as a defect — **which is exactly how the concern arose.**
+
+⚠ **Two hazards remain open and are NOT covered by these tests:**
+
+1. ⚠ **CLOSED 2026-08-30 (item 167, PR #385) — the hazard is REAL and NO PRODUCTION PATH REACHES IT.**
+   Dispatch reads only `dbContext.ChangeTracker.Entries()`, so an aggregate read `AsNoTracking` or mutated
+   on a detached instance raises events **nothing collects**. Measured: **203 `AsNoTracking` sites across 65
+   files; 30 touch one of the 14 event-raising aggregate types**; classified **by what the query returns** —
+   17 scalar (`AnyAsync`/`CountAsync`: a `bool` leaves, never an entity), 5 projections to DTOs, **8
+   entity-shaped**. **All 8 live in `*ReadService` / `*DirectoryService` / `*RosterService` and all return
+   DTOs or ids** — so the entity never escapes to a caller that could mutate and save it. **The hazard is
+   unreachable because read services hand over DTOs, not aggregates.**
+
+   ⚠ **CORRECTED 2026-08-30 (item 168, PR #386). This entry first said *"and no read service is injected
+   into any command handler"*. That was FALSE: eight command handlers take one, across four services.** The
+   search behind it looked for three interface names in files named `*CommandHandler*.cs`, **and handlers in
+   this codebase live in files named for their aggregate — `LeaveCommandHandlers.cs`, plural.** It
+   enumerated a subset and reported it as the whole. ⚠ **The conclusion survives and the reason does not**,
+   which is the more dangerous of the two ways to be wrong: a false premise under a true conclusion is
+   invisible until someone reasons from the premise.
+
+   **Pinned by two tests** — `An_aggregate_never_attached_is_not_dispatched_from` and the production-shaped
+   `An_aggregate_read_with_no_tracking_and_then_mutated_is_not_dispatched_from`. ⚠ **Each asserts two
+   things, and the second carries the meaning: the consumer received nothing AND the events are still on
+   the aggregate** — which distinguishes *nothing was raised* from *something was raised and nobody
+   collected it*, the whole difference between a quiet success and a silent drop. **They pin the drop as
+   CURRENT behaviour, not as correct.** Whether an untracked aggregate's events *should* dispatch is a
+   design question nobody needs to answer while no path reaches it.
+
+   ⚠ **And the escape is now GUARDED, not merely measured (item 168, PR #386):**
+   `No_read_side_service_returns_an_event_raising_aggregate` checks every read-side method's return type,
+   unwrapped through `Task<>`, `Result<>` and collections at any depth, against `IHasDomainEvents`. **The
+   eight command handlers that take a read service are pinned as an INVENTORY rather than banned** — taking
+   a read service for a DTO is legitimate, and a ban would fire on eight correct handlers. **What the
+   inventory exists to notice is a NINTH, because a new injection is where an aggregate-returning read
+   would first arrive.**
+
+   ⚠ **CLOSED ACROSS THE COMPLETE MECHANISM SET 2026-08-31 (item 174).** The set is bounded by EF's own
+   model rather than by what this codebase happens to contain: an entity is tracked exactly while it is in
+   the `ChangeTracker`, entering by a tracking query, `Add`/`Attach`/`Update`/`Remove` or navigation
+   fix-up, and leaving by `Detached`, `Clear()` or disposal — **so an aggregate is untracked by exactly
+   nine mechanisms.** Measured: `AsNoTracking` **203** (none reaching a mutation path);
+   `QueryTrackingBehavior` **0**; `ChangeTracker.Clear` **0**; `EntityState.Detached` **12**, none touching
+   an event-raising type; second contexts confined to design-time factories. ⚠ **`DbSet.Update` — the
+   classic route into this hazard — is never called anywhere in the product**; the five `.Update(` matches
+   are all domain methods. **No mechanism in the set is reachable in production with an event-raising
+   aggregate.**
+
+   **Stated limit:** reachability was judged from **call sites, not execution**, and `tests/` and `tools/`
+   were not swept. **A residual here is a longer chain inside a set already enumerated, not an unknown
+   mechanism.**
+
+2. ⚠ **MEASURED 2026-08-31 (item 172, PR #389) — THE BEHAVIOUR IS WRONG, AND WORSE THAN THE SHAPE
+   SUGGESTED. THE COMMIT SUCCEEDS, THE DATA IS WRITTEN, THE CALLER IS TOLD THE COMMAND FAILED, AND THE
+   CONSUMER'S EXCEPTION IS DESTROYED ON THE WAY OUT.** Four steps, each exercised:
+
+   1. the consumer throws;
+   2. the `catch` calls `RollbackAsync` on the **already-committed** transaction, **that** throws, and the
+      provider error propagates instead — **`throw;` is never reached**, so what surfaces is *"This
+      SqliteTransaction has completed; it is no longer usable."* **The consumer's message never reaches
+      the caller at all;**
+   3. `CommitAsync` threw **before** setting `completed`, so **disposal believes the transaction is open
+      and rolls back again** — refused, because the `finally` already cleared the field. **In an
+      `await using` block that exception REPLACES whatever the body was propagating;**
+   4. **the row is in the database throughout.**
+
+   ⚠ **The caller being told *failed* after a durable write is the defect, and it outranks the rollback
+   question: a caller told the command failed may retry an operation that already happened.** The masking
+   is the second defect and is **what makes the first undiagnosable** — an operator sees a
+   transaction-provider error naming neither the consumer, nor the event, nor the fact that the commit
+   succeeded.
+
+   **Ruled, and from this ADR's own reasoning rather than from preference.** Dispatch happens *after*
+   commit deliberately, because an event announcing rolled-back work is worse than no event. ⚠ **The
+   symmetric statement is that a COMMITTED write must not be reported as failed — so a consumer failure
+   must not fail the command.** It must not be swallowed either: the one registered consumer invalidates a
+   cache, and a silent failure there is a stale cache nobody sees. **It is surfaced as itself — logged
+   with correlation id, event type and consumer type — and the command succeeds.** **Consumer isolation is
+   part of the same fix: a throw currently abandons the remaining consumers.** Being done under item 173.
+
+   **The three tests pin CURRENT behaviour, not correct behaviour, and say so at their declaration. They
+   change when this is fixed.** ⚠ **A fix needs BOTH halves of the masking:** removing the rollback from
+   the `catch` reddens the masking test **and leaves the disposal test passing**, because `completed` is
+   still false and the field is still cleared.
+
+   ### ⚠ FIXED 2026-08-31 (item 173, PR #390) — and one hole remains, named
+
+   **Four parts shipped:** dispatch moved outside the `try`; **`completed` set before the commit attempt**;
+   **each consumer isolated** behind its own `catch`; and the failure **logged at Error with consumer type,
+   event type and correlation id** rather than swallowed. **A fifth was found while fixing and was not in
+   the ruling: cancellation now stops dispatch WITHOUT throwing**, because `ThrowIfCancellationRequested`
+   from that position reports a **committed** command as *cancelled* — the same defect wearing a different
+   exception.
+
+   ⚠ **The ordering change is not what delivers the guarantee, and a plant proved it: moving dispatch back
+   inside the `try` leaves every test green.** With per-consumer catches in place nothing throws from that
+   position. **The guarantee rests on the dispatcher never throwing — a contract nothing enforces.**
+
+   ⚠ **SO ONE HOLE REMAINS: A DISPATCHER THAT THROWS OUTRIGHT STILL REPORTS A COMMITTED COMMAND AS FAILED.**
+   A test injecting exactly that **fails today.** The remedy is a `try`/`catch` around the post-commit
+   dispatch in `EfUnitOfWork`, which requires an `ILogger` threaded through both plane wrappers and 33 test
+   construction sites. **Built, measured and reverted deliberately; being taken as item 175 at phase scope,
+   because 30 of those sites are in a suite the task gate does not run.**
+
+
+
+**Also excluded:** the aggregate under test is a probe rather than a production command handler (real is
+everything the event passes *through*), and the store is SQLite — this exercises the mechanism, not the
+provider.
+
+
 # Context
 
 SSAS ERP V2 is implemented as a Modular Monolith where business modules must remain independent while still collaborating.

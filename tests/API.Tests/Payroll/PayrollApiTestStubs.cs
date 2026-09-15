@@ -1,3 +1,4 @@
+using SSAS.BuildingBlocks.Tenancy;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.Attendance.Contracts.Summaries;
 using SSAS.GL.Contracts.Posting;
@@ -131,6 +132,34 @@ public sealed class StubCompensationRepository : IEmployeeCompensationRepository
   }
 }
 
+// ---- ONE-OFF PAY INSTRUCTIONS (T-110).
+//
+// `GetUnconsumedForPeriodAsync` filters on the reference exactly as the real repository does, so a test that
+// approves a run and re-reads sees the same thing production would.
+public sealed class StubOneOffPaymentRepository : IOneOffPaymentRepository
+{
+  public List<OneOffPayment> Stored { get; } = [];
+
+  public void Reset() => Stored.Clear();
+
+  public Task<IReadOnlyList<OneOffPayment>> GetUnconsumedForPeriodAsync(
+    Guid companyId, Guid payrollPeriodId, CancellationToken cancellationToken = default) =>
+    Task.FromResult<IReadOnlyList<OneOffPayment>>(
+      [.. Stored.Where(payment => payment.CompanyId == companyId
+        && payment.PayrollPeriodId == payrollPeriodId
+        && !payment.IsConsumed)]);
+
+  public Task<OneOffPayment?> GetByIdAsync(
+    Guid oneOffPaymentId, CancellationToken cancellationToken = default) =>
+    Task.FromResult(Stored.FirstOrDefault(payment => payment.Id == oneOffPaymentId));
+
+  public Task AddAsync(OneOffPayment payment, CancellationToken cancellationToken = default)
+  {
+    Stored.Add(payment);
+    return Task.CompletedTask;
+  }
+}
+
 public sealed class StubPayrollPeriodRepository : IPayrollPeriodRepository
 {
   public List<PayrollPeriod> Stored { get; } = [];
@@ -159,6 +188,15 @@ public sealed class StubPayrollPeriodRepository : IPayrollPeriodRepository
 
 public sealed class StubPayrollRunRepository : IPayrollRunRepository
 {
+  // ---- NOTHING TO DO HERE, AND THE EMPTINESS IS THE POINT.
+  //
+  // An in-memory stub has no change tracker, so it has no orphans for an explicit delete to remove. The
+  // defect this method exists for is a PERSISTENCE fact — a platform-wide `Restrict` overriding a module's
+  // configured cascade — and it is invisible to every stub by construction. That is why it took a real-SQL
+  // end-to-end test to find, and why this override can be honestly empty.
+  public Task RemoveDraftLinesAsync(PayrollRun run, CancellationToken cancellationToken = default) =>
+    Task.CompletedTask;
+
   public List<PayrollRun> Stored { get; } = [];
 
   public bool Exists { get; set; }
@@ -205,8 +243,29 @@ public sealed class StubJournalPoster : IJournalPoster
 
   public JournalPostingRequest? LastPosted { get; private set; }
 
+  // ---- HOW MANY TIMES THE LEDGER WAS ASKED TO POST, WHICH `LastPosted` CANNOT ANSWER.
+  //
+  // `AC-PAY-0019` says posting an approved run creates **exactly one** journal. A capture of the LAST
+  // request is silent about how many there were, and the Integration fixture's check is weaker still —
+  // it fetches the journal by PRIMARY KEY, so it returns exactly one BY CONSTRUCTION and would do so just
+  // as happily if posting had written two.
+  public int PostCount { get; private set; }
+
+  // ---- ⚠⚠⚠ THE SAME TWO CAPTURES FOR THE OTHER DIRECTION, WHICH DID NOT EXIST.
+  //
+  // `PostAsync` recorded its request from the day this stub was written; `ReverseAsync` recorded nothing.
+  // ***SO NO GATED TEST COULD WITNESS WHAT PAYROLL ASKED THE LEDGER TO REVERSE*** — and reversal is the
+  // correction path for a POSTED payroll, where `AC-PAY-0024` requires the reversing journal to be the
+  // original's. **The capability existed for one direction of a symmetric pair and not for its inverse.**
+  public JournalReversalRequest? LastReversed { get; private set; }
+
+  public int ReverseCount { get; private set; }
+
   public void Reset()
   {
+    PostCount = 0;
+    ReverseCount = 0;
+    LastReversed = null;
     Window = new(PostingWindowStatus.Open, "January 2026", Guid.NewGuid(),
       new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
       new DateTimeOffset(2026, 1, 31, 0, 0, 0, TimeSpan.Zero));
@@ -219,12 +278,17 @@ public sealed class StubJournalPoster : IJournalPoster
     JournalPostingRequest request, CancellationToken cancellationToken = default)
   {
     LastPosted = request;
+    PostCount++;
     return Task.FromResult(PostOutcome);
   }
 
   public Task<JournalPostingOutcome> ReverseAsync(
-    JournalReversalRequest request, CancellationToken cancellationToken = default) =>
-    Task.FromResult(ReverseOutcome);
+    JournalReversalRequest request, CancellationToken cancellationToken = default)
+  {
+    LastReversed = request;
+    ReverseCount++;
+    return Task.FromResult(ReverseOutcome);
+  }
 
   public Task<PostingWindow> InspectPostingWindowAsync(
     Guid companyId, DateTimeOffset entryDateUtc, CancellationToken cancellationToken = default) =>
@@ -281,6 +345,16 @@ public sealed class StubAttendanceSummary : IAttendanceSummary
     UnpaidAbsenceQuantity = 0m;
   }
 
+  // ---- WORKING DAYS (T-115). Configurable, defaulting to the fixtures' 21.
+  //
+  // A STUB answers what the test asks it to; the real service reads the company's calendar. Zero is the
+  // fail-closed answer, and a test that needs it sets it explicitly.
+  public int WorkingDays { get; set; } = 21;
+
+  public Task<int> GetWorkingDaysAsync(
+    Guid companyId, DateOnly fromDate, DateOnly toDate, CancellationToken cancellationToken = default) =>
+    Task.FromResult(toDate < fromDate ? 0 : WorkingDays);
+
   public Task<AttendanceSummaryResult> GetForPeriodAsync(
     Guid companyId, Guid employeeId, DateTimeOffset anyDateInPeriodUtc,
     CancellationToken cancellationToken = default) =>
@@ -290,7 +364,7 @@ public sealed class StubAttendanceSummary : IAttendanceSummary
       WorkedQuantity: 0m,
       new Dictionary<string, decimal>(OvertimeByTier, StringComparer.Ordinal),
       PaidAbsenceQuantity: 0m,
-      UnpaidAbsenceQuantity));
+      UnpaidAbsenceQuantity: UnpaidAbsenceQuantity));
 
   public Task<AttendancePeriodInspection> InspectPeriodAsync(
     Guid companyId, DateTimeOffset anyDateInPeriodUtc, CancellationToken cancellationToken = default) =>
@@ -298,4 +372,64 @@ public sealed class StubAttendanceSummary : IAttendanceSummary
       InspectionStatus, Guid.NewGuid(), "Stub period",
       anyDateInPeriodUtc, anyDateInPeriodUtc,
       IsClosed: InspectionStatus == AttendanceSummaryStatus.Available));
+}
+
+// ==================================================================================================
+// FP-015's TWO PLATFORM-AND-HR FACTS, IN ONE OBJECT (T-088).
+// ==================================================================================================
+//
+// One class implementing both contracts, because the two answers are a chain: a test that set the link
+// and forgot the company would produce a DANGLING LINK — a real state, but one that should arrive by
+// intent rather than by omission. Here it takes one deliberate line.
+//
+// Defaults are the ordinary case: the caller is linked to `PayrollApiTestHost.EmployeeId`, who works at
+// `CompanyA`. A test wanting the unmapped refusal sets `LinkedEmployee` to null and says so.
+public sealed class StubSelfServiceDirectory : IUserEmployeeResolver, IEmployeePlacementDirectory
+{
+  public Guid? LinkedEmployee { get; set; } = PayrollApiTestHost.EmployeeId;
+
+  public EmployeePlacement? EmployeePlacement { get; set; } =
+    new(PayrollApiTestHost.CompanyA, Guid.NewGuid());
+
+  public List<long> AskedForUser { get; } = [];
+
+  public Task<Guid?> ResolveEmployeeIdAsync(long tenantUserId, CancellationToken cancellationToken = default)
+  {
+    AskedForUser.Add(tenantUserId);
+    return Task.FromResult(LinkedEmployee);
+  }
+
+  public Task<EmployeePlacement?> GetPlacementAsync(
+    Guid employeeId, CancellationToken cancellationToken = default) =>
+    Task.FromResult(employeeId == LinkedEmployee ? EmployeePlacement : null);
+
+  public void Reset()
+  {
+    LinkedEmployee = PayrollApiTestHost.EmployeeId;
+    EmployeePlacement = new(PayrollApiTestHost.CompanyA, Guid.NewGuid());
+    AskedForUser.Clear();
+  }
+}
+
+// ================================================================================================
+// THE FOURTH ROUTE OUT OF PAYROLL (T-153).
+// ================================================================================================
+//
+// ---- ⚠ THE DEFAULT IS `FullTime`, AND IT IS A DELIBERATE CHOICE RATHER THAN A CONVENIENCE.
+//
+// `RecordCompensationCommandHandler` refuses an employee HR cannot resolve, so a stub defaulting to null
+// would fail every existing compensation test with `CompensationEmployeeNotInHr` — **and each of those
+// failures would be about this stub, not about the endpoint under test.**
+//
+// `FullTime` is what those tests have always implicitly assumed. **The two interesting answers — null and
+// `Contract` — must be asked for by name**, which is what makes a test that sets one visibly about it.
+public sealed class StubEmployeeEngagementDirectory : IEmployeeEngagementDirectory
+{
+  public EmploymentType? EmploymentType { get; set; } = SSAS.HR.Contracts.Employment.EmploymentType.FullTime;
+
+  public void Reset() => EmploymentType = SSAS.HR.Contracts.Employment.EmploymentType.FullTime;
+
+  public Task<EmploymentType?> GetEmploymentTypeAsync(
+    Guid employeeId, CancellationToken cancellationToken = default) =>
+    Task.FromResult(EmploymentType);
 }

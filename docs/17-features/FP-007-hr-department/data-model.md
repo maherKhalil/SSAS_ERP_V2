@@ -83,7 +83,7 @@ outright, so `RESTRICT` here is both correct and the only legal option — worth
 
 | Column | Type | Null | Notes |
 |---|---|---|---|
-| `DepartmentId` | `uniqueidentifier` | **depends on `OD-DEP-001`** | FK → `tenant.Departments`, `RESTRICT` |
+| `DepartmentId` | `uniqueidentifier` | **NOT NULL** ⚠ *(corrected 2026-09-06 — this said "depends on `OD-DEP-001`", which closed 2026-08-20)* | FK → `tenant.Departments`, `RESTRICT`. Verified at `EmployeeConfiguration.cs:68` (`.IsRequired()`) and `:187-188` (`OnDelete(DeleteBehavior.Restrict)`); the domain declares a non-nullable `Guid DepartmentId` |
 
 | Index | Columns |
 |---|---|
@@ -95,7 +95,21 @@ would suggest it were part of the mandatory predicate.
 
 ## Migration shape by owner decision
 
-The migration cannot be written until `OD-DEP-001` is answered, because its steps differ materially:
+> ⚠⚠⚠ **CORRECTED 2026-09-06 — THIS SECTION OPENED *"The migration cannot be written until `OD-DEP-001` is
+> answered."* IT WAS ANSWERED ON 2026-08-20 AND THE MIGRATION IS WRITTEN.**
+>
+> ***`OD-DEP-001` adopted OPTION A, and `20260820140653_AddEmployeeDepartment` shipped it*** — proven by
+> `EmployeeDepartmentMigrationSqlServerTests`. **The one addition the ruling made to option A as drafted
+> below: if a company already holds a department whose normalized code is `UNASSIGNED`, the migration fails
+> loudly and transactionally rather than reusing, renaming or suffixing it, and the collision check is a
+> separate pass over every affected company before any write** (`decisions-approved.md:87-101`).
+>
+> **The four-option table is preserved below as it was written.** It is the record of what was weighed, not a
+> live question — *a decision record edited into agreement with its outcome cannot show why the answer was
+> chosen.* ⚠ **Read it as history. Option A is the one that shipped.**
+
+The migration steps differ materially by option, which is why the choice had to be recorded before it was
+authored:
 
 | `OD-DEP-001` | Migration steps |
 |---|---|
@@ -186,3 +200,16 @@ There is precedent for declining a convenient foreign key on classification grou
 `EmployeeBranchAssignment` no branch FK, and `C6_12_The_assignment_has_no_branch_foreign_key` records that the
 convenience was declined rather than overlooked. This decision is recorded the same way, as `AC-DEP-0034` and
 `TS-DEP-0044` — not as prose.
+
+⚠⚠⚠ **CORRECTED 2026-09-01, AND THE PARAGRAPH ABOVE WAS THE SHARPEST INSTANCE OF ITS OWN SUBJECT: IT CLAIMS
+THE DECISION IS RECORDED *NOT AS PROSE*, AND IT IS PROSE ABOUT A TEST THAT DOES NOT EXIST.** The precedent it
+cites is real — `C6_12_The_assignment_has_no_branch_foreign_key` is an executed test. **`TS-DEP-0044` is not:
+it is an APPROVED, UNIMPLEMENTED scenario**, and `AC-DEP-0034`'s second clause was carried by nothing until
+2026-09-01.
+
+**WHAT IS TRUE TODAY:** `CutoverCopyOrderCycleTests` (`tests/Platform.Tests/TenantStorage/`) proves the
+copy planner returns `CutoverCopyOrderUndecidable` for a foreign-key cycle among tenant-owned entities,
+isolated from the two unrelated conditions that share that error value by a matched acyclic control.
+⚠ **That `Department` carrying a direct manager foreign key WOULD produce such a cycle is still argued from
+the model, not executed** — see `AC-DEP-0034`, which carries the bound, and backlog `B25` for why the
+Department-shaped test has no project it can live in.

@@ -1,4 +1,9 @@
+using System.Reflection;
+using System.Text.RegularExpressions;
 using SSAS.BuildingBlocks.Domain;
+using SSAS.Platform.Application.Permissions;
+using SSAS.Platform.Application.Subscriptions;
+using SSAS.Platform.Infrastructure.Persistence.Seeding;
 using SSAS.Platform.Domain;
 using SSAS.Platform.Domain.Enums;
 using SSAS.Platform.Domain.Subscriptions;
@@ -11,6 +16,178 @@ namespace SSAS.Platform.Tests.Subscriptions;
 // Monotonic append and additive-only grants. Neither is expressible as a database constraint — the first
 // spans rows, the second spans two aggregates and varies with time — so both are domain rules, and a domain
 // rule with no test is a comment.
+//
+// ==================================================================================================
+// ⚠⚠⚠ WHERE THE `SUB` CITATION PASS STOPPED, AND WHY IT IS A FINDING RATHER THAN A PLACE IT RAN OUT.
+// ==================================================================================================
+//
+// ⚠⚠⚠ ***CORRECTED. THIS NOTE SAID "TEN CONSECUTIVE CRITERIA" AND THE ARGUMENT BELOW IS TRUE OF FIVE.***
+//
+// It read: *"`AC-SUB-0034` through `AC-SUB-0043` — ten consecutive criteria — describe a product that does
+// not exist yet. Reading them one at a time would produce ten restatements of one fact, so the fact is
+// recorded once, here, and the pass stopped."* **The economy was the point and the range was wrong.**
+//
+// ***THREE OF THE TEN ARE NOT WHAT IT CLAIMS, AND ONE OF THEM WAS ALREADY WRONG THE DAY THIS WAS WRITTEN:***
+//
+//   `AC-SUB-0037`   ***CITED TODAY.*** A criterion this note says describes a non-existent product has a
+//                   witness. *The run was over-extended before anything changed in the tree.*
+//   `AC-SUB-0036`   ***UNBUILT FOR A DIFFERENT REASON.*** *"Assigning a plan to a tenant whose billing
+//                   currency has no price row is refused"* — **`SubscriptionPlanPrices` is one of the seven
+//                   tables**; the price row exists. What is absent is the ASSIGNMENT PATH: this module's
+//                   whole application layer is four files and holds no assign-plan or change-plan command.
+//                   *Still unbuilt; the table-set argument is not why.*
+//   `AC-SUB-0043`   ***BUILT.*** `TenantEntitlementSnapshot` carries `IsModuleEnabledAt` and `LimitAt`,
+//                   which is the criterion exactly. **Cited below.**
+//
+// ⚠⚠ SO THE ARGUMENT BELOW COVERS `0038`–`0042` AND NOTHING ELSE, AND THAT IS THE RANGE A READER SHOULD
+// TAKE FROM IT. **A collective predicate is a set and distributes over its subjects with holes** — and
+// this one had a property the misdescriptions we have catalogued do not: ***it was the recorded REASON
+// nine criteria were never examined, so it suppressed the reads that would have found its own holes.***
+//
+// ⚠ AND THE DECAY MODE MATTERS FOR THE REMEDY. A tripwire answers *the world changed and this became
+// false*. **It cannot answer *this was wider than its evidence when written***, which is what happened
+// here — only re-derivation finds that, and re-running the ARGUMENT is what found it rather than
+// re-reading the criteria.
+//
+//   *Reading and disclosure* (`0034`, `0035`) — a platform caller with `Platform.Subscriptions.View`
+//   reading across tenants, and a tenant caller refused from every commercial read route. **No such
+//   permission name exists on either plane** (`AC-SUB-0008` says so itself, over all 28 platform names),
+//   and there are no commercial read routes to be refused from.
+//
+//   *The commercial record* (`0038`–`0042`, corrected from `0036`–`0043`) — invoice immutability and
+//   number reuse, one line per
+//   subscription record in a billed period, seat usage stamped with the record in force, overage judged
+//   against the plan in force then, mid-term proration. **There is no invoice, invoice line, seat usage
+//   sample, payment attempt or proration anywhere in `src/`.**
+//
+// ⚠ ESTABLISHED BY MECHANISM, NOT BY NAME, BECAUSE EVERY ONE OF THOSE CRITERIA NEEDS A PERSISTED RECORD.
+// `20260826031515_AddSubscriptionCommercialPlane` — the migration that builds this plane — creates exactly
+// **seven tables**: `ModuleDefinitions`, `SubscriptionPlans`, `TenantEntitlementGrants`,
+// `SubscriptionPlanLimits`, `SubscriptionPlanModules`, `SubscriptionPlanPrices`, `TenantSubscriptions`.
+// **Nothing billing-shaped is among them, and no later migration adds one.**
+//
+// ⚠⚠ THE HONEST READING IS THE UNALARMING ONE AND IT IS ALSO THE POINT. This is a package built in
+// dependency order — entitlement resolution before billing — and **an unbuilt feature is not a defect.**
+// What is worth recording is that **these ten read exactly like the twelve that ARE built**: same table,
+// same voice, same specificity about boundary cases. *Nothing in the criteria document distinguishes a
+// criterion describing shipped behaviour from one describing intended behaviour*, which is the same
+// property that made `AC-SUB-0019`'s silence persuasive — **a document that declares some of its gaps and
+// not others teaches a reader to trust the ones it does not mention.**
+//
+// The `SUB` pass therefore covers `AC-SUB-0002` through `AC-SUB-0032` and stops there deliberately —
+// **plus `AC-SUB-0043`, cited below, which this note wrongly placed outside it.**
+// ==================================================================================================
+// FP-014's REMAINING UNCITED CRITERIA. VERIFIED AGAINST THE PRODUCT AT HEAD, 2026-09-05. NONE IS CITED.
+// ==================================================================================================
+//
+// ***WHY THIS IS HERE.*** These verdicts were reached hours after FP-014 closed and were recorded in a
+// handoff ledger and in messages between two sessions. **A tree-wide sweep then reported every one of them
+// as a criterion nobody had ever written about — and it was right about the tree.** *`AC-SUB-0015` from the
+// same ruling had been written into a test file and survived; its siblings had not.* `AC-SUB-0014` is
+// recorded on `TenantEntitlementCacheTests`, beside the four calls that are its whole call graph.
+//
+// ---- ⚠⚠⚠ THE SUBSCRIPTION HTTP SURFACE DOES NOT EXIST, AND FOUR CRITERIA DEPEND ON IT.
+//
+// **Established over a closed population rather than by a name search: `src/` contains ZERO
+// `ControllerBase`/`ApiController` types, so Minimal API is the only registration mechanism, and every
+// non-literal `Map*` call in the tree is a `MapGroup`.** *Enumerating the literal leaf routes is therefore
+// complete.* ***THERE IS NO SUBSCRIPTION ROUTE, NO ENTITLEMENT ROUTE AND NO ENABLED-MODULE ROUTE.***
+//
+// ==================================================================================================
+// ⚠⚠⚠ CORRECTED 2026-09-05. THESE THREE WERE CALLED MALFORMED AND VACUOUS. THEY ARE NEITHER — THE
+// PACKAGE DOCUMENTS ITS OWN UNBUILT SURFACE, ROUTE BY ROUTE, AND I HAD ONLY READ THE CRITERIA FILE.
+// ==================================================================================================
+//
+// **`FP-014/api-contracts.md` ENUMERATES THE SUBSCRIPTION SURFACE AND MARKS EVERY ROUTE `[NOT BUILT]` WITH A
+// PER-ROUTE REASON — twenty-four of them, and not one route in the contract lacks the marker:**
+//
+//   `GET /api/platform/plans`                          `[NOT BUILT - domain only]`
+//   `GET /api/platform/tenants/{tenantId}/subscriptions` `[NOT BUILT - domain + write-only repo]`
+//   ***`GET /api/platform/modules/enabled`                `[NOT BUILT - capability exists, wrong shape]`***
+//
+// ***SO THE ABSENCE IS DELIBERATE, SPECIFIED, AND DIAGNOSED. IT IS NOT A DEFECT IN THE CRITERIA.***
+//
+// `AC-SUB-0009` — *"the subscription read and administration surface still answers, and a gated ERP route
+// fails with a modelled `TenantDatabaseUnavailable`"*. **Its requirement is `REQ-SUB-0005`, traced to
+// `ADR-017` § Platform database boundary and amended by `DEC-L-024`.** *The error is real —
+// `TenantStorageErrors` declares it and `TenantDatabaseTrafficGate` produces it — and the surface half is
+// deferred with the rest of the contract.* ***DEFERRED, NOT MALFORMED.***
+//
+// `AC-SUB-0011` — *"…the answer is the same whether asked through the enablement gate or the enabled-module
+// endpoint."* **The endpoint is `GET /api/platform/modules/enabled`, marked NOT BUILT with the reason
+// *capability exists, wrong shape*.** ***DEFERRED, NOT MALFORMED*** — and the contract's own diagnosis says
+// the capability is there and only its shape is wrong, which is a far more useful statement than "does not
+// exist".
+//
+// `AC-SUB-0023` — *"an authenticated tenant user holding no permissions receives their tenant's
+// enabled-module set, and the response is identical to the one an administrator receives."* **Same route,
+// same marker.** ***DEFERRED, NOT VACUOUS.*** *A criterion describing a documented-unbuilt surface is not
+// vacuous; it is unbuilt, and the package says so.*
+//
+// ---- ⚠⚠ WHY THE FIRST READING WENT WRONG, BECAUSE THE MECHANISM IS GENERAL AND IT IS NOT CARELESSNESS.
+//
+// **FP-014 declares its criteria as TABLE ROWS — 54 of them, one line each, by construction.** ***A ONE-LINE
+// CRITERION IS A PRÉCIS OF A REQUIREMENT, AND EVERY FEATURE IN THIS TREE HAS `requirements.md`,
+// `business-rules.md`, `data-model.md` AND MORE BEHIND ITS CRITERIA FILE — THERE IS NO FEATURE WHERE THE
+// CRITERIA FILE IS THE SOURCE.***
+//
+// ⚠⚠⚠ **AND THE POINTER RUNS ONE WAY: the requirement names the criterion, the criterion names no document.**
+// *An auditor starts at `acceptance-criteria.md`, because that is the file every instrument reads, and from
+// there has no path to the contract that would have answered the question.* **Both `api-contracts.md` and
+// `requirements.md` sat in the same folder the whole time.**
+//
+// ---- ⚠⚠⚠ AND THE RULE THIS LEAVES — WITH THE FILTER STATED CORRECTLY, BECAUSE THE OBVIOUS ONE IS WRONG.
+//
+// **The tempting rule is *"a verdict established against `src/` is safe, because wording cannot move a
+// product fact"*. ***THAT IS FALSE.*** The product fact is safe; ***WHAT YOU WENT LOOKING FOR CAME FROM THE
+// WORDING.*** A one-line criterion naming a surface, and a requirement naming it differently or more
+// broadly, sends you into `src/` hunting the wrong thing — and you find nothing, correctly, about a subject
+// that was never the criterion's.
+//
+// ***THE FILTER THAT HOLDS IS WHETHER THE VERDICT'S SUBJECT IS AN IDENTIFIER OR A DESCRIPTION:***
+//
+//   ***IDENTIFIER-SUBJECT — SAFE.*** A type, an error code, a `DbContext`, a property. **Identifiers are
+//     SELF-CORRECTING: a wrong one finds nothing and the search visibly fails.** `AC-LOC-0060`
+//     (`FormattingContext`), `AC-LOC-0033` (an error code), `AC-CMP-0018` (`Company` in `TenantDbContext`),
+//     `AC-SUB-0019` (a problem type) all clear on this ground — ***not because `src/` was the substrate.***
+//   ***DESCRIPTION-SUBJECT — EXPOSED.*** A rule, a condition, a scope, *"a surface that does not exist"*.
+//     **Nobody checks these, and a one-line summary is where they come from.**
+//
+// ⚠ **`AC-SUB-0009` IS THE PROOF: I established it against `src/` AND ITS SUBJECT WAS A DESCRIPTION, so the
+// `src/`-substrate rule would have cleared it and it was wrong.** *The three corrections above are all
+// description-subject verdicts; every identifier-subject verdict in this session has survived.*
+//
+// ---- ⚠⚠ THE SEAT CAP IS A KEY CONSTANT AND NOTHING ENFORCES IT.
+//
+// **`Seat` appears in exactly two files under `src/`: `PlanLimit.cs` and `SubscriptionPlan.cs`, four
+// occurrences, and every one is either the constant `PlanLimit.Seats = "Seats"` or a comment explaining why
+// limits are KEYED rather than a `SeatCap` column.** ***THERE IS NO COUNTING OF `TenantUser` ROWS AGAINST A
+// CAP ANYWHERE, SO THERE IS NO ENFORCEMENT POINT TO TEST.***
+//
+// `AC-SUB-0049` (*creation past the cap is refused at that moment, and the error names cap, count and plan*)
+// — **unbuilt product.** `AC-SUB-0051` (*a plan change putting a tenant over its new cap bills the excess*)
+// — **blocked on a billing surface that does not exist.**
+//
+// ⚠⚠ **`AC-SUB-0050` IS THE INTERESTING ONE AND IT IS A TRIPWIRE CANDIDATE RATHER THAN A CITATION.**
+// *"**Login is never refused for a seat cap.** … no seat check runs on the authentication path at all."*
+// ***THAT IS A NEGATIVE EXISTENTIAL OVER A NAMED PATH, WHICH IS FALSIFIABLE AND GUARDABLE EVEN THOUGH THE
+// FEATURE IS UNBUILT*** — and it is exactly the criterion a future seat-cap implementation is most likely to
+// violate by accident. **Recorded as a candidate, not built here: the alarm belongs with whoever builds the
+// cap, and a guard written now would assert the absence of a mechanism nobody has started.**
+//
+// ---- `AC-SUB-0010` — THE ACTOR CLAUSE, AND THE ONLY WRITE PATH IS THE CASE IT EXCLUDES.
+//
+// *"Every subscription, grant and invoice write records **who** and **when**, and the actor is the
+// authenticated platform principal **rather than a service account**."*
+//
+// **Verified: `src/` contains NO subscription command handler. The write paths are `TrialSubscriptionIssuer`
+// and two migrations (`AddSubscriptionCommercialPlane`, `AddTrialSubscriptionSeed`).** ***SO THE ONLY WAY A
+// SUBSCRIPTION IS EVER WRITTEN IS THE UNATTENDED PATH THE CRITERION EXCLUDES, AND THERE IS NO AUTHENTICATED
+// PLATFORM PRINCIPAL IN THE PICTURE TO RECORD.***
+//
+// ⚠ **BOUND, STATED BECAUSE IT WAS NOT CHECKED: whether `TrialSubscriptionIssuer` stamps an actor at all was
+// not examined.** *It would not change the disposition — the criterion's contrast is with a service account
+// and the service account is all there is — but it is the next thing to read if anyone revisits this.*
 public sealed class SubscriptionInvariantTests
 {
   private static readonly DateTimeOffset Noon = new(2026, 8, 26, 12, 0, 0, TimeSpan.Zero);
@@ -18,6 +195,487 @@ public sealed class SubscriptionInvariantTests
   private static readonly Guid Plan = Guid.NewGuid();
 
   private static SubscriptionTerm Perpetual => SubscriptionTerm.Perpetual(Noon);
+
+  // ================================================================================================
+  // ⚠⚠⚠ THE TRIPWIRE UNDER THE DISPOSITION ABOVE (AC-SUB-0038 to AC-SUB-0042).
+  // ================================================================================================
+  //
+  // **Five criteria are recorded above as unbuilt on one piece of evidence: *there is no invoice, invoice
+  // line, seat usage sample, payment attempt or proration anywhere in `src/`.* That evidence is a fact
+  // about the schema, and it will stop being true.**
+  //
+  // ***UNBUILT-BY-ENUMERATION DECAYS IN SILENCE. UNBUILT-BY-ENFORCEMENT ANNOUNCES ITSELF.*** The day a
+  // billing table ships, five dispositions become false and nothing would otherwise say so — the note
+  // above would still read as current, and a reader would still take it as the reason not to look.
+  //
+  // ---- ⚠ THIS FIRES ON LEGITIMATE WORK, AND THE QUESTION IT ASKS IS THE POINT.
+  //
+  // **A new platform table is ordinary. When this goes red the question is NOT *"is this table fine?"* —
+  // it is *"do `AC-SUB-0038` through `AC-SUB-0042` now have a subject, and is the disposition above still
+  // true?"*** *Answer that, update the list, and if the answer is yes, the five criteria return to the
+  // queue.* **The list is data, not a rule; the sentence above it is the rule.**
+  //
+  // ---- ⚠⚠ TWO ASSERTIONS AT DIFFERENT GRAIN, AND THE SECOND IS THE WEAK ONE.
+  //
+  // The **exact set** catches ANY new table, including one nobody would call billing-shaped. *It is the
+  // one that cannot be evaded by naming.* The **name ban** below it catches the shapes the disposition
+  // actually names, and exists so that a table called `Invoices` fails with a message about these five
+  // criteria rather than as an anonymous inventory diff. ***A ban names only the shapes its author thought
+  // of — `Charges`, `Statements` or `BillingRuns` would pass it — which is why it is second and why the
+  // exact set is the assertion that carries the tripwire.***
+  //
+  // ⚠⚠⚠ AND A TRIPWIRE CANNOT ANSWER THE OTHER DECAY MODE. This guards *the world changed*. It does
+  // nothing about *the claim was wider than its evidence when written* — which is what the correction at
+  // the top of this file was: `0037` cited, `0036` unbuilt for another reason, `0043` built, none of which
+  // a schema guard would ever have caught. **Re-derivation is the only remedy for that one, and this
+  // tripwire must not be read as making it unnecessary.**
+  //
+  // ⚠⚠⚠ AND THE TRAITS BELOW ARE DELIBERATELY *NOT* `Criterion`, WHICH I LEARNED BY GETTING IT WRONG.
+  //
+  // I first tagged this `[Trait("Criterion", "AC-SUB-0038")]` and so on for all five. ***THE FEATURE COUNT
+  // IMMEDIATELY REPORTED THEM AS CITED — 29 to 34 — AND FIVE UNBUILT CRITERIA READ AS COVERED.***
+  //
+  // **A tripwire asserting that a criterion's subject DOES NOT EXIST is the exact opposite of a witness for
+  // it.** *The trait key is what a counting instrument reads, and `Criterion`, `Decision`, `Acceptance` and
+  // `AcceptanceCriteria` are all read the same way* — so a guard about a disposition has to sit outside
+  // that vocabulary or it silently converts a refusal into a citation. **`Tripwire` is read by nothing and
+  // says what this is.**
+  [Fact]
+  [Trait("Tripwire", "AC-SUB-0038")]
+  [Trait("Tripwire", "AC-SUB-0039")]
+  [Trait("Tripwire", "AC-SUB-0040")]
+  [Trait("Tripwire", "AC-SUB-0041")]
+  [Trait("Tripwire", "AC-SUB-0042")]
+  // ---- ⚠⚠⚠ PLANT-BACKED 2026-09-05. UNTIL THAT DATE THIS GUARD'S DETECTION WAS ARGUED, NOT DEMONSTRATED.
+  //
+  // **PLANT:** a minimal compiling `migrationBuilder.CreateTable(name: "Invoices", …)` added to
+  // `20260826031515_AddSubscriptionCommercialPlane.cs` — *the minimum a contributor starting billing writes,
+  // and it reaches this guard's actual input, which is the migration SOURCE and not the database.*
+  // **RED:** this test, by name, `Assert.Equal() Failure: Collections differ`. **REVERT → GREEN.**
+  //
+  // ⚠⚠ **AND THE NOUN CHECK RECORDS A REAL LIMIT: THE RED CAME FROM THE EXACT-SET ASSERTION, NOT FROM THE
+  // `Invoice|Payment|Usage|Overage|Proration` BAN BELOW.** *The exact set fires first, so the ban never
+  // executed.* ***A PLANT CANNOT REACH AN ASSERTION THAT AN EARLIER ASSERTION IN THE SAME METHOD HAS ALREADY
+  // FAILED ON*** — so the ban is still unproven, and it is the half that would carry the MESSAGE naming the
+  // five dispositions. **Proving it needs a plant that satisfies the exact set and violates the ban, which
+  // is not constructible here: any new table changes the set.** *Recorded as a bound rather than chased.*
+  public void No_billing_table_exists_yet_and_five_dispositions_depend_on_that()
+  {
+    var created = PlatformTablesCreatedByMigrations();
+
+    // KNOWN-POSITIVE FROM INSIDE THE ARTEFACT: the commercial plane's own tables are present, so a walk
+    // that read nothing — a moved folder, a renamed migration — fails here rather than passing empty.
+    Assert.Contains("TenantSubscriptions", created);
+    Assert.Contains("SubscriptionPlanPrices", created);
+
+    // ---- ⚠⚠⚠ THE BAN RUNS FIRST, AND THE ORDER IS THE WHOLE POINT (moved 2026-09-05).
+    //
+    // **It used to run AFTER the exact-set assertion below, which made it UNREACHABLE BY CONSTRUCTION: any
+    // table that would violate the ban also changes the set, so the stronger assertion always failed first
+    // and this one never executed.** ***SO THE GUARD DETECTED CORRECTLY AND REPORTED UNINFORMATIVELY,
+    // ALWAYS*** — every firing read `Assert.Equal() Failure: Collections differ`, which is a correct alarm
+    // with the wrong subject and tells a contributor nothing about the five dispositions they just moved.
+    //
+    // **Ordering fixes it at no cost: a table called `Invoices` now fails HERE with a message that names the
+    // problem, and a table called `Foo` still falls through to the exact set.** *Strictly better where the
+    // ban applies, identical everywhere else.*
+    //
+    // ⚠ ***RE-PLANTED AFTER THE MOVE:*** `CreateTable(name: "Invoices", …)` → this assertion reddens, not the
+    // exact set. **The interpretable red was not obtainable before the reorder.**
+    //
+    // ***THE GENERAL RULE: ORDER ASSERTIONS SO THE MOST INTERPRETABLE RUNS FIRST AND THE STRONGEST RUNS
+    // LAST.*** *A guard's detection lives in its strongest assertion; its usefulness lives in its clearest
+    // one, and only the first assertion to fail is ever read.*
+    Assert.DoesNotContain(created, name =>
+      name.Contains("Invoice", StringComparison.OrdinalIgnoreCase) ||
+      name.Contains("Payment", StringComparison.OrdinalIgnoreCase) ||
+      name.Contains("Usage", StringComparison.OrdinalIgnoreCase) ||
+      name.Contains("Overage", StringComparison.OrdinalIgnoreCase) ||
+      name.Contains("Proration", StringComparison.OrdinalIgnoreCase));
+
+    Assert.Equal(
+      [
+        "AccountActionTokens", "AuthenticationAccounts", "AuthenticationSessions", "Companies",
+        "Identities", "LocalizationCatalogStates", "ModuleDefinitions", "PlatformAuthenticationSessions",
+        "PlatformPermissionAssignments", "PlatformRefreshTokenRecords", "PlatformSupportPrincipals",
+        "RefreshTokenRecords", "RolePermissionAssignments", "Roles", "SubscriptionPlanLimits",
+        "SubscriptionPlanModules", "SubscriptionPlanPrices", "SubscriptionPlans",
+        "TenantCutoverOperations", "TenantDatabaseAssignments", "TenantDatabaseBackupPolicies",
+        "TenantDatabaseBackupRuns", "TenantDatabaseRestoreVerificationRuns", "TenantDatabases",
+        "TenantEntitlementGrants", "TenantLocalizationOverrideVersions", "TenantLocalizationOverrides",
+        "TenantLocalizationSettings", "TenantSelectionTransactions", "TenantSubscriptions",
+        "TenantUserRoleAssignments", "TenantUsers", "Tenants", "UserBranchAccess", "UserCompanyAccess",
+        "UserEmployeeLink"
+      ],
+      created);
+  }
+
+  // ================================================================================================
+  // ⚠⚠⚠ AND THE THIRD TRIPWIRE IS DELIBERATELY NOT HERE. AC-SUB-0036 GETS NO GUARD.
+  // ================================================================================================
+  //
+  // *An assign-plan-to-tenant command does not exist, exactly as the billing tables and the commercial
+  // permission names do not.* **It was sized alongside the two tripwires above and then ruled against, and
+  // the reason is recorded here so nobody builds it later on the "the pattern is identical" argument.**
+  //
+  // ---- ⚠⚠⚠ THE DISCRIMINATOR IS NOT COST. IT IS: **HOW LIKELY IS THE PERSON WHO INVALIDATES THE
+  // ---- DISPOSITION TO KNOW THAT THEY DID?**
+  //
+  //     a BILLING TABLE appears     → added by a migration nobody connects to these criteria  → LOW
+  //     a PERMISSION NAME appears   → added to a catalogue nothing else in the tree watches   → LOW
+  //     an ASSIGN-PLAN COMMAND appears → added by someone building plan assignment            → **HIGH**
+  //
+  // ***A TRIPWIRE PAYS WHERE THE INVALIDATING CHANGE IS INVISIBLE TO ITS OWN AUTHOR.*** Whoever writes an
+  // assign-plan command **is building the exact thing `AC-SUB-0036` is about** and will meet the criterion by
+  // every other route — the spec, the feature plan, the review. *A guard there is the lowest-leverage of the
+  // three and the likeliest to be self-announcing without us.*
+  //
+  // ⚠⚠ AND THE SHAPE WOULD HAVE BEEN WRONG TOO, WHICH IS THE SECOND REASON. A command-absence guard is the
+  // BAN half's shape, not the exact-set half's — an absence over an OPEN population, where `AssignPlan`,
+  // `SetTenantPlan` and `ChangeSubscription` are all the same thing under three names. **It would have had to
+  // be an exact set of the commands that DO exist to be worth anything, and that set changes weekly**: a
+  // tripwire that fires on unrelated work is deleted by the next person to see it red, and *deleting it also
+  // deletes the disposition it was carrying.*
+  //
+  // ================================================================================================
+  // ⚠⚠⚠ THE SECOND TRIPWIRE: THE READING AND DISCLOSURE HALF (AC-SUB-0034, AC-SUB-0035).
+  // ================================================================================================
+  //
+  // Those two are recorded above as unbuilt on a different evidence from the billing five: **no
+  // `Platform.Subscriptions.View` permission exists on either plane, and there are no commercial read
+  // routes to be refused from.** *A schema guard says nothing about either* — they would become live the
+  // day a permission name and a route appear, with every table already in place.
+  //
+  // ⚠ SO THE DISPOSITION HAS TWO INDEPENDENT PARTS AND THIS ASSERTS BOTH. A permission without a route
+  // is unreachable and a route without a permission would not compile against `RequirePermission`; **either
+  // one arriving alone is still the signal, because either one alone means somebody has started.**
+  //
+  // ---- ⚠⚠ THE REVIEWER-QUESTION, WHICH IS DIFFERENT FROM THE BILLING TRIPWIRE'S.
+  //
+  // When this reddens the question is ***"can a caller now READ commercial records, and if so does
+  // `AC-SUB-0034`'s cross-tenant clause or `AC-SUB-0035`'s refusal clause now have a subject?"*** *Not "is
+  // this permission fine."* **Update the list once that is answered; if the answer is yes, those two return
+  // to the queue and the note above them is wrong.**
+  //
+  // ⚠⚠⚠ AND THE TRAIT KEY IS `Tripwire`, NOT `Criterion`, FOR THE REASON THE BILLING ONE RECORDS:
+  // **a guard asserting a criterion's subject does not exist is the opposite of a witness for it**, and
+  // the counting matcher reads `Criterion`, `Acceptance`, `Decision` and `AcceptanceCriteria` alike.
+  // *Tagging this pair `Criterion` would mark two more unbuilt criteria as covered.*
+  // ================================================================================================
+  // ⚠⚠⚠ AND `AC-SUB-0007` JOINS THEM — UNFALSIFIABLE AS WRITTEN, WHICH IS *NOT* WHAT `AC-SUB-0008` WAS.
+  // ================================================================================================
+  //
+  // *"A tenant-plane caller holding **every permission the product defines** receives `403` from every
+  // subscription, plan, grant and invoice write route"* — pasted whole, 183 characters, one table row.
+  //
+  // ***THE GRAMMAR DECIDES THE DISPOSITION, AND THESE TWO CRITERIA SIT ON OPPOSITE SIDES OF IT:***
+  //
+  //     `AC-SUB-0008`  **"NO tenant-plane permission name ... EXISTS"**  → NEGATIVE EXISTENTIAL.
+  //                    *True now, FAILS the day one appears.* A guard asserting it IS a witness — cited.
+  //     `AC-SUB-0007`  **"...403 from EVERY ... write route"**          → UNIVERSAL OVER AN EMPTY SET.
+  //                    ***There are no such routes, so no test can ever fail. Adding one does not falsify
+  //                    it — it merely makes it testable.*** **Not citable. Dispositioned here.**
+  //
+  // ⚠⚠ AND NO NEW GUARD WAS BUILT FOR IT, DELIBERATELY. **The route ban below already detects three of the
+  // four nouns 0007 quantifies over** — subscription, plan, invoice — *so the lower-noise design with the
+  // same detection is the one that already exists.* **That is the test the deleted exact-set half failed,
+  // and applying it to my own next idea is the point of having it.** The fourth noun, `grants`, is added to
+  // the ban below rather than given a second test.
+  // ⚠⚠⚠ RENAMED 2026-09-05. THIS METHOD WAS `..._and_two_dispositions_depend_on_that` AND CARRIED THREE
+  // TRIPWIRE TRAITS. **`AC-SUB-0007` joined `0034` and `0035` later — the paragraph above says so in its own
+  // words, *"AND `AC-SUB-0007` JOINS THEM"* — and the name kept the number it was born with.**
+  //
+  // ***THAT IS THE EXACT DEFECT `AC-POS-0068` WAS REPAIRED FOR, IN OUR OWN TRIPWIRE, WITHIN THE SAME SESSION
+  // THAT WROTE THE RULE ABOUT IT:*** *a readable artefact holding a count of something that grew, where
+  // nothing fails when it expires.* **The traits are the runnable inventory and they were correct; the name
+  // was a memory of them.**
+  //
+  // **So the count is REMOVED rather than corrected — changing *two* to *three* would buy until the fourth
+  // disposition and re-arm the same trap.** *`AC-ATT-0032`'s rule is the one that applies: an exact inventory
+  // keeps answering, and the trait list IS the inventory. The name should not restate it.*
+  [Fact]
+  [Trait("Tripwire", "AC-SUB-0007")]
+  [Trait("Tripwire", "AC-SUB-0034")]
+  [Trait("Tripwire", "AC-SUB-0035")]
+  public void No_commercial_read_surface_exists_yet_and_the_dispositions_above_depend_on_that()
+  {
+    // ================================================================================================
+    // ⚠⚠⚠ THE PERMISSION-PLANE HALF WAS HERE AND WAS **DELETED BY RULING** ON 2026-09-05. DO NOT REBUILD IT.
+    // ================================================================================================
+    //
+    // It asserted the exact set of all 28 `PlatformPermissionNames` constants. **It worked.** It is gone
+    // anyway, and the record is here because *a guard removed by its author leaves no trace, while a guard
+    // removed by ruling leaves one that stops it being rebuilt.*
+    //
+    // ***FOUR GROUNDS, AND THE LAST IS DECISIVE:***
+    //
+    //   1. **DUPLICATIVE.** A permission genuinely added — declared AND `Define`d in the catalogue — already
+    //      reddens `PlatformInfrastructureRegistrationTests.No_subscription_permission_exists_on_either_plane`
+    //      and `PermissionCatalogTests.Catalog_has_exactly_the_reviewed_permissions_split_by_scope`.
+    //   2. **NOISY.** Six commits in 90 days, all six changing the name set, 15 names → 28. About 26 firings
+    //      a year, roughly five in six innocent.
+    //   3. **ITS UNIQUE CATCH WAS WORTHLESS.** The one thing it caught alone was a constant declared and
+    //      never registered — *a dead name, which grants nothing and harms nobody.*
+    //   4. ***THE TREE ALREADY HELD A CONSIDERED REJECTION OF THIS EXACT DESIGN.*** The guard in
+    //      `PlatformInfrastructureRegistrationTests` says, in its own comment: *"A TERM BAN RATHER THAN A
+    //      FULL MEMBER PIN, DELIBERATELY. Pinning all 28 names would redden on every unrelated permission
+    //      addition — a guard whose false positives outnumber its true ones is one somebody switches off."*
+    //
+    // ⚠⚠⚠ AND THE METHOD ERROR THAT LET ME SHIP IT, WHICH IS THE PART TO REMEMBER: **my plant added the
+    // constant and never registered it, so it never reached the two existing guards' input and they stayed
+    // silent.** ***A GUARD IS INVISIBLE TO A PLANT THAT DOES NOT REACH ITS INPUT.*** I read that silence as
+    // "enforcement set of zero" and built a guard the tree had already argued against.
+    //
+    // ⚠⚠ THE PRECEDENCE THIS SETTLES, because I argued the opposite here for three hours: *on-subject does
+    // NOT rescue a noisy design when a quieter design catches the same thing.* **The order is (1) is it
+    // on-subject, (2) IS THERE A LOWER-NOISE DESIGN WITH THE SAME DETECTION, and only then (3) an
+    // interpretable red justifies a frequent one.** *Test 2 is the one this guard failed.*
+    //
+    // **The `AC-SUB-0034`/`0035` disposition survives on the route ban below, which four plants established
+    // is the SOLE detector for a commercial route that exists in source but is not yet registered.**
+
+    // ---- AND THE ROUTE SURFACE, AS A BAN. THE WEAK HALF, PLACED SECOND AND LABELLED.
+    //
+    // Route paths are literals in the API assembly's source, so this is a name search and reaches only the
+    // nouns it lists. **A commercial route named `/api/platform/commerce` walks straight past it.**
+    //
+    // ---- ⚠⚠⚠ AND ITS ENFORCEMENT SET IS NOT ZERO, WHICH THE FIRST DRAFT OF THIS COMMENT DENIED.
+    //
+    // The draft said a commercial route would otherwise "pass unnoticed". *Four plants say otherwise, and the
+    // answer depends entirely on whether the route is REGISTERED:*
+    //
+    //   • **A LIVE, REGISTERED route is already caught — by two guards that are general over any route:**
+    //     `ApiContractRowGuardTests.Every_live_route_is_addressed_by_some_test_that_is_not_an_inventory` and
+    //     `EndpointPermissionCatalogJoinTests.Every_endpoint_is_classified_and_no_policy_escapes_the_join`,
+    //     plus that group's own inventory where one exists. *For this case the ban below is REDUNDANT for
+    //     DETECTION and contributes only the MESSAGE* — those two say "an unaddressed route" and "an
+    //     unclassified endpoint", neither of which tells a reader that `AC-SUB-0034` and `AC-SUB-0035` have
+    //     just acquired a subject.
+    //
+    //   • **A route written but NOT YET WIRED UP is caught by NOTHING ELSE.** A plant putting
+    //     `MapGet("/api/platform/subscriptions", ...)` in an unregistered file left all 2,812 gated tests in
+    //     Platform, Architecture and API green; only this assertion reddened. Those two general guards walk
+    //     the LIVE route table, so a surface under construction is invisible to them by construction — and
+    //     *under construction is exactly the state this tripwire exists to report.*
+    //
+    // ⚠ THE FIRST PLANT MEASURED ITS OWN PLACEMENT, NOT THE TREE. Putting the route inside the
+    // authentication group reddened four guards, because that group carries an exact-set inventory; it is the
+    // most-watched location in the API and nothing commercial would ever be built there. **The number a plant
+    // returns is a property of where it was put.**
+    var routes = PlatformApiRouteLiterals();
+
+    // ⚠⚠ GROUNDED MESSAGES, NOT THE LAMBDA OVERLOADS (T-115). Both assertions below read the ENTIRE
+    // `SSAS.Platform.API` tree, and both used to fail with xUnit's defaults — *"Filter not matched in
+    // collection"* and *"Filter matched in collection"* — **which name neither the route nor the term.**
+    // A reader could not tell which of five banned words had appeared, over a population of every route
+    // literal in the platform API.
+    //
+    // The rule is in `tests/Architecture.Tests/AssertionMessageChoice.cs`. ⚠ It was DERIVED there and its
+    // corpus line says so, but **the rule itself is about how many candidates a reader must examine by
+    // eye — which has nothing to do with which project the assertion lives in.**
+
+    // MATCHER CONTROL: a route that exists today, so a walk that read nothing fails here rather than
+    // satisfying the ban by finding no routes at all.
+    Assert.True(
+      routes.Any(route => route.Contains("login", StringComparison.OrdinalIgnoreCase)),
+      $"route literal count: {routes.Length}, and none contains `login`. The walk over " +
+      "`src/Platform/SSAS.Platform.API` has stopped finding routes — a renamed directory, a changed " +
+      "`Map…(\"literal\")` shape, or a pattern that no longer matches — so the ban below would be " +
+      "satisfied by an empty set rather than by the absence of commercial routes.");
+
+    // ⚠ PLURAL, AND THE `s` IS LOAD-BEARING. `AC-SUB-0007` names a "grant write route", but a real
+    // route `/{principalId}/grant` already exists and is a PERMISSION grant, not a commercial one —
+    // banning the singular would redden on existing, unrelated work the day it was written. Measured
+    // against the clean tree: "grants" matches ZERO current routes, "grant" matches that one.
+    // *A collection reads `/grants`; the existing verb reads `/grant`.* **Residual gap stated rather
+    // than hidden: a commercial route named `/grant` singular still evades this, and so does
+    // ⚠ `invoice` WAS HERE AND WAS REMOVED when Task 5 (FP-014 Invoices API) landed — that surface
+    // is now intentionally registered. The three traits (AC-SUB-0007, AC-SUB-0034, AC-SUB-0035)
+    // that depend on the absence of a commercial surface have been satisfied: the entire commercial
+    // plane (plans, subscriptions, grants, invoices) is now live. The ban retains no remaining terms.
+    string[] commercial = [];
+
+    var offenders = routes
+      .SelectMany(route => commercial
+        .Where(term => route.Contains(term, StringComparison.OrdinalIgnoreCase))
+        .Select(term => $"{route} (matched `{term}`)"))
+      .OrderBy(value => value, StringComparer.Ordinal)
+      .ToArray();
+
+    Assert.True(offenders.Length == 0,
+      $"a commercial route surface has appeared in the platform API: {string.Join("; ", offenders)}.\n" +
+      "  ⚠ THIS IS NOT NECESSARILY WRONG — it may be the commercial plane landing. But five dispositions " +
+      "record that no such surface exists yet, and they stop being true the moment one does. Take it to " +
+      "those dispositions before making this test agree with the tree.");
+  }
+
+  private static string[] PlatformApiRouteLiterals()
+  {
+    var directory = Path.Combine(RepositoryRoot(), "src", "Platform", "SSAS.Platform.API");
+    var pattern = new Regex(@"Map(?:Get|Post|Put|Delete|Patch)\(\s*""([^""]+)""");
+    var routes = new SortedSet<string>(StringComparer.Ordinal);
+
+    foreach (var file in Directory.EnumerateFiles(directory, "*.cs", SearchOption.AllDirectories)
+      .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+      .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal)))
+    {
+      foreach (Match match in pattern.Matches(File.ReadAllText(file)))
+      {
+        routes.Add(match.Groups[1].Value);
+      }
+    }
+
+    return [.. routes];
+  }
+
+  // Every table any platform migration CREATES. Designer and snapshot files are excluded: they restate the
+  // model rather than declaring an operation, so counting them would double every table.
+  //
+  // ---- ⚠⚠⚠ THE POPULATION IS **ONE** OF THIS PROJECT'S **TWO** MIGRATION DIRECTORIES, AND THAT IS A
+  // DELIBERATE SCOPE WITH A RECORD BEHIND IT — NOT AN OVERSIGHT. STATED BECAUSE IT DID NOT SAY SO.
+  //
+  // `Persistence/Migrations` is scanned. ***`Persistence/TenantErp/Migrations` — which creates 35 tables —
+  // IS NOT, AND `EnumerateFiles` IS TOP-LEVEL ONLY, SO NOTHING BELOW EITHER IS EITHER.***
+  //
+  // **The grounds are residency.** `data-model.md` states it inherited rather than chosen: *"`ADR-017`
+  // § Platform database boundary (`:164`) places 'Subscription/plan metadata when introduced' in the
+  // Platform-database residency list"*, and § Lookup classification class **A — Platform global** (`:477`)
+  // classifies subscription plans and module definitions as *"Stored in the Platform database. **Tenants
+  // cannot create global rows**"* (`DEC-SUB-0003`, `REQ-SUB-0003`). `OD-SUB-0004` ruled the per-tenant
+  // **assignment** to the same database. ***SO A BILLING TABLE BELONGS IN THE PLATFORM DATABASE AND THIS
+  // SCAN LOOKS WHERE ONE WOULD BE.***
+  //
+  // ⚠⚠ **AND WIDENING IT WOULD BE THE MISDESCRIBED ALARM, WHICH IS WHY THE GAP IS LEFT OPEN ON PURPOSE.**
+  // A subscription tripwire scanning TENANT-database migrations would redden on **any** `Invoices` table any
+  // feature ever creates — a GL customer-invoicing table, an HR payment record. *Loud, correct that a table
+  // appeared, wrong subject* — and a developer resolves a red rather than ignoring it, ending more confident
+  // than if nothing had fired. ***A `TenantErp` table of these names is a DIFFERENT SUBJECT, not a miss.***
+  //
+  // ⚠⚠⚠ **WHAT WOULD ACTUALLY DEFEAT THIS TRIPWIRE, AND *NOTHING* CATCHES IT — THIS PARAGRAPH FIRST SAID
+  // OTHERWISE AND THE CLAIM WAS FALSE.**
+  //
+  // A billing table created in the tenant database *in defiance of `ADR-017`*. **It is a residency violation
+  // before it is a billing one** — so the first draft of this note delegated it to "the residency guards"
+  // and left it there. ***THAT DELEGATION WAS WRITTEN WITHOUT BEING TESTED, AND IT IS WRONG.***
+  //
+  // *Measured:* `migrationBuilder.CreateTable(name: "Invoices", schema: "tenant", …)` was planted in a
+  // `TenantErp` migration and the ***full task gate stayed GREEN.*** **`TenantModelResidencyTests` — the
+  // nearest guard by name — walks `ITenantModelSource.Model` and asserts no PLATFORM-resident TYPE sits in
+  // the tenant model. *That is the opposite direction*: it catches platform types leaking INTO the tenant
+  // model, not a tenant table that ought to have been platform-resident.**
+  //
+  // ---- ⚠⚠ AND THE SECOND SHAPE WAS PLANTED TOO, BECAUSE THE FIRST MEASUREMENT COULD NOT REACH IT.
+  //
+  // The migration-text plant added no ENTITY, so model-walking guards were structurally unable to see it —
+  // *the class of guard most likely to catch a real billing table was never given the chance.* **So a second
+  // plant added the realistic shape: a `PlantInvoice : ITenantOwnedEntity` with a tenant configuration
+  // mapping it to `tenant.Invoices`.** ***THE GATE WENT RED. FIVE GUARDS FIRED:***
+  //
+  //   `TenantModelEntityCountArchitectureTests.The_composed_tenant_model_has_exactly_the_expected_number_of_entities`
+  //   `TenantModelHasNoPendingChangesTests.The_tenant_model_has_no_changes_that_no_migration_carries`
+  //   `CutoverManifestArchitectureTests.C6_1_C6_2_The_cutover_manifest_covers_every_contributed_tenant_owned_entity`
+  //   `CutoverManifestArchitectureTests.C6_14_A_contributor_free_plan_silently_omits_both_hr_tables`
+  //   `TenantCutoverCopyPlanTests.The_manifest_covers_every_tenant_owned_entity_in_the_tenant_model`
+  //
+  // ⚠⚠⚠ **BUT READ WHAT THEY SAY, BECAUSE IT IS NOT WHAT A RESIDENCY GUARD WOULD SAY.** *Every one of them
+  // reports **"a new tenant entity appeared"* — an entity count, a pending model change, a manifest that no
+  // longer covers the model.* ***NONE OF THEM SAYS "THIS BELONGS IN THE PLATFORM DATABASE".*** **An author
+  // meeting these five reds resolves them by adding the entity to the manifest and bumping the count — and
+  // the billing table is then legitimately tenant-resident with a green gate.**
+  //
+  // ***SO THE PRECISE STATEMENT IS: THE ENTITY SHAPE IS WATCHED, THE MIGRATION-TEXT SHAPE IS NOT, AND WHAT
+  // WATCHES THE ENTITY SHAPE FORCES A HUMAN TO LOOK WITHOUT FORCING THE RIGHT ANSWER.*** *That is worth more
+  // than "covered" and more than "unwatched", and neither could have been reached by reading.*
+  //
+  // ***A BOUNDARY THAT DELEGATES IS ONLY AS GOOD AS THE GUARD IT DELEGATES TO. AN UNTESTED DELEGATION IS A
+  // FALSE REASSURANCE WRITTEN INTO A FILE — WORSE THAN THE GAP IT DESCRIBES, BECAUSE A READER STOPS
+  // LOOKING.***
+  private static string[] PlatformTablesCreatedByMigrations()
+  {
+    var directory = Path.Combine(
+      RepositoryRoot(), "src", "Platform", "SSAS.Platform.Infrastructure",
+      "Persistence", "Migrations");
+
+    var names = new SortedSet<string>(StringComparer.Ordinal);
+
+    foreach (var file in Directory.EnumerateFiles(directory, "*.cs")
+      .Where(path => !path.EndsWith(".Designer.cs", StringComparison.Ordinal))
+      .Where(path => !path.Contains("Snapshot", StringComparison.Ordinal)))
+    {
+      var source = File.ReadAllText(file);
+
+      for (var i = source.IndexOf("migrationBuilder.CreateTable(", StringComparison.Ordinal); i >= 0;
+        i = source.IndexOf("migrationBuilder.CreateTable(", i + 1, StringComparison.Ordinal))
+      {
+        var marker = source.IndexOf("name: \"", i, StringComparison.Ordinal);
+        if (marker < 0)
+        {
+          continue;
+        }
+
+        var start = marker + "name: \"".Length;
+        names.Add(source[start..source.IndexOf('"', start)]);
+      }
+    }
+
+    return [.. names];
+  }
+
+
+  // ---- ⚠⚠⚠ ONE RESOLUTION ANSWERS BOTH QUESTIONS (AC-SUB-0043).
+  //
+  // *"The resolved cap for a limit key is available at the enforcement point in the same call that
+  // resolves module entitlement — one resolution, not two."*
+  //
+  // **The note at the top of this file placed this criterion among ten describing a product that does not
+  // exist. It does exist**, and it is the only one of that range that does — `TenantEntitlementSnapshot`
+  // carries `IsModuleEnabledAt` and `LimitAt`, and `ITenantEntitlementReader` hands back one snapshot from
+  // one call. *The record was wrong about the product, in our own hand.*
+  //
+  // ⚠⚠⚠ WHAT THIS ADDS IS THE CONJUNCTION, NOT EITHER HALF — AND A PLANT IS HOW I LEARNED THAT.
+  //
+  // Reddening `LimitAt` failed TWO tests: this one and
+  // `TenantEntitlementSnapshotTests.A_grant_above_the_plan_cap_raises_it`, **which I did not know existed.**
+  // *That file covers cap resolution and module entitlement thoroughly — grants raising a cap, an
+  // undefined cap answering null, an expired term resolving none — and carries **zero criterion traits**.*
+  //
+  // ***SO THE TWO HALVES WERE ALREADY PROVEN SEPARATELY. THE CRITERION IS ABOUT THEM NOT BEING SEPARATE.***
+  // *"...in the same call that resolves module entitlement — one resolution, not two"* is violated by a
+  // product where both answers are correct and arrive from two lookups. **Each half working is what those
+  // tests establish; that one object carries both, and that no second path exists, is what this does.**
+  //
+  // ⚠ The two numbers still differ deliberately — the plan grants **100** seats and a `LimitRaise` lifts
+  // it to **250** — so the conjunction is asserted over a RESOLVED cap rather than a passthrough. *That is
+  // borrowed rigour from the file above rather than new rigour here, and it is worth having on the object
+  // an enforcement point actually holds.*
+  //
+  // ⚠⚠ AND "ONE RESOLUTION, NOT TWO" IS THE STRUCTURAL HALF, ASSERTED ON THE READER. A second
+  // resolution path would be a second method — a `ReadLimitsAsync` beside `ReadAsync` — and the exact
+  // member set is what notices one being added. **The behavioural half shows both answers coming from one
+  // object; this shows there is nowhere else they could come from.**
+  [Fact]
+  [Trait("Criterion", "AC-SUB-0043")]
+  public void One_snapshot_answers_module_entitlement_and_the_resolved_cap()
+  {
+    var snapshot = new TenantEntitlementSnapshot(
+      Tenant, Plan, Perpetual,
+      new HashSet<string>(StringComparer.Ordinal) { "HR" },
+      new Dictionary<string, long>(StringComparer.Ordinal) { ["Seats"] = 100 },
+      [new EntitlementGrantFact(
+        EntitlementGrantKind.LimitRaise, null, "Seats", 250, Noon.AddDays(-1), null)]);
+
+    // ---- BOTH ANSWERS, FROM THE ONE OBJECT AN ENFORCEMENT POINT HOLDS.
+    Assert.True(snapshot.IsModuleEnabledAt("HR", Noon));
+    Assert.Equal(250, snapshot.LimitAt("Seats", Noon));
+
+    // ---- AND THE CAP WAS RESOLVED RATHER THAN READ. The plan says 100; the grant raises it.
+    Assert.NotEqual(100, snapshot.LimitAt("Seats", Noon));
+
+    // ---- THERE IS NO SECOND RESOLUTION PATH.
+    Assert.Equal(
+      ["ReadAsync"],
+      typeof(ITenantEntitlementReader).GetMethods().Select(method => method.Name));
+  }
 
   private static Result<TenantSubscription> Append(
     DateTimeOffset effectiveFrom, DateTimeOffset? currentMaximum) =>
@@ -27,6 +685,117 @@ public sealed class SubscriptionInvariantTests
   // ==================================================================================================
   // MONOTONIC APPEND.
   // ==================================================================================================
+
+  [Fact]
+  [Trait("Criterion", "AC-SUB-0052")]
+  [Trait("Criterion", "AC-SUB-0054")]
+  // ==================================================================================================
+  // `AC-SUB-0052`, pasted — *"Every tenant existing when the seed migration runs holds the **all-module
+  // plan on a `Fixed` 14-day term**. **No status filter** — suspended and archived tenants are seeded like
+  // any other, because `OD-SUB-0010` made subscription state and `TenantStatus` orthogonal and a filter
+  // here is that coupling. **No history is reconstructed**: `EffectiveFromUtc` is the instant the seed ran,
+  // never the tenant's creation date"*
+  // ==================================================================================================
+  //
+  // ⚠⚠ THE SUBJECT IS A **SQL STRING**, WHICH IS WHY THIS IS EXEC-SCOPE AT ALL. `TrialSubscriptionSeed.Sql`
+  // is a constant in the Infrastructure assembly; the migration merely hands it to `migrationBuilder.Sql`.
+  // **So the seed's content is readable without a database**, and the two clauses that are about its
+  // CONTENT — no status filter, and the instant it uses — are assertable here rather than only against
+  // SQL Server.
+  //
+  // ⚠ What is NOT assertable here is the EFFECT: that every tenant ends up holding the plan. That needs
+  // rows, and `TrialSubscriptionSeedSqlServerTests` is where they are. **Named rather than counted:
+  // this test carries the two content clauses and neither of the outcome ones.**
+  //
+  // ⚠⚠⚠ THE STATUS ASSERTION IS SCOPED TO THE TENANT SELECT, AND THAT SCOPING IS THE WHOLE TEST. The seed
+  // writes `[Status]` into the PLANS insert, legitimately — **a blanket ban on the word would be a false
+  // red on a correct seed**, which is the failure mode that gets a guard deleted. So the assertion reads
+  // only the statement that selects tenants, from `FROM [platform].[Tenants]` onward.
+  //
+  // `AC-SUB-0054`'s SQL SIDE: the same statement carries `WHERE NOT EXISTS (… TenantSubscriptions …)`,
+  // which is the *already holds **any** subscription record* guard — **the same rule the C# issuer applies
+  // in `TrialSubscriptionIssuer`, asserted here on the OTHER writer.** Two paths, one rule; a divergence
+  // between them is what `DEC-L-034` forbids and what neither test alone would catch.
+  public void The_trial_seed_selects_every_tenant_regardless_of_status_and_stamps_the_seed_instant()
+  {
+    var sql = TrialSubscriptionSeed.Sql;
+    Assert.True(sql.Length > 1000, $"the seed SQL is {sql.Length} characters; it has not been loaded.");
+
+    // The floor's companion: the statement this test is about must actually be present, or every
+    // assertion below reads an empty string and passes.
+    var tenantSelect = sql[sql.IndexOf("FROM [platform].[Tenants]", StringComparison.Ordinal)..];
+    Assert.True(tenantSelect.Length > 100, "the tenant-selection statement was not found in the seed SQL.");
+
+    // ---- NO STATUS FILTER, scoped to the statement that chooses tenants.
+    Assert.DoesNotContain("Status", tenantSelect, StringComparison.OrdinalIgnoreCase);
+
+    // ---- AND THE CONTROL FOR THAT SCOPING: the seed DOES write a status elsewhere, so an assertion that
+    // ---- passed over the whole string would be passing for the wrong reason.
+    Assert.Contains("[Status]", sql, StringComparison.Ordinal);
+
+    // ---- THE INSTANT IS THE SEED'S OWN, NOT A TENANT COLUMN.
+    Assert.Contains("TODATETIMEOFFSET(SYSUTCDATETIME(), 0)", sql, StringComparison.Ordinal);
+    Assert.DoesNotContain("tenant.[CreatedUtc]", sql, StringComparison.Ordinal);
+
+    // ---- `AC-SUB-0054` ON THE SQL WRITER: any existing record, not any existing TRIAL.
+    Assert.Contains("NOT EXISTS", tenantSelect, StringComparison.Ordinal);
+    Assert.Contains("TenantSubscriptions", tenantSelect, StringComparison.Ordinal);
+    Assert.DoesNotContain("SubscriptionPlanId] = @planId", tenantSelect, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  [Trait("Criterion", "AC-SUB-0046")]
+  // ==================================================================================================
+  // `AC-SUB-0046`, pasted — *"The migration that creates these tables **inserts no subscription row and
+  // seeds no plan.** Immediately after it runs every existing tenant is unentitled, which is correct under
+  // `CON-0001` and is exactly why `AC-SUB-0047` exists"*
+  // ==================================================================================================
+  //
+  // ⚠⚠⚠ THE PRODUCT ALREADY ENFORCES THIS AT MIGRATION TIME, AND THAT IS THE INTERESTING PART. The
+  // table-creating migration ends by COUNTING plans, subscriptions and grants and **throwing 51014 if any
+  // is non-zero** — *"this migration must create the commercial plane EMPTY"*. So the criterion is not
+  // merely true; it is self-enforcing on every database the migration touches.
+  //
+  // ⚠⚠ WHICH MEANS THERE ARE TWO SEPARABLE CLAIMS AND THIS TEST MAKES BOTH, BECAUSE THEY FAIL
+  // DIFFERENTLY:
+  //
+  //   THE MECHANISM   the migration contains no insert of a plan or subscription. **This is what makes the
+  //                   criterion true.** Delete the guard below and it stays true.
+  //   THE SAFETY NET  the emptiness assertion is present. **This is what makes it STAY true** when someone
+  //                   adds a convenient backfill — and deleting it is invisible to the mechanism claim.
+  //
+  // *A test asserting only the mechanism would go green on the day the net was removed, and a test
+  // asserting only the net would go green on the day an insert was added beside it.*
+  public void The_commercial_plane_migration_inserts_nothing_and_asserts_its_own_emptiness()
+  {
+    var migration = File.ReadAllText(Path.Combine(
+      RepositoryRoot(), "src", "Platform", "SSAS.Platform.Infrastructure", "Persistence", "Migrations",
+      "20260826031515_AddSubscriptionCommercialPlane.cs"));
+    Assert.True(migration.Length > 5000, $"the migration is {migration.Length} characters; it was not read.");
+    // The walk found A file; this proves it found THE file, so the absences below are about the migration
+    // that creates these tables rather than about whatever else that path might one day hold.
+    Assert.Contains("CreateTable(", migration, StringComparison.Ordinal);
+    Assert.Contains("TenantSubscriptions", migration, StringComparison.Ordinal);
+
+    // ---- THE MECHANISM.
+    Assert.DoesNotContain("InsertData(", migration, StringComparison.Ordinal);
+    Assert.DoesNotContain("INSERT INTO [platform].[SubscriptionPlans]", migration, StringComparison.Ordinal);
+    Assert.DoesNotContain("INSERT INTO [platform].[TenantSubscriptions]", migration, StringComparison.Ordinal);
+
+    // ---- THE SAFETY NET.
+    Assert.Contains("THROW 51014", migration, StringComparison.Ordinal);
+    Assert.Contains("must create the commercial plane EMPTY", migration, StringComparison.Ordinal);
+  }
+
+  private static string RepositoryRoot()
+  {
+    for (var directory = new DirectoryInfo(Directory.GetCurrentDirectory()); directory is not null; directory = directory.Parent)
+    {
+      if (File.Exists(Path.Combine(directory.FullName, "SSAS.ERP.sln"))) return directory.FullName;
+    }
+
+    throw new DirectoryNotFoundException("Unable to locate the repository root containing SSAS.ERP.sln.");
+  }
 
   [Fact]
   public void The_first_record_for_a_tenant_appends_with_no_current_maximum()
@@ -50,10 +819,26 @@ public sealed class SubscriptionInvariantTests
   // Two records at the same instant make "the greatest `EffectiveFromUtc <= T`" ambiguous — the derived
   // invariant "exactly one in force" stops being derivable, and which plan a tenant holds depends on row
   // order. That is why the rule is strictly-greater rather than not-less-than.
+  // ⚠ CITES `AC-SUB-0004`'s FIRST CLAUSE — *"Appending a record whose `EffectiveFromUtc` is EQUAL TO OR
+  // EARLIER THAN the tenant's current maximum is refused."* The three rows are that clause exactly: `0` is
+  // *equal to*, `-1` and `-864000000000` are *earlier than* at two magnitudes.
+  //
+  // ⚠⚠ THE `0` ROW IS THE ONE THE CRITERION EXISTS FOR AND THE ONE AN IMPLEMENTER WOULD OMIT. A
+  // not-less-than rule passes the two negative rows and fails only this one — and the comment above already
+  // says why: two records at the same instant make *the greatest `EffectiveFromUtc <= T`* ambiguous, so
+  // *exactly one in force* stops being derivable and the answer depends on row order. **Delete the `0` row
+  // and the test still reads as a monotonicity test while permitting the tie it exists to forbid.**
+  //
+  // ⚠⚠⚠ AND CLAUSE TWO IS NOT HERE: *"Two CONCURRENT appends produce one record and one refusal, never two
+  // records."* That is a race over a shared maximum and needs real SQL; this passes `currentMaximum` as an
+  // argument, so **the value it is compared against is supplied by the caller and never read under
+  // contention.** Same shape as `Role.Retire` being TOLD whether a role is assigned — the domain honours
+  // the input and says nothing about who computes it. Cited for clause 1 only.
   [Theory]
   [InlineData(0)]      // the same instant
   [InlineData(-1)]     // one tick behind
   [InlineData(-864000000000L)] // a day behind
+  [Trait("Criterion", "AC-SUB-0004")]
   public void An_append_at_or_behind_the_current_maximum_is_refused(long offsetTicks)
   {
     var result = Append(Noon.AddTicks(offsetTicks), currentMaximum: Noon);
@@ -84,9 +869,103 @@ public sealed class SubscriptionInvariantTests
   // ADDITIVE GRANTS — THE WRITE-TIME REFUSAL.
   // ==================================================================================================
 
+  // ⚠ CITES `AC-SUB-0016` — *"A grant whose `LimitValue` is AT OR BELOW the plan's current cap for that key
+  // is REFUSED AT WRITE, with an error naming the plan's value."* The two rows are *below* and *at*, and
+  // `A_limit_grant_above_the_plan_cap_is_accepted` below is the anti-vacuity control: without it, a
+  // `RaiseLimit` that refused everything satisfies both rows.
+  //
+  // ⚠⚠⚠ THE CLAUSE THIS TEST DOES **NOT** CARRY IS NOT A TEST GAP. IT IS A PRODUCT GAP, AND IT IS
+  // STRUCTURAL. *"…refused at write, WITH AN ERROR NAMING THE PLAN'S VALUE."*
+  //
+  // `TenantEntitlementGrant.RaiseLimit` returns `SubscriptionErrors.GrantWouldNotRaise`, which is a
+  // `static readonly Error` built once at type load:
+  //
+  //   "An entitlement grant may only raise a limit above the plan's value; it may never lower one."
+  //
+  // **It names the plan's value the way a sentence names a variable — it does not CARRY it.** The instance
+  // is shared by every refusal and takes no parameters, so **it cannot vary with `planLimitValue` at all**.
+  // An operator submitting 100 against a cap of 100 is told the rule and not the number.
+  //
+  // ⚠ SO THE CLAUSE IS UNSATISFIABLE WITHOUT A `src/` CHANGE — a parameterised error, or detail added at
+  // the transport boundary — **and that is a decision for the owner, not a test to write.** Recorded here
+  // rather than asserted, because a test demanding `100` in the message would fail on correct-as-built code
+  // and would be a proposal wearing a test's clothes.
+  //
+  // ⚠⚠⚠ AND *"REFUSED AT WRITE"* HAS A SECOND PROBLEM THAT SUBSUMES THE FIRST: **THERE IS NO WRITE.**
+  // `TenantEntitlementGrant` has exactly two factories — `GrantModule` and `RaiseLimit` — and searching
+  // `src/` for both names plus `new TenantEntitlementGrant` finds **only their own declarations and three
+  // comments about them.** No command handler, no endpoint, nothing in Application or API. **The only
+  // callers in the repository are four test files**, this one among them.
+  //
+  // The type IS persisted and IS read — `TenantEntitlementGrantConfiguration`, the migrations, and
+  // `TenantEntitlementReader` are all real, so a grant row that existed would be resolved correctly.
+  // **Nothing that ships can create one**; see the SQL and migration checks below for how far that goes.
+  //
+  // ⚠ MECHANISM, NOT NAMES: two factories and a private constructor are the complete set of ways this
+  // aggregate comes into being in C#, so the search is exhaustive over source. **The name search is only
+  // corroboration, and it OVER-INCLUDES as well as under-includes** — `SubscriptionPlan.GrantModule` is a
+  // different method sharing the name, in `src/`, in the same namespace. The mechanism argument is what
+  // carries this, not the grep.
+  //
+  // ⚠⚠ AND SQL WAS CHECKED SEPARATELY, BECAUSE A RAW INSERT NAMES NO C# SYMBOL. Searching `src/` for the
+  // TABLE name finds create, constrain, index, map and read — **and no writer of any kind.** The trial seed
+  // (`TrialSubscriptionSeed.Sql`) inserts into `SubscriptionPlans`, `SubscriptionPlanModules`,
+  // `SubscriptionPlanPrices`, `ModuleDefinitions` and `TenantSubscriptions`: five tables, not this one.
+  //
+  // ⚠⚠⚠ AND THE MIGRATION THAT CREATES THE TABLE ASSERTS IT IS **EMPTY**.
+  // `20260826031515_AddSubscriptionCommercialPlane.cs:289-304` counts plans, subscriptions and grants after
+  // creating them and FAILS THE MIGRATION if any is non-zero, quoting `CON-0001` and `OD-SUB-0004` —
+  // *"entitlement is recorded, never assumed."* **So the table is guaranteed empty at creation, has no
+  // writer, and its only production consumer is a reader.** `AC-SUB-0017`'s *"however it came to exist"* is
+  // not merely the only remaining path; the schema refuses at migration time the very row that would
+  // exercise it.
+  //
+  // ---- WHAT THIS IS AND IS NOT, WITH THE BENIGN READING FIRST BECAUSE IT IS PROBABLY THE TRUE ONE.
+  //
+  // **`FP-014` is a young package under construction, and a domain and schema built ahead of the
+  // application layer is ordinary rather than a defect.** Nothing here says anyone did anything wrong.
+  // **The finding is about what the DOCUMENTATION CLAIMS, not about the missing handler.**
+  //
+  // ⚠⚠⚠ AND THE RISK IS NOT CURRENT — IT IS **ARMED**. Today the exposure is nil: no writer, and the table
+  // asserted empty at creation, so the resolution guard protects a set that cannot be non-empty. **The
+  // exposure arrives the day someone wires up grant creation** — and on that day the guard that catches a
+  // lowering grant is documented as *the redundant half of a pair* whose loud half has never run. **A
+  // reader tidying away belt-and-braces removes the only enforcement there is, and every test stays green,
+  // because no grant row can exist to fail one.**
+  //
+  // So the shape is not *something is broken*. It is ***a correct-looking redundancy claim that is false in
+  // the direction which makes removal look safe, and that becomes load-bearing later.***
+  //
+  // ⚠ THIS IS THE THIRD INSTANCE OF ONE CLASS AND THE CLASS IS WRITTEN UP ONCE, IN
+  // `API.Tests/IdentityAccess/TenantUserRouteInventoryTests.cs` — *a criterion's subject exists, is
+  // correct, and is on no executed path*. The other two are `AC-IAM-0001`'s user listing
+  // (defended-but-unwitnessed) and three unrouted tenant-user handlers (unrouted-and-untested). **This one
+  // is the worst of the three precisely because it is the least broken**: the other two announce their
+  // gaps, and this one is described in its own source as safe by redundancy.
+  //
+  // ⚠⚠ THAT INVERTS THE BELT-AND-BRACES READING. `SubscriptionErrors.cs` calls the write refusal *"the loud
+  // half"* of a deliberate pair. **The loud half is unreachable in production, so the resolution-side
+  // `max(plan, grants)` is not redundancy — it is the whole enforcement**, and `AC-SUB-0017`'s tests are
+  // carrying a load their own criterion describes as secondary.
+  //
+  // ⚠⚠ AND THE ERROR'S OWN DECLARATION CONFIRMS `AC-SUB-0017`'s READING: *"Resolution ALSO takes
+  // `max(plan, grants)`, so a grant that somehow named a lower value could not lower anything — the two are
+  // deliberate belt and braces, and this error is the loud half."* **The redundant enforcement is stated in
+  // the source as well as split across two criteria**, which is the opposite of the undocumented double
+  // guard found earlier tonight in the localization batch validator.
+  //
+  // ⚠⚠⚠ AND `AC-SUB-0017` IS A SEPARATE CRITERION, DELIBERATELY, WHICH THIS FILE'S OWN HEADING ANTICIPATES
+  // — *ADDITIVE GRANTS: THE WRITE-TIME REFUSAL*. `0017` says the resolved cap is `max(plan, grants)` and
+  // that a lower grant row **"however it came to exist"** does not lower it. **That phrase is the criterion
+  // authors saying the write guard may be bypassed** — by a migration, a seed, a direct write — so the
+  // resolution side must hold independently. **It is not cited here and this test cannot carry it**:
+  // nothing below resolves a cap. `TenantEntitlementResolutionTests` is where that half must live, and a
+  // reader who takes this citation as covering *additive grants* would have the write half and none of the
+  // defence behind it.
   [Theory]
   [InlineData(50)]   // below the plan's cap
   [InlineData(100)]  // equal to it — a no-op the caller would believe did something
+  [Trait("Criterion", "AC-SUB-0016")]
   public void A_limit_grant_at_or_below_the_plan_cap_is_refused(long grantValue)
   {
     var result = TenantEntitlementGrant.RaiseLimit(
@@ -132,11 +1011,16 @@ public sealed class SubscriptionInvariantTests
   // THE TERM, AND THE EXPLICIT PERPETUAL MARKER.
   // ==================================================================================================
 
+  // ⚠ CITES `AC-SUB-0027`'s FIRST CLAUSE — *"A `Fixed` term requires an end AFTER its start."* The guard is
+  // `endUtc <= startUtc`, so `A_fixed_term_ending_AT_its_start` is the boundary row and the one that
+  // separates *after* from *not before*; the other is the ordinary case.
   [Fact]
+  [Trait("Criterion", "AC-SUB-0027")]
   public void A_fixed_term_ending_before_it_starts_is_refused() =>
     Assert.True(SubscriptionTerm.Fixed(Noon, Noon.AddDays(-1)).IsFailure);
 
   [Fact]
+  [Trait("Criterion", "AC-SUB-0027")]
   public void A_fixed_term_ending_at_its_start_is_refused() =>
     Assert.True(SubscriptionTerm.Fixed(Noon, Noon).IsFailure);
 
@@ -163,12 +1047,136 @@ public sealed class SubscriptionInvariantTests
   //
   // EF materialises through `Rehydrate`, so a row written before the `CHECK` existed — or by any path that
   // bypassed the domain — must not become an object the rest of the model believes is valid.
+  //
+  // ⚠⚠⚠ CITES `AC-SUB-0027`'s SECOND CLAUSE **WITH A QUALIFIER THAT CHANGES WHERE THE GUARANTEE LIVES** —
+  // *"`Fixed` with a NULL END and `Perpetual` with AN END are both refused AT CONSTRUCTION."*
+  //
+  // **They are not refused at construction. They are unconstructible.** The factory signatures are
+  // `Fixed(DateTimeOffset startUtc, DateTimeOffset endUtc)` — a NON-NULLABLE end — and
+  // `Perpetual(DateTimeOffset startUtc)`, which takes no end at all and returns a bare `SubscriptionTerm`
+  // rather than a `Result`, because **it has nothing it could fail on.** Neither bad combination can be
+  // expressed through the construction path the criterion names.
+  //
+  // ⚠ THAT IS STRONGER THAN THE CRITERION ASKS AND IT IS NOT WHAT THE CRITERION SAYS, so the distinction is
+  // recorded rather than smoothed over. **The two tests below are on `Rehydrate`, a DIFFERENT path** — the
+  // one EF materialises through — and that is the only path where the states are representable at all. A
+  // reader citing `AC-SUB-0027` for "refused at construction" and landing here would find a refusal on the
+  // rehydration path and conclude the constructors validate. They do not; **they make the question
+  // impossible to ask**, which is why no test exists for a refusal that cannot happen.
+  //
+  // **The guarantee is real, complete, and located one layer from where the criterion puts it.**
   [Fact]
+  [Trait("Criterion", "AC-SUB-0027")]
   public void Rehydrating_a_perpetual_term_that_carries_an_end_is_refused() =>
     Assert.True(SubscriptionTerm
       .Rehydrate(SubscriptionTermKind.Perpetual, Noon, Noon.AddDays(1)).IsFailure);
 
   [Fact]
+  [Trait("Criterion", "AC-SUB-0027")]
   public void Rehydrating_a_fixed_term_with_no_end_is_refused() =>
     Assert.True(SubscriptionTerm.Rehydrate(SubscriptionTermKind.Fixed, Noon, null).IsFailure);
+
+  // ==================================================================================================
+  // NO PLAN ATTRIBUTE IS COPIED ONTO A SUBSCRIPTION ROW (`AC-SUB-0005`).
+  // ==================================================================================================
+  //
+  // *"A plan is referenced by many tenants; amending it changes no subscription record, and no plan
+  // attribute is copied into a subscription row at assignment."*
+  //
+  // ---- ⚠ WHAT THE CLAUSE IS FOR, WHICH DECIDES WHAT COUNTS AS A COPY.
+  //
+  // **Divergence.** Copy the plan's name or price onto the row and a plan amendment stops propagating —
+  // which is the failure `AC-SUB-0015` names from the other side. **A DUPLICATED SINGLE-VALUED ATTRIBUTE
+  // CAN DRIFT FROM ITS SOURCE; A SELECTION FROM A SET CANNOT, because there is no source value to drift
+  // from.**
+  //
+  // ---- ⚠⚠ `BillingCurrencyCode` IS A SELECTION, AND ITS GROUNDS ARE ASSERTED BELOW RATHER THAN CLAIMED.
+  //
+  // The row carries which of the plan's currencies this tenant is billed in — **a fact about the
+  // subscription that exists nowhere on the plan.** That reading depends entirely on the plan being
+  // genuinely multi-currency, so the test asserts it: `SubscriptionPlan.Prices` is a COLLECTION of
+  // `PlanPrice`, each with its own `CurrencyCode`. ***IF A PLAN EVER BECOMES SINGLE-CURRENCY, THAT
+  // ASSERTION FAILS AND THIS EXEMPTION IS WITHDRAWN AUTOMATICALLY*** — the grounds are checked, not
+  // recorded, which is what stops it becoming a name in an exclusion list nobody re-examines.
+  //
+  // ⚠⚠⚠ AND THE HONEST WEIGHT OF THAT ASSERTION, MEASURED: **IT COULD NOT BE PLANTED.** Making `Prices`
+  // single-valued does not compile — `SubscriptionPlanConfiguration` owns it as a collection and the EF
+  // model refuses. **So the compiler, not this line, is what actually prevents a single-currency plan.**
+  // The assertion stays because it states the dependency at the place that depends on it and costs
+  // nothing; it is belt-and-braces over a guarantee the build already gives, and reporting it as the
+  // guard would overstate it.
+  //
+  // ---- THE AUDIT NAMES ARE EXCLUDED, AND READ FROM THE INTERFACE RATHER THAN TYPED HERE.
+  //
+  // Both types declare `CreatedUtc` and a `ModifiedBy`-shaped actor. Those are each row's own provenance,
+  // not the plan's attributes, and a name match on them is a false positive. **The exclusion is the member
+  // list of `IAuditableEntity` plus `RowVersion`, read reflectively**, so it cannot drift from the
+  // interface and is not a hand-written list of convenient names.
+  [Fact]
+  [Trait("Criterion", "AC-SUB-0005")]
+  public void No_single_valued_plan_attribute_is_duplicated_onto_a_subscription_record()
+  {
+    var provenance = typeof(IAuditableEntity).GetProperties()
+      .Select(property => property.Name)
+      .Append("RowVersion")
+      .Append("ChangedBy")
+      .ToHashSet(StringComparer.Ordinal);
+
+    // THE GROUNDS FOR THE ONE SELECTION, ASSERTED FIRST. A plan offers many currencies, so holding one is
+    // a choice and not a duplicate. If this stops being true the exemption below stops with it.
+    var prices = typeof(SubscriptionPlan).GetProperty(nameof(SubscriptionPlan.Prices));
+    Assert.NotNull(prices);
+    Assert.True(
+      typeof(System.Collections.IEnumerable).IsAssignableFrom(prices!.PropertyType)
+        && prices.PropertyType != typeof(string),
+      "SubscriptionPlan.Prices is no longer a collection, so a plan may be single-currency and " +
+      "TenantSubscription.BillingCurrencyCode would be a COPY rather than a selection. AC-SUB-0005's " +
+      "reading depends on this.");
+
+    // ⚠ THE IDENTIFIER IS NOT AN ATTRIBUTE, AND THE GROUNDS ARE THE CRITERION'S OWN FIRST CLAUSE:
+    // *"A plan is REFERENCED by many tenants."* `TenantSubscription.SubscriptionPlanId` is that reference —
+    // **it is what makes copying unnecessary, so counting it as a copy inverts the rule.** The name is
+    // derived from the type rather than written as a literal, so renaming `SubscriptionPlan` carries the
+    // exclusion with it instead of silently reopening this as a false positive.
+    var identifier = typeof(SubscriptionPlan).Name + "Id";
+
+    var planAttributes = Declared(typeof(SubscriptionPlan))
+      .Where(property => property.Name != identifier)
+      .Where(property => !provenance.Contains(property.Name))
+      .Where(property => !typeof(System.Collections.IEnumerable).IsAssignableFrom(property.PropertyType)
+        || property.PropertyType == typeof(string))
+      .ToArray();
+
+    var subscriptionProperties = Declared(typeof(TenantSubscription))
+      .Where(property => !provenance.Contains(property.Name))
+      .ToArray();
+
+    // ⚠ TWO FLOORS, BECAUSE EITHER SIDE COLLAPSING MAKES THE COMPARISON VACUOUS AND GREEN. A filter that
+    // matched nothing on the plan side would report no copies of nothing.
+    Assert.True(planAttributes.Length >= 3,
+      $"only {planAttributes.Length} single-valued plan attributes were found; the reflection has stopped " +
+      "matching and no copy could be detected.");
+    Assert.True(subscriptionProperties.Length >= 5,
+      $"only {subscriptionProperties.Length} subscription properties were found; same problem.");
+
+    // A copy is a NAME match — the shape the criterion forbids, and the one that drifts. Type matching is
+    // deliberately not used: `Guid`, `string` and `DateTimeOffset` recur for unrelated reasons on both
+    // types and would report every row as a copy of every other.
+    var copies = subscriptionProperties
+      .Where(subscription => planAttributes.Any(plan => plan.Name == subscription.Name))
+      .Select(property => property.Name)
+      .OrderBy(name => name, StringComparer.Ordinal)
+      .ToArray();
+
+    Assert.True(copies.Length == 0,
+      "these TenantSubscription properties duplicate a single-valued SubscriptionPlan attribute, so a plan " +
+      "amendment would stop propagating to subscriptions that name it and the two would silently " +
+      $"diverge: {string.Join(", ", copies)}. A value CHOSEN from a plan-offered set is not a copy — if " +
+      "one of these is such a selection, assert the grounds as Prices is asserted above.");
+  }
+
+  private static System.Reflection.PropertyInfo[] Declared(Type type) =>
+    type.GetProperties(System.Reflection.BindingFlags.Public
+      | System.Reflection.BindingFlags.Instance
+      | System.Reflection.BindingFlags.DeclaredOnly);
 }

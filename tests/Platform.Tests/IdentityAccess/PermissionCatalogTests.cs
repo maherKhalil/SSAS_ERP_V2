@@ -13,6 +13,8 @@ public sealed class PermissionCatalogTests
     { "Platform.Users.Update", "Update tenant user profiles" },
     { "Platform.Users.Deactivate", "Deactivate tenant users" },
     { "Platform.Users.Reactivate", "Reactivate tenant users" },
+    { "Platform.EmployeeLinks.Link", "Link a tenant user to an employee record" },
+    { "Platform.EmployeeLinks.Unlink", "Remove a tenant user's link to an employee record" },
     { "Platform.UserRoles.Assign", "Assign tenant roles to users" },
     { "Platform.UserRoles.Remove", "Remove tenant roles from users" },
     { "Platform.Roles.View", "View tenant roles" },
@@ -37,7 +39,14 @@ public sealed class PermissionCatalogTests
     { "Platform.Tenants.View", "View platform tenant lifecycle records" },
     { "Platform.Tenants.Manage", "Create platform tenants" },
     { "Platform.Tenants.Lifecycle", "Change platform tenant lifecycle state" },
-    { "Platform.Support.Administer", "Administer platform-support principals and their permission assignments" }
+    { "Platform.Support.Administer", "Administer platform-support principals and their permission assignments" },
+    { "Platform.Plans.View", "View subscription plans" },
+    { "Platform.Plans.Administer", "Administer subscription plans" },
+    { "Platform.Subscriptions.View", "View tenant subscriptions" },
+    { "Platform.Subscriptions.Administer", "Administer tenant subscriptions" },
+    { "Platform.EntitlementGrants.Administer", "Administer tenant entitlement grants" },
+    { "Platform.Invoices.View", "View invoices" },
+    { "Platform.Invoices.Administer", "Administer invoices" }
   };
 
   [Fact]
@@ -94,14 +103,35 @@ public sealed class PermissionCatalogTests
     // administering itself, as opposed to the PlatformSupport-scoped family below, which is cross-tenant
     // authority and is never assignable to a tenant role. The count is asserted so a new permission cannot
     // enter the catalog without someone deciding which plane it belongs to.
-    Assert.Equal(26, identifiers.Length);
-    Assert.Equal(22, catalog.All.Count(item => item.Scope == PermissionScope.Tenant));
-    Assert.Equal(4, catalog.All.Count(item => item.Scope == PermissionScope.PlatformSupport));
+    //
+    // ---- 28 SINCE T-092, AND THE GUARD DID EXACTLY WHAT IT IS FOR.
+    //
+    // `Platform.EmployeeLinks.Link` and `.Unlink` are TENANT scope: linking a tenant's user to that
+    // tenant's employee is a tenant administering itself, and the row is keyed by tenant. **Nothing here
+    // is cross-tenant authority**, so neither belongs in the PlatformSupport family.
+    //
+    // A PAIR rather than one, because creating an access mapping and destroying one are different
+    // decisions — and the link decides whose payslips a login can read.
+    Assert.Equal(35, identifiers.Length);
+    Assert.Equal(24, catalog.All.Count(item => item.Scope == PermissionScope.Tenant));
+    Assert.Equal(11, catalog.All.Count(item => item.Scope == PermissionScope.PlatformSupport));
 
     // The platform-plane (PlatformSupport) family is exactly the tenant-admin permissions plus the
     // authority-administration permission; scope — not the "Platform." prefix — is authoritative.
     Assert.Equal(
-      ["Platform.Support.Administer", "Platform.Tenants.Lifecycle", "Platform.Tenants.Manage", "Platform.Tenants.View"],
+      [
+        "Platform.EntitlementGrants.Administer",
+        "Platform.Invoices.Administer",
+        "Platform.Invoices.View",
+        "Platform.Plans.Administer",
+        "Platform.Plans.View",
+        "Platform.Subscriptions.Administer",
+        "Platform.Subscriptions.View",
+        "Platform.Support.Administer",
+        "Platform.Tenants.Lifecycle",
+        "Platform.Tenants.Manage",
+        "Platform.Tenants.View"
+      ],
       catalog.All.Where(item => item.Scope == PermissionScope.PlatformSupport)
         .Select(item => item.Name.Value)
         .OrderBy(value => value, StringComparer.Ordinal));

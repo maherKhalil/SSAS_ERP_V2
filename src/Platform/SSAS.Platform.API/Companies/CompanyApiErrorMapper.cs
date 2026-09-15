@@ -13,7 +13,35 @@ public static class CompanyApiErrorMapper
   public static readonly ApiError NotFound = new(404, "company.not_found");
   public static readonly ApiError TransitionInvalid = new(409, "company.transition_invalid");
 
-  public static ApiError Map(Error error)
+  // ⚠ A PRECONDITION, NOT A CORRECTION (T-268).
+  //
+  // 129 domain codes collapse into `request.invalid` and 128 of them say **fix your input**. This one says
+  // *an active company must be selected before company-scoped operations* -- **you are not in a state
+  // where this input means anything.** The remedy is a different call followed by the same request
+  // unchanged, and a client that cannot tell it from a bad field name cannot offer the company picker.
+  //
+  // The status stays 400: it IS a client error. **The status is the category; the code is the
+  // instruction**, and only the instruction differs.
+  //
+  // Declared here beside the other `company.*` codes rather than in the shared `ApiErrors`, because
+  // `The_shared_api_project_names_no_business_concept` refuses a business noun in BuildingBlocks. **The
+  // repetition across the four mappers is that rule being obeyed** -- the gate refused the shared version
+  // of this very constant.
+  public static readonly ApiError CompanySelectionRequired = new(400, "company.selection_required");
+
+  // ⚠ THE DOMAIN MESSAGE IS ATTACHED HERE BECAUSE THIS IS THE LAST PLACE IT EXISTS (T-261).
+  //
+  // Ninety-six call sites hand an already-mapped `ApiError` straight to `ApiProblems.Problem` and never
+  // see the original `Error`. Attaching the message to the result is one edit per mapper; passing it
+  // alongside would have been ninety-six.
+  //
+  // `ApiError.ShowsDetail` decides whether it reaches the caller: an authorization refusal (401/403)
+  // drops it unless that code opted in, because `branch.scope_denied` has nine different messages behind
+  // it and showing them would separate a branch that does not exist from one that is forbidden.
+  public static ApiError Map(Error error) =>
+    MapCore(error).Explaining(error.Message, error.Field);
+
+  private static ApiError MapCore(Error error)
   {
     ArgumentNullException.ThrowIfNull(error);
     return error.Code switch
@@ -36,8 +64,38 @@ public static class CompanyApiErrorMapper
       // Trusted-context denials (unreachable on an authorized request; mapped defensively).
       "Company.InvalidActor" => ProblemResults.Forbidden,
       "Authorization.Unauthorized" => ProblemResults.Forbidden,
-      // Persistence write failure and any unexpected/unmapped error -> safe internal failure,
-      // never masked as client validation.
+      // ---- T-093. `ApplicationExecutionContext.GetTenantActor` RETURNS THIS, AND EVERY TENANT-PLANE
+      // ---- HANDLER FUNNELS THROUGH IT. Unmapped it fell to the default and answered 500 — an
+      // authorization refusal reported as a server error, which tells the caller to retry something that
+      // will never succeed and pages an operator for a working system.
+      "Tenant.Unauthorized" => ProblemResults.Forbidden,
+
+      // ---- THE FIVE `CompanyAccessErrors` (T-093b). RAISED BY THE COMPANY-CONTEXT ESTABLISHER.
+      //
+      // All five reached this site through an INJECTED SERVICE, which is why the static reachability walk
+      // missed them and the register found them. Each takes the answer `EmployeeApiErrorMapper` already
+      // gives the same condition, so one refusal does not read differently depending on which surface
+      // answered.
+      //
+      // `Company.InvalidSelection` is 403 and NOT 404, because the resolver collapses four conditions into
+      // it on purpose — `TenantCompanyAccessResolver.cs:93` says so: *"'No such company', 'another
+      // tenant's company' and 'not Active' are answered identically so a caller cannot probe for the
+      // existence of companies it may not see."* A 404 here would undo that collapse from the wire.
+      "Company.ContextRequired" => ProblemResults.Forbidden,
+      "Company.InvalidSelection" => ProblemResults.Forbidden,
+
+      // Request-shaped: a malformed or absent selection is something the caller can fix.
+      // `Company.AssignmentInvalid` refuses a caller-supplied company list at `UserCompanyAccess.cs:61`.
+      "Company.SelectionRequired" => CompanySelectionRequired,
+      "Company.InvalidSelectionFormat" => ProblemResults.RequestInvalid,
+      "Company.AssignmentInvalid" => ProblemResults.RequestInvalid,
+      // ---- EXPLICIT, THOUGH IT MATCHES THE DEFAULT (T-093, T-080's precedent).
+      //
+      // An arm that agrees with the default is a DECISION; the absence of one is an accident, and the two
+      // are indistinguishable from the wire. Do not delete this as redundant: deleting it removes the
+      // record that someone checked.
+      "Persistence.WriteFailure" => ProblemResults.WriteFailure,
+      // Any unexpected/unmapped error -> safe internal failure, never masked as client validation.
       _ => ProblemResults.WriteFailure
     };
   }

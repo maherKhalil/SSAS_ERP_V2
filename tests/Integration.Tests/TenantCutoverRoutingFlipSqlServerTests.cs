@@ -18,6 +18,8 @@ using SSAS.Platform.Infrastructure.Persistence.TenantErp;
 using SSAS.Platform.Infrastructure.TenantStorage;
 using Xunit.Abstractions;
 
+using SSAS.TestSupport.CutoverModel;
+
 namespace SSAS.Integration.Tests;
 
 // THE ATOMIC ROUTING FLIP, AGAINST REAL SQL (ADR-020, TS-Storage Phase E4).
@@ -254,9 +256,13 @@ public sealed class TenantCutoverRoutingFlipSqlServerTests(ITestOutputHelper out
     // ---- 4. REFUSED. This context never re-resolves, so E2's version check cannot help here — the
     // route-aware write fence is the only thing standing between a stale writer and the database its tenant
     // was just moved off.
+    // ⚠ AND THE CODE SAYS MISROUTED, NOT FROZEN (T-213). This test is named for a fresh context SUCCEEDING,
+    // which is only true because nothing is frozen — the tenant is writable on its new database and only
+    // this connection is in the wrong place. The old shared code told the caller to wait for a window that
+    // had already closed.
     var refused = await Assert.ThrowsAsync<TenantStorageUnavailableException>(
       () => stale.SaveChangesAsync());
-    Assert.Equal(TenantStorageErrors.TenantWritesFrozen.Code, refused.Error.Code);
+    Assert.Equal(TenantStorageErrors.TenantWriteRouteStale.Code, refused.Error.Code);
     await stale.DisposeAsync();
 
     // Nothing landed on the source.
@@ -1004,7 +1010,6 @@ public sealed class TenantCutoverRoutingFlipSqlServerTests(ITestOutputHelper out
     public string? UserId => "cutover-flip-tests";
     public string? UserName => null;
     public string? Email => null;
-    public Guid? CompanyId => null;
     public string? SessionId => null;
     public string? TokenId => null;
     public IReadOnlyCollection<string> Roles => [];

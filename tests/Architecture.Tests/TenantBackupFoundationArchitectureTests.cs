@@ -60,16 +60,34 @@ public sealed class TenantBackupFoundationArchitectureTests
     {
       var names = type.GetProperties().Select(property => property.Name).ToArray();
       Assert.Contains("TenantDatabaseId", names);
-      Assert.DoesNotContain("TenantId", names);
+      // ⚠ `TenantId` is compile-checked against the type that legitimately HAS it (252). Renaming the
+      // property on the assignment now breaks this build instead of silently emptying the assertion.
+      Assert.DoesNotContain(nameof(TenantDatabaseAssignment.TenantId), names);
+
+      // ⚠⚠ AND THIS ONE STAYS A STRING, WHICH IS NOT AN OVERSIGHT. `TenantDatabaseAssignmentId` IS A
+      // DATABASE COLUMN NAME, NOT A CLR MEMBER — the property is `Id`, mapped by
+      // `TenantDatabaseAssignmentConfiguration:27`. There is no symbol to `nameof`, so NO COMPILE-TIME
+      // FORM OF THIS ASSERTION EXISTS.
+      //
+      // ⚠ THAT IS NOT THE SAME AS *NO WITNESS EXISTS*. The EF model is the witness for database
+      // vocabulary — `FindEntityType(...).FindProperty("Id").GetColumnName()` returns this exact string
+      // from the live model — so a RUNTIME control is available and was judged not worth two lines for a
+      // single site. The same is true of route strings (the endpoint data source is the witness, which is
+      // what 243 used) and JSON fields (the serializer contract). It is a COST JUDGEMENT PER SITE, not an
+      // impossibility.
+      //
+      // ⚠⚠⚠ THE RESIDUAL, SO THE NEXT READER PRICES IT RATHER THAN INHERITING IT: A WRONG WORD IN THIS
+      // LITERAL IS DETECTED BY NOTHING. Not the compiler, not this test, not the gate. If it is ever
+      // misspelt this assertion passes forever while asserting nothing.
       Assert.DoesNotContain("TenantDatabaseAssignmentId", names);
     }
 
     // Recovery readiness lives on the physical database row, never duplicated onto assignments.
     var assignmentProperties = typeof(TenantDatabaseAssignment).GetProperties()
       .Select(property => property.Name).ToArray();
-    Assert.DoesNotContain("RecoveryReadinessStatus", assignmentProperties);
-    Assert.DoesNotContain(assignmentProperties, name => name.Contains("Backup", StringComparison.Ordinal));
-    Assert.DoesNotContain(assignmentProperties, name => name.Contains("Recovery", StringComparison.Ordinal));
+    Assert.DoesNotContain(nameof(TenantDatabase.RecoveryReadinessStatus), assignmentProperties);
+    Assert.DoesNotContain(assignmentProperties, name => name.Contains(Names.Backup, StringComparison.Ordinal));
+    Assert.DoesNotContain(assignmentProperties, name => name.Contains(Names.Recovery, StringComparison.Ordinal));
   }
 
   [Fact]
@@ -96,17 +114,26 @@ public sealed class TenantBackupFoundationArchitectureTests
     var recoveryMethods = typeof(ITenantDatabaseRecoveryReadinessWriter).GetMethods()
       .Select(method => method.Name).ToArray();
     Assert.Contains("RecordRecoveryReadinessAsync", recoveryMethods);
-    Assert.DoesNotContain(recoveryMethods, name => name.Contains("Connectivity", StringComparison.Ordinal));
-    Assert.DoesNotContain(recoveryMethods, name => name.Contains("Schema", StringComparison.Ordinal));
-    Assert.DoesNotContain(recoveryMethods, name => name.Contains("Migration", StringComparison.Ordinal));
+    Assert.DoesNotContain(recoveryMethods, name => name.Contains(Names.Connectivity, StringComparison.Ordinal));
+    Assert.DoesNotContain(recoveryMethods, name => name.Contains(Names.Schema, StringComparison.Ordinal));
+    Assert.DoesNotContain(recoveryMethods, name => name.Contains(Names.Migration, StringComparison.Ordinal));
 
     // And the health writer gained no recovery method.
     var healthMethods = typeof(ITenantDatabaseHealthWriter).GetMethods().Select(method => method.Name).ToArray();
-    Assert.DoesNotContain(healthMethods, name => name.Contains("Recovery", StringComparison.Ordinal));
+    Assert.DoesNotContain(healthMethods, name => name.Contains(Names.Recovery, StringComparison.Ordinal));
 
     // No generic all-dimension writer anywhere in Infrastructure.
     var forbidden = new[] { "RecordAllHealthAsync", "RecordHealthAsync", "UpdateHealthAsync" };
-    foreach (var type in InfrastructureAssembly.GetTypes().Where(type => type.IsPublic))
+    // ⚠ THE LOOP BELOW ASSERTS NOTHING OVER AN EMPTY SET, AND THIS FILE PASSED OVER ONE (T-258).
+    //
+    // Ten tests here were measured green with every `GetTypes()` returning zero. A `foreach` that never
+    // runs its body is indistinguishable from one that ran and found nothing wrong.
+    var publicInfrastructure = InfrastructureAssembly.GetTypes().Where(type => type.IsPublic).ToArray();
+    Assert.True(publicInfrastructure.Length >= 20,
+      $"only {publicInfrastructure.Length} public Infrastructure types were found; the enumeration has " +
+      "collapsed and the forbidden-method check below would pass by inspecting nothing.");
+
+    foreach (var type in publicInfrastructure)
     {
       foreach (var method in type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
       {
@@ -124,6 +151,8 @@ public sealed class TenantBackupFoundationArchitectureTests
     var gateSources = typeof(ITenantDatabaseTrafficGate).Assembly.GetTypes()
       .Where(type => type.Name.Contains("TrafficGate", StringComparison.Ordinal));
 
+    Assert.NotEmpty(gateSources);
+
     foreach (var type in gateSources)
     {
       foreach (var method in type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
@@ -138,8 +167,8 @@ public sealed class TenantBackupFoundationArchitectureTests
     // The routing record the gate reads carries no recovery field either, so it could not consult one.
     var routeProperties = typeof(TenantDatabaseAssignmentRecord).GetProperties()
       .Select(property => property.Name).ToArray();
-    Assert.DoesNotContain(routeProperties, name => name.Contains("Recovery", StringComparison.Ordinal));
-    Assert.DoesNotContain(routeProperties, name => name.Contains("Backup", StringComparison.Ordinal));
+    Assert.DoesNotContain(routeProperties, name => name.Contains(Names.Recovery, StringComparison.Ordinal));
+    Assert.DoesNotContain(routeProperties, name => name.Contains(Names.Backup, StringComparison.Ordinal));
   }
 
   [Fact]
@@ -157,15 +186,28 @@ public sealed class TenantBackupFoundationArchitectureTests
     // Scoped to the tenant-storage surface rather than whole assemblies: localization has a long-standing
     // and entirely unrelated RestoreDefault feature, and a blanket scan would flag it forever while saying
     // nothing about backup authority.
+    // ⚠ THE FLOOR IS ACCUMULATED ACROSS THE THREE ASSEMBLIES, NOT ASSERTED PER ASSEMBLY (T-258).
+    //
+    // `IsTenantStorageType` is the FILTER, and a filter is what collapses quietly: a renamed namespace
+    // fragment empties it while every assembly still loads and every type still exists. But any ONE of
+    // the three may legitimately contribute zero, so a per-assembly floor would be a false red. The
+    // TOTAL is what must not be zero.
+    var tenantStorageTypes = 0;
+
     foreach (var assembly in new[] { DomainAssembly, ApplicationAssembly, InfrastructureAssembly })
     {
       // Author-written types only. A lambda inside an exempt method compiles to a display class whose
       // generated method inherits the enclosing name — `<BeginRestoreAsync>b__0` — so without this the guard
       // would demand an exemption for machinery nobody wrote. The sibling type-vocabulary guard excludes
       // compiler-generated types for exactly the same reason.
-      foreach (var type in assembly.GetTypes()
+      var scoped = assembly.GetTypes()
         .Where(type => !Attribute.IsDefined(type, typeof(System.Runtime.CompilerServices.CompilerGeneratedAttribute)))
-        .Where(IsTenantStorageType))
+        .Where(IsTenantStorageType)
+        .ToArray();
+
+      tenantStorageTypes += scoped.Length;
+
+      foreach (var type in scoped)
       {
         foreach (var method in type.GetMethods(
           BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static |
@@ -224,6 +266,12 @@ public sealed class TenantBackupFoundationArchitectureTests
         }
       }
     }
+    // The accumulated floor. Twenty-two tenant-storage types were scoped when this was written; the
+    // floor sits far below that so ordinary growth never touches it, and at zero it says the FILTER died
+    // rather than that the surface is clean.
+    Assert.True(tenantStorageTypes >= 10,
+      $"only {tenantStorageTypes} tenant-storage types were scoped across the three assemblies; " +
+      "`IsTenantStorageType` has stopped matching and the execution-verb check above read nothing.");
   }
 
   [Fact]
@@ -278,8 +326,17 @@ public sealed class TenantBackupFoundationArchitectureTests
        ,"TenantDatabaseRestoreVerificationSweepSummary"
     };
 
-    foreach (var type in InfrastructureAssembly.GetTypes()
-      .Where(type => !delivered.Contains(type.Name, StringComparer.Ordinal)))
+    var undelivered = InfrastructureAssembly.GetTypes()
+      .Where(type => !delivered.Contains(type.Name, StringComparer.Ordinal))
+      .ToArray();
+
+    // The `delivered` allowlist grows as the surface ships. This floor is on what remains OUTSIDE it,
+    // which is the set the assertions below actually read.
+    Assert.True(undelivered.Length >= 20,
+      $"only {undelivered.Length} undelivered Infrastructure types remain; either the enumeration " +
+      "collapsed or the allowlist now covers the assembly, and both make the names below unchecked.");
+
+    foreach (var type in undelivered)
     {
       Assert.DoesNotContain("BackupProvider", type.Name, StringComparison.Ordinal);
       Assert.DoesNotContain("BackupScheduler", type.Name, StringComparison.Ordinal);
@@ -336,7 +393,12 @@ public sealed class TenantBackupFoundationArchitectureTests
   {
     // ADR-022 §10 and compliance rule 22: no core enum may claim Full/Differential/TransactionLog apply to
     // every provider. If one is ever introduced, this fails.
-    foreach (var type in DomainAssembly.GetTypes().Where(type => type.IsEnum))
+    var domainEnums = DomainAssembly.GetTypes().Where(type => type.IsEnum).ToArray();
+    Assert.True(domainEnums.Length >= 5,
+      $"only {domainEnums.Length} domain enums were found; the enumeration has collapsed and the " +
+      "universal-vocabulary check below would pass without reading an enum.");
+
+    foreach (var type in domainEnums)
     {
       var names = Enum.GetNames(type);
       var looksUniversal =
@@ -383,7 +445,6 @@ public sealed class TenantBackupFoundationArchitectureTests
 
     public string? Email => null;
 
-    public Guid? CompanyId => null;
 
     public string? SessionId => null;
 
@@ -403,4 +464,57 @@ public sealed class TenantBackupFoundationArchitectureTests
   {
     public DateTimeOffset UtcNow => new(2026, 8, 14, 12, 0, 0, TimeSpan.Zero);
   }
+
+  // ================================================================================================
+  // ⚠⚠⚠ THE ABSENCE PREDICATES CAN MATCH WHERE THE CONCERN ACTUALLY LIVES (252).
+  // ================================================================================================
+  //
+  // Every `DoesNotContain(names, name => name.Contains("X"))` above PASSES WHEN THE PREDICATE MATCHES
+  // NOTHING, so none of them can distinguish *the assignment carries no backup field* from *I misspelled
+  // "Backup"*. Measured on this shape elsewhere in the suite: a literal planted as `"Departmentt"`
+  // returned PASSED, 6 of 6.
+  //
+  // ---- ⚠⚠ NEITHER OF THE USUAL REMEDIES APPLIES TO AN ABSENCE-OF-NAME ASSERTION.
+  //
+  // `nameof` is IMPOSSIBLE BY CONSTRUCTION — you cannot `nameof` a member whose whole point is that it must
+  // not exist. And a floor is IRRELEVANT: `name.Contains("Backupp")` matches nothing over a fully populated
+  // array exactly as happily as over an empty one. A floor closes vacuity; this is not vacuity.
+  //
+  // ---- SO THE FRAGMENTS ARE SHARED CONSTANTS, AND THE WITNESS IS REAL CODE RATHER THAN A STUB.
+  //
+  // ⚠ A control carrying its OWN copy of each fragment would prove nothing — a typo at a call site would
+  // leave it passing. These are the SAME symbols the assertions use, so a misspelt constant fails here and
+  // a misspelt call site is `CS0117`.
+  //
+  // ⚠⚠ AND THE WITNESS IS THE TYPE THE CONCERN WAS MOVED TO, WHICH MAKES THIS STRONGER THAN A SPELLING
+  // CHECK: it asserts the dimension lives THERE AND NOT HERE. A synthetic control would prove only that
+  // the fragment is spelled consistently; this one also fails if the product renames the real thing.
+  private static class Names
+  {
+    public const string Backup = "Backup";
+    public const string Connectivity = "Connectivity";
+    public const string Migration = "Migration";
+    public const string Recovery = "Recovery";
+    public const string Schema = "Schema";
+  }
+
+  [Fact]
+  [Trait("Decision", "ADR-022")]
+  public void Every_absence_predicate_can_match_where_the_concern_actually_lives()
+  {
+    // Recovery and backup live on the physical database row — which is what the assignment must NOT carry.
+    var database = typeof(TenantDatabase).GetProperties().Select(property => property.Name).ToArray();
+
+    Assert.Contains(database, name => name.Contains(Names.Recovery, StringComparison.Ordinal));
+    Assert.Contains(database, name => name.Contains(Names.Backup, StringComparison.Ordinal));
+
+    // Connectivity, schema and migration live on the HEALTH writer — which is what the recovery-readiness
+    // writer must NOT be able to express. One method per dimension is the rule those assertions enforce.
+    var health = typeof(ITenantDatabaseHealthWriter).GetMethods().Select(method => method.Name).ToArray();
+
+    Assert.Contains(health, name => name.Contains(Names.Connectivity, StringComparison.Ordinal));
+    Assert.Contains(health, name => name.Contains(Names.Schema, StringComparison.Ordinal));
+    Assert.Contains(health, name => name.Contains(Names.Migration, StringComparison.Ordinal));
+  }
+
 }

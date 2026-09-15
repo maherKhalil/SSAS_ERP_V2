@@ -64,7 +64,7 @@ one of them the instant a department was deactivated — using one rule to break
 |---|---|
 | Manager Employee is **terminated** | **Nothing automatic.** The assignment stands and the department is reported as having a terminated manager (`BRULE-DEP-0013`, `DEC-DEP-0013`) |
 | Manager Employee **transfers branch** | Nothing. Manager is a company-level relationship; branch is orthogonal (`BRULE-DEP-0019`) |
-| Manager Employee **changes department** | Nothing automatic — but under `OD-DEP-003` reading (i), moving *into* the department they manage is refused by `BRULE-DEP-0012` |
+| Manager Employee **changes department** | **Nothing automatic, and the move is NOT refused.** `OD-DEP-003` closed on reading (iii), which requires refusing a move *into* the department they manage — but `ChangeEmployeeDepartmentCommandHandler` performs no manager lookup, and its destination check answers company-and-active only, so nothing enforces it. **The opposite direction is enforced:** assigning a manager who already belongs to the department is refused by `BRULE-DEP-0012` |
 | Department is **deactivated** | Nothing. The record of who headed it is part of what makes the inactive department readable |
 
 **Why termination does not silently clear the manager.** An automatic clear destroys information — the

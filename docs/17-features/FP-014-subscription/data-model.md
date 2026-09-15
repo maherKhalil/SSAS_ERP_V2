@@ -1,4 +1,4 @@
-# FP-014 — Data model (proposed)
+# FP-014 — Data model
 
 Written from the ruling set of 2026-08-25. Reads on from
 [`domain-model.md`](domain-model.md), which carries the two mechanical constraints these tables are

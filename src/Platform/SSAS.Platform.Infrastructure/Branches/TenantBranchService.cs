@@ -244,6 +244,15 @@ internal sealed class TenantBranchService(
       await tenant.SaveChangesAsync(cancellationToken);
       await transaction.CommitAsync(cancellationToken);
     }
+    // ⚠ DISCARDED, AND ARM SELECTION IS WHAT KEPT THE DISTINCTION (T-256).
+    //
+    // This is a CHAIN, not a lone arm: the sibling below filters on `UniqueViolation(exception)` and
+    // names the index that lost. Reaching THIS arm therefore means EF detected a concurrency conflict
+    // and not a uniqueness one — the discrimination happened in the `when` clause before any body ran.
+    //
+    // A `DbUpdateConcurrencyException` names no row and no column, so keeping the object would preserve
+    // a message rather than a distinction. EF logs the failed command with the exception attached
+    // (`Microsoft.EntityFrameworkCore.Update`, measured T-247), so the operator loses nothing either.
     catch (DbUpdateConcurrencyException)
     {
       return Result.Failure<BranchDto>(BranchErrors.ConcurrencyConflict);
@@ -367,6 +376,14 @@ internal sealed class TenantBranchService(
 
       await transaction.CommitAsync(cancellationToken);
     }
+    // ⚠ DISCARDED, AND HERE IT REALLY IS A LONE ARM (T-256).
+    //
+    // Unlike the chain earlier in this file, nothing follows this catch: every other write failure
+    // propagates rather than being mapped, so there is no sibling this arm could be confused with and
+    // nothing for a retained exception to disambiguate.
+    //
+    // Reaching it means EF detected a concurrency conflict, which is exactly what
+    // `BranchErrors.ConcurrencyConflict` says.
     catch (DbUpdateConcurrencyException)
     {
       return Result.Failure(BranchErrors.ConcurrencyConflict);

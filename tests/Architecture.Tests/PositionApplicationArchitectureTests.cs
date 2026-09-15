@@ -1,4 +1,4 @@
-﻿using System.Reflection;
+using System.Reflection;
 using SSAS.HR.Application.Permissions;
 using SSAS.HR.Application.Positions;
 using SSAS.HR.Application.Positions.Reads;
@@ -48,9 +48,9 @@ public sealed class PositionApplicationArchitectureTests
     {
       var properties = command.GetProperties().Select(property => property.Name).ToArray();
 
-      Assert.DoesNotContain(properties, name => name.Contains("Tenant", StringComparison.Ordinal));
-      Assert.DoesNotContain(properties, name => name.Contains("Branch", StringComparison.Ordinal));
-      Assert.DoesNotContain(properties, name => name.Contains("Department", StringComparison.Ordinal));
+      Assert.DoesNotContain(properties, name => name.Contains(Names.Tenant, StringComparison.Ordinal));
+      Assert.DoesNotContain(properties, name => name.Contains(Names.Branch, StringComparison.Ordinal));
+      Assert.DoesNotContain(properties, name => name.Contains(Names.Department, StringComparison.Ordinal));
     }
   }
 
@@ -67,8 +67,8 @@ public sealed class PositionApplicationArchitectureTests
   {
     var properties = command.GetProperties().Select(property => property.Name).ToArray();
 
-    Assert.DoesNotContain(properties, name => name.Contains("Status", StringComparison.Ordinal));
-    Assert.DoesNotContain(properties, name => name.Contains("Company", StringComparison.Ordinal));
+    Assert.DoesNotContain(properties, name => name.Contains(Names.Status, StringComparison.Ordinal));
+    Assert.DoesNotContain(properties, name => name.Contains(Names.Company, StringComparison.Ordinal));
   }
 
   // ---- EVERY MUTATION OF AN EXISTING RECORD CARRIES A ROW VERSION (NFR-POS-0302, DEC-POS-0021).
@@ -78,6 +78,14 @@ public sealed class PositionApplicationArchitectureTests
   // token exists to lose.
   [Fact]
   [Trait("Requirement", "NFR-POS-0302")]
+  // ⚠ CITED BY 269: `AC-POS-0047`'s UNIVERSAL quantifier — *EVERY position and grade mutation*. Its partner
+  // `PositionApplicationSqlServerTests.A_stale_row_version_is_refused_on_every_family` proves the REFUSAL
+  // behaves correctly but exercises one mutation per family; this enumerates the mutation commands and
+  // asserts each carries the token, which is the only leg that scales to a command added tomorrow.
+  //
+  // Note the exclusion is principled and stated: creates are skipped because there is nothing yet to be
+  // stale about, so the filter is not narrowing the population to make the assertion pass.
+  [Trait("Criterion", "AC-POS-0047")]
   public void Every_position_mutation_of_an_existing_record_requires_a_row_version()
   {
     foreach (var command in MutationCommands.Where(type =>
@@ -92,12 +100,74 @@ public sealed class PositionApplicationArchitectureTests
 
   // The append-only assignment record carries none, because it is never updated (`DEC-POS-0021`). Asserted
   // rather than assumed: adding one would suggest the history is editable.
+  //
+  // ⚠ CITED BY 269 FOR TWO CRITERIA. `AC-POS-0037` — *the entity implements `IAppendOnlyEntity` and the
+  // guard that asserts append-only entities carry no `RowVersion` covers it* — and `AC-POS-0057`, which is
+  // the ownership classification. Both are named by the criteria and both are now asserted here.
+  //
+  // ⚠⚠ STRENGTHENED BY 269, APPLYING A LESSON THIS REPOSITORY ALREADY LEARNED ELSEWHERE. This read
+  // `GetProperty("RowVersion")` with a BARE STRING and no positive. `Type.GetProperty` returns null for a
+  // property that is ABSENT and for one that is MISSPELT, so a rename left it green over a lookup that
+  // could not hit. `JournalDomainTests.A_posted_journal_has_no_row_version_and_a_draft_does` fixed exactly
+  // this in item 258 and its comment states the reason.
+  // Both halves are now bound to a compiled symbol, and the POSITIVE is what proves the lookup can hit.
+  //
+  // ⚠⚠⚠ CORRECTED BY 271, AND THE CORRECTION IS THE USEFUL PART. This said *the Position analogue never
+  // received the fix*, which reads as an OVERSIGHT inside a sweep that covered this ground. 258's commit
+  // (`3063cbe`) touches SIX FILES: `AccountDomainTests`, `JournalDomainTests`, `AuthenticationDomainTests`,
+  // `CompanyDomainTests`, `PlatformSupportAuthorityTests`, `TenantLifecycleDomainTests` — all in
+  // `Finance.Tests` and `Platform.Tests`. `Architecture.Tests` AND `HR.Tests` WERE NEVER IN ITS POPULATION.
+  // The analogue was not missed; it was outside the boundary, which is a different defect with a different
+  // fix: 258 bound the sites it enumerated, and nothing has ever enumerated these two suites.
+  //
+  // ⚠ SO THE RESIDUE IS LIVE AND NAMED RATHER THAN IMPLIED. `EmployeePositionAssignmentDomainTests` line
+  // 186 asserts `Assert.Null(typeof(EmployeePositionAssignment).GetProperty("EffectiveToUtc"))` — a
+  // BARE-STRING NEGATIVE with no positive, in this package, carrying the identical defect: it passes when
+  // the property is absent AND when the literal is misspelt. `EmployeeDomainTests` line 519 is the same
+  // assertion on the employee side. Both are outside 269's citation lane and are recorded here rather than
+  // changed, because a sweep that names a defect class and steps over two instances of it in its own
+  // neighbourhood is the finding, not the fix.
+  //
+  // ---- ⚠⚠ WHICH CLAUSES THIS CARRIES, AND WHICH IT DOES NOT.
+  //
+  // `AC-POS-0057` is carried WHOLE here — tenant- and company-owned, not branch-owned, three assertions
+  // for three clauses, and no enforcement half exists for it to be missing. *It is an interface claim and
+  // this is an interface test.*
+  //
+  // `AC-POS-0037` is THREE clauses and this file holds two: the marker, and the absent `RowVersion`.
+  // ***THE FIRST CLAUSE — "no update or delete path exists" — IS NOT ASSERTED HERE.*** It is the exact
+  // member set in `EmployeeReadScopeArchitectureTests.The_employee_repository_surface_is_the_approved_
+  // write_path_only`, which carried no citation until it was given one alongside this note.
+  //
+  // ⚠ AND THE RUNTIME REFUSAL IS A FOURTH THING AGAIN, newly gated. A marker without an enforcer is the
+  // appearance of immutability and none of it; the enforcer is `TenantDbContext.PreventAppendOnlyMutation`,
+  // driven behaviourally by `TenantAppendOnlyGuardTests` **since `69c2f0a` and by Integration alone before
+  // that.** *So this criterion reads tier 1 today and would have read tier 1 yesterday on weaker evidence.*
   [Fact]
   [Trait("Decision", "DEC-POS-0021")]
+  [Trait("Criterion", "AC-POS-0037")]
+  [Trait("Criterion", "AC-POS-0057")]
   public void The_append_only_assignment_carries_no_row_version()
   {
+    var interfaces = typeof(SSAS.HR.Domain.Positions.EmployeePositionAssignment).GetInterfaces();
+
+    // `AC-POS-0037`'s first clause, and `AC-POS-0057`: tenant- and company-owned, append-only, and NOT
+    // branch-owned. The absence is asserted beside the presences, so it cannot be a lookup over nothing.
+    Assert.Contains(typeof(SSAS.BuildingBlocks.Domain.IAppendOnlyEntity), interfaces);
+    Assert.Contains(typeof(SSAS.BuildingBlocks.Domain.ITenantOwnedEntity), interfaces);
+    Assert.Contains(typeof(SSAS.BuildingBlocks.Domain.ICompanyOwnedEntity), interfaces);
+    Assert.DoesNotContain(typeof(SSAS.BuildingBlocks.Domain.IBranchOwnedEntity), interfaces);
+
+    // THE NEGATIVE, bound to a symbol rather than a string.
     Assert.Null(
-      typeof(SSAS.HR.Domain.Positions.EmployeePositionAssignment).GetProperty("RowVersion"));
+      typeof(SSAS.HR.Domain.Positions.EmployeePositionAssignment)
+        .GetProperty(nameof(SSAS.HR.Domain.Positions.Position.RowVersion)));
+
+    // THE POSITIVE CONTROL, on the same name: `Position` DOES carry one, so the lookup above is proven
+    // capable of finding a property called that. Without this line a rename makes the negative vacuous.
+    Assert.NotNull(
+      typeof(SSAS.HR.Domain.Positions.Position)
+        .GetProperty(nameof(SSAS.HR.Domain.Positions.Position.RowVersion)));
   }
 
   // ================================================================================================
@@ -106,8 +176,19 @@ public sealed class PositionApplicationArchitectureTests
   //
   // A Position is not branch-owned, so branch scope does not decide whether one is VISIBLE. The resolver
   // takes no branch dependency at all, which is a stronger statement than "it does not call one".
+  //
+  // ⚠ CITED BY 269: `AC-POS-0046` HAS THREE CLAUSES AND THIS IS THE SECOND — *carries no branch scope*.
+  // The other two are in this file: *cannot be constructed outside its resolver* is
+  // `No_position_read_scope_can_be_constructed_from_outside_the_application`, and *no read method omits it*
+  // is `Every_position_read_takes_its_own_scope_as_the_first_parameter`. All three are cited; no one of
+  // them is honest alone.
+  //
+  // Note this asserts the SCOPE TYPES' properties AND the resolver's constructor parameters — two claims,
+  // because a scope with no branch property served by a resolver that takes a branch resolver would satisfy
+  // the letter of the first while reintroducing the dimension.
   [Fact]
   [Trait("Decision", "DEC-POS-0020")]
+  [Trait("Criterion", "AC-POS-0046")]
   public void No_position_scope_carries_a_branch_dimension()
   {
     foreach (var scopeType in new[]
@@ -115,7 +196,7 @@ public sealed class PositionApplicationArchitectureTests
     {
       var properties = scopeType.GetProperties().Select(property => property.Name).ToArray();
 
-      Assert.DoesNotContain(properties, name => name.Contains("Branch", StringComparison.Ordinal));
+      Assert.DoesNotContain(properties, name => name.Contains(Names.Branch, StringComparison.Ordinal));
     }
 
     var resolverParameters = typeof(PositionScopeResolver)
@@ -125,7 +206,7 @@ public sealed class PositionApplicationArchitectureTests
       .Select(parameter => parameter.ParameterType.Name)
       .ToArray();
 
-    Assert.DoesNotContain(resolverParameters, name => name.Contains("Branch", StringComparison.Ordinal));
+    Assert.DoesNotContain(resolverParameters, name => name.Contains(Names.Branch, StringComparison.Ordinal));
   }
 
   // ---- AND NO SCOPE CAN BE FABRICATED.
@@ -139,6 +220,11 @@ public sealed class PositionApplicationArchitectureTests
   [InlineData(typeof(SalaryGradeReadScope))]
   [InlineData(typeof(AuthorizedPositionCompanyScope))]
   [Trait("Decision", "DEC-POS-0020")]
+  // ⚠ CITED BY 269: `AC-POS-0046`'s FIRST clause — *cannot be constructed outside its resolver*. Asserts
+  // both halves of that: no public constructor AND the `Create` factory is internal. `Assert.NotNull` on
+  // the factory is the control — without it, a renamed factory would make `GetMethod` return null and the
+  // internal-ness assertion would never run.
+  [Trait("Criterion", "AC-POS-0046")]
   public void No_position_read_scope_can_be_constructed_from_outside_the_application(Type scopeType)
   {
     Assert.Empty(scopeType.GetConstructors(BindingFlags.Public | BindingFlags.Instance));
@@ -161,6 +247,10 @@ public sealed class PositionApplicationArchitectureTests
   [InlineData(typeof(IJobGradeReadService), typeof(JobGradeReadScope))]
   [InlineData(typeof(ISalaryGradeReadService), typeof(SalaryGradeReadScope))]
   [Trait("Decision", "DEC-POS-0018")]
+  // ⚠ CITED BY 269: `AC-POS-0046`'s THIRD clause — *no read method omits it*. `Assert.NotEmpty(methods)` is
+  // the anti-vacuity control and it is load-bearing: `Assert.Equal` inside a `foreach` over an empty method
+  // set passes, so an interface that lost its reads would satisfy this test perfectly without it.
+  [Trait("Criterion", "AC-POS-0046")]
   public void Every_position_read_takes_its_own_scope_as_the_first_parameter(
     Type readService, Type expectedScope)
   {
@@ -249,8 +339,29 @@ public sealed class PositionApplicationArchitectureTests
   //
   // NAMING THEM IS NOT REGISTERING THEM. FP-006P's failure was constants defined nowhere the
   // role-assignment path could see, so no role could hold one and every endpoint refused every caller.
+  //
+  // ⚠ CITED BY 269: `AC-POS-0043`, THIS PACKAGE'S HALF — *every permission this package names is defined in
+  // the composed catalog and can be granted to a role.* This test carries the package-specific part: the
+  // twelve position-family names are offered, and the exact counts refuse a thirteenth arriving quietly.
+  //
+  // ⚠⚠ IT DOES NOT CARRY THE CRITERION'S STATED FAILURE MODE — *a name present in `HrPermissionNames` but
+  // ABSENT FROM THE CATALOG fails this criterion.* A thirteenth CONSTANT that was never contributed leaves
+  // the catalog at 23 and passes here. I filed that as a gap and was WRONG: it is asserted, module-wide, by
+  // `ModulePermissionContributionArchitectureTests.The_hr_contribution_derives_from_the_single_code_owned_
+  // name_set`, which reflects every literal off `HrPermissionNames` and does `Assert.Equal(constants,
+  // contributed)` — SET EQUALITY, so a constant with no catalog entry reddens and so does the reverse.
+  //
+  // And *the COMPOSED catalog* half — resolved from the real host container rather than from a contributor
+  // constructed in a test — is `EndpointPermissionCatalogJoinTests.Every_permission_an_endpoint_requires_
+  // is_defined_by_the_composed_catalog`, which joins every route's required permission against the
+  // container's `IPermissionCatalog` and asserts the required set is non-empty first.
+  //
+  // Neither of those is cited: both are module- or product-wide and a criterion trait on them would read as
+  // a position-specific assertion. Same reasoning as `AC-DEP-0043` next door, which cites the package test
+  // and names the join in prose.
   [Fact]
   [Trait("Decision", "DEC-POS-0018")]
+  [Trait("Criterion", "AC-POS-0043")]
   public void Position_permissions_are_contributed_explicitly_and_completely()
   {
     var offered = new HrPermissionCatalogContributor().Permissions
@@ -288,7 +399,7 @@ public sealed class PositionApplicationArchitectureTests
     // the module that moves data outside the system's control.
     //
     // This count is what would have gone red if they had been added quietly, which is why it is here.
-    Assert.Equal(23, offered.Length);
+    Assert.Equal(27, offered.Length);
 
     Assert.Contains(HrPermissionNames.ImportEmployees, offered);
     Assert.Contains(HrPermissionNames.ExportEmployees, offered);
@@ -339,6 +450,14 @@ public sealed class PositionApplicationArchitectureTests
   // ================================================================================================
   [Fact]
   [Trait("Rule", "BRULE-POS-0012")]
+  // ⚠ CITED BY 269: `AC-POS-0027`'s COMMAND AND HANDLER clause — *no route, handler, or repository method
+  // deletes a position or a grade.* The route half is `HrRouteInventoryTests.The_hr_surface_exposes_no_
+  // delete_verb`. The bound worth stating: this scans TYPE NAMES in `SSAS.HR.Application`, so a repository
+  // METHOD named `Delete` on a type not so named, in `SSAS.HR.Infrastructure`, is outside it.
+  //
+  // Its absence predicates are backed by `Every_absence_predicate_can_match_something` below, which is the
+  // known-positive control for this whole file.
+  [Trait("Criterion", "AC-POS-0027")]
   public void No_position_delete_command_or_handler_exists()
   {
     var offenders = HrApplicationAssembly.GetTypes()
@@ -361,15 +480,25 @@ public sealed class PositionApplicationArchitectureTests
   // exists to carry it.
   [Fact]
   [Trait("Decision", "OD-POS-006")]
+  // ⚠ CITED BY 269: `AC-POS-0063` — *no `Employee.ManagerId` is introduced, and no
+  // `Position.ReportsToPositionId`.* This carries the POSITION half over the command surface, and it bans
+  // three spellings — `ReportsTo`, `Parent`, `Manager` — rather than the one the criterion names, which is
+  // what stops the rule being satisfied by renaming the field.
+  //
+  // ⚠ ITS PREDICATES ARE NOT SELF-VERIFYING AND THE FILE KNOWS IT: every literal used here is proven to
+  // MATCH SOMETHING by `Every_absence_predicate_can_match_something`, which holds a control type carrying
+  // one property per banned term and asserts each literal finds it. Without that, a typo in `Names.Manager`
+  // makes this pass over everything. That control is what makes the citation worth having.
+  [Trait("Criterion", "AC-POS-0063")]
   public void No_position_command_expresses_a_reporting_line()
   {
     foreach (var command in MutationCommands)
     {
       var properties = command.GetProperties().Select(property => property.Name).ToArray();
 
-      Assert.DoesNotContain(properties, name => name.Contains("ReportsTo", StringComparison.Ordinal));
-      Assert.DoesNotContain(properties, name => name.Contains("Parent", StringComparison.Ordinal));
-      Assert.DoesNotContain(properties, name => name.Contains("Manager", StringComparison.Ordinal));
+      Assert.DoesNotContain(properties, name => name.Contains(Names.ReportsTo, StringComparison.Ordinal));
+      Assert.DoesNotContain(properties, name => name.Contains(Names.Parent, StringComparison.Ordinal));
+      Assert.DoesNotContain(properties, name => name.Contains(Names.Manager, StringComparison.Ordinal));
     }
   }
 
@@ -387,6 +516,41 @@ public sealed class PositionApplicationArchitectureTests
   // first failed.
   [Fact]
   [Trait("Decision", "DEC-POS-0023")]
+  // ⚠ CITED BY 269 FOR TWO CRITERIA, over the COMMAND surface.
+  //
+  // `AC-POS-0062` — *no salary, wage, rate or compensation value is stored anywhere in this package.* The
+  // `tenant.Employees` half of that criterion is a SCHEMA claim, carried by the position schema suite's
+  // column checks; this is the application half.
+  //
+  // `AC-POS-0064` — *no headcount, establishment or vacancy column exists.* The second clause, *any number
+  // of employees may hold one position*, is not asserted here: it is a statement about permitted DATA and
+  // needs two employees sharing a position.
+  //
+  // ⚠⚠⚠ CORRECTED BY 271. THIS SAID I HAD SEARCHED FOR SUCH AN ARRANGEMENT AND NOT LOCATED ONE. THE
+  // ARRANGEMENT IS EVERYWHERE, AND THE SEARCH IS WHY I MISSED IT. `EmployeeFixture.NewEmployee` declares
+  // `Guid? position = null` and resolves `position ?? PositionA`, so EVERY test that creates two employees
+  // without mentioning a position puts both on ONE position. `EmployeeBoundarySqlServerTests` lines 587-588
+  // create `EMP-502` and `EMP-503` and assert BOTH creations succeed; lines 547-548, 354-358 and 2611-2615
+  // do the same. Two employees holding one position, with the success asserted, exists many times over.
+  //
+  // ⚠ I SEARCHED THE P-SERIES — the position-TAGGED tests — AND CALLED IT THE SUITE. The arrangement lives
+  // in the ordinary employee tests, spelled by a DEFAULT PARAMETER NOBODY PASSES, so no line of any test
+  // contains the word `position` at the point where the sharing happens. A search over what tests SAY
+  // cannot see what a default argument DOES; this is the same false absence as `AC-POS-0034`, where the
+  // coverage sat under the other party to the relationship.
+  //
+  // ⚠⚠ WHAT IT IS NOT: an ASSERTION of this criterion. Those tests are about national-id and employee-number
+  // uniqueness; the shared position is arrangement, and a failure there would report a duplicate-number
+  // defect. A headcount constraint added tomorrow WOULD redden line 588 — so the protection is real and
+  // executable, and it attributes to nothing. INCIDENTAL PROTECTION IS PROTECTION; IT IS NOT AN ASSERTION
+  // OF THE CRITERION — the same ruling this sweep made for `AC-POS-0017`. The clause stays uncited, on
+  // accurate grounds this time.
+  //
+  // ⚠ The comment above is the reason the ban is not simply "Salary": matching on that alone would forbid
+  // `SalaryGradeId`, which is the STRUCTURAL POINTER the package requires, and the named exemption list is
+  // asserted rather than assumed. That is how this guard first failed.
+  [Trait("Criterion", "AC-POS-0062")]
+  [Trait("Criterion", "AC-POS-0064")]
   public void No_position_command_carries_a_compensation_value_or_headcount()
   {
     foreach (var command in MutationCommands.Where(type =>
@@ -399,13 +563,13 @@ public sealed class PositionApplicationArchitectureTests
         .ToArray();
 
       Assert.DoesNotContain(properties, name =>
-        name.Contains("Amount", StringComparison.Ordinal) ||
-        name.Contains("Salary", StringComparison.Ordinal) ||
-        name.Contains("Wage", StringComparison.Ordinal) ||
-        name.Contains("Pay", StringComparison.Ordinal) ||
-        name.Contains("Rate", StringComparison.Ordinal) ||
-        name.Contains("Headcount", StringComparison.Ordinal) ||
-        name.Contains("Seat", StringComparison.Ordinal));
+        name.Contains(Names.Amount, StringComparison.Ordinal) ||
+        name.Contains(Names.Salary, StringComparison.Ordinal) ||
+        name.Contains(Names.Wage, StringComparison.Ordinal) ||
+        name.Contains(Names.Pay, StringComparison.Ordinal) ||
+        name.Contains(Names.Rate, StringComparison.Ordinal) ||
+        name.Contains(Names.Headcount, StringComparison.Ordinal) ||
+        name.Contains(Names.Seat, StringComparison.Ordinal));
     }
 
     // And the salary grade commands carry EXACTLY the three amounts and no fourth money field.
@@ -433,12 +597,207 @@ public sealed class PositionApplicationArchitectureTests
   [Trait("Decision", "ADR-012")]
   public void The_hr_application_still_references_no_platform_assembly()
   {
+    // ⚠ DECLARED AND EMITTED, BECAUSE THEY FAIL ON DIFFERENT DAYS (272). This file already reads the
+    // `.csproj` files for `AC-POS-0067` below, on exactly this reasoning — the emitted check cannot see a
+    // `ProjectReference` no type is taken from. The same bound applies here and the same pair closes it.
+    // The control proves the predicate fires where a Platform reference legitimately exists.
+    Assert.Contains(
+      DeclaredDependencies.Of("SSAS.Host.API"),
+      name => name.StartsWith("SSAS.Platform", StringComparison.Ordinal));
+
     var referenced = HrApplicationAssembly
       .GetReferencedAssemblies()
       .Select(assembly => assembly.Name ?? string.Empty)
       .ToArray();
 
     Assert.DoesNotContain(referenced, name => name.StartsWith("SSAS.Platform", StringComparison.Ordinal));
+    Assert.DoesNotContain(
+      DeclaredDependencies.Of(HrApplicationAssembly),
+      name => name.StartsWith("SSAS.Platform", StringComparison.Ordinal));
+  }
+
+  // ---- AND THE SAME RULE OVER EVERY HR ASSEMBLY, NOT THREE OF THEM (`AC-POS-0060`, `AC-POS-0067`, 269).
+  //
+  // ⚠ THE TEST ABOVE CHECKS `SSAS.HR.Application`. Two others check `SSAS.HR.Domain` and the repository
+  // assembly. `SSAS.HR.API` — WHICH IS THE ASSEMBLY BOTH CRITERIA NAME — WAS CHECKED BY NOTHING. Three of
+  // four boundaries guarded is not a decision, it is an omission: whoever wrote them understood the rule.
+  //
+  // So this enumerates rather than adding a fourth instance. Three assemblies is not every HR assembly, in
+  // the same way three families was not every mutation for `AC-POS-0047` — and a hand-written fourth would
+  // leave the identical defect one assembly further out.
+  //
+  // ⚠⚠ THE ALLOWED SET IS EMPTY, AND THAT IS VERIFIED RATHER THAN ASSUMED. I read all five HR `.csproj`
+  // files: Domain, Contracts, Application, Infrastructure and API. NONE references Platform — Infrastructure
+  // reaches the tenant plane through `SSAS.BuildingBlocks.Tenancy`, not through Platform, which is the case
+  // one would expect to need an exemption. There is therefore no exemption list, and if one is ever needed
+  // it must be written here WITH ITS GROUNDS rather than appearing as the shape of a filter.
+  //
+  // THE FAILURE NAMES THE ASSEMBLY. An enumeration that reported only "something references Platform" over
+  // five candidates would make a red worse than useless, so offenders are collected as `assembly -> reference`.
+  [Fact]
+  [Trait("Decision", "ADR-012")]
+  [Trait("Criterion", "AC-POS-0060")]
+  [Trait("Criterion", "AC-POS-0067")]
+  public void No_hr_assembly_references_a_platform_assembly()
+  {
+    // LOADED BY TYPE, never by name: a renamed assembly then fails to compile rather than silently
+    // dropping out of the population.
+    (string Name, Assembly Assembly)[] hrAssemblies =
+    [
+      ("SSAS.HR.Domain", typeof(SSAS.HR.Domain.Positions.Position).Assembly),
+      ("SSAS.HR.Contracts", typeof(SSAS.HR.Contracts.Employment.IEmployeeRoster).Assembly),
+      ("SSAS.HR.Application", HrApplicationAssembly),
+      ("SSAS.HR.Infrastructure", typeof(SSAS.HR.Infrastructure.Persistence.HrTenantModelContributor).Assembly),
+      ("SSAS.HR.API", typeof(SSAS.HR.API.Departments.DepartmentApiErrorMapper).Assembly)
+    ];
+
+    // POPULATION CONTROL. Five is every project under `src/Modules/HR`; a sixth added without being
+    // enumerated here is the failure this whole test exists to stop recurring.
+    Assert.Equal(5, hrAssemblies.Length);
+
+    // And each entry really is the assembly its label claims, so the labels in a failure can be trusted.
+    foreach (var (name, assembly) in hrAssemblies)
+    {
+      Assert.Equal(name, assembly.GetName().Name);
+    }
+
+    // ⚠ PREDICATE CONTROL, in the spirit of `Every_absence_predicate_can_match_something` below: prove the
+    // filter RECOGNISES a Platform assembly when it sees one. Without this, a wrong prefix makes `offenders`
+    // empty by construction and the ban holds over nothing.
+    Assert.StartsWith(
+      "SSAS.Platform",
+      typeof(SSAS.Platform.Domain.Companies.Company).Assembly.GetName().Name,
+      StringComparison.Ordinal);
+
+    var used = hrAssemblies
+      .SelectMany(entry => entry.Assembly.GetReferencedAssemblies()
+        .Select(reference => $"{entry.Name} -> {reference.Name}"))
+      .Where(pair => pair.Contains("-> SSAS.Platform", StringComparison.Ordinal))
+      .OrderBy(line => line, StringComparer.Ordinal)
+      .ToArray();
+
+    Assert.Empty(used);
+
+    // ================================================================================================
+    // ⚠⚠ AND THE PROJECT FILES, BECAUSE THE ASSERTION ABOVE CANNOT SEE WHAT THE CRITERION FORBIDS.
+    // ================================================================================================
+    //
+    // `AC-POS-0067` says *a build in which `HR.API` CAN SEE `SSAS.Platform.Domain` fails this criterion
+    // REGARDLESS OF WHAT IT READS.* ⚠ `GetReferencedAssemblies()` cannot assert that: the C# compiler
+    // OMITS a reference no type actually uses, so an unused `ProjectReference` is invisible in the emitted
+    // metadata. MEASURED, NOT ASSUMED — adding the forbidden `ProjectReference` to `SSAS.HR.API.csproj`
+    // left the assembly-level assertion above GREEN, and that plant is what sent me here.
+    //
+    // The three pre-existing boundary guards — over HR.Domain, HR.Application and the repository assembly —
+    // share the same bound: each measures DOES USE, none measures CAN SEE. That is a bound on the
+    // instrument, not a defect in them.
+    //
+    // ⚠⚠ AND THE STRONGER PROPERTY IS THE RIGHT ONE, STATED HERE BECAUSE *the emitted-reference check
+    // already covers this* IS EXACTLY THE ARGUMENT A LATER CLEANUP WILL MAKE. A declared-but-unused
+    // reference is LATENT CAPABILITY: the `.csproj` edit is already merged, the friction is already gone,
+    // and the next developer reaching for a Platform type meets nothing in the way. The emitted-reference
+    // assertion fires only AFTER that coupling exists. **`can see` catches the capability; `does use`
+    // catches the consequence** — and by then the boundary has already been crossed once.
+    //
+    // So the declared dependency is read from the project files, which is where "can see" is decided.
+    // ---- ⚠⚠ RECURSES UNDER `src/` WITH NO `bin`/`obj` EXCLUSION, SAFE BY SEARCH PATTERN ONLY (T-191).
+    //
+    // The walk descends into every HR project's `obj/` and `bin/`. What keeps generated files out is the
+    // pattern alone: **build output contains no `.csproj`.** *Measured 2026-09-07: zero `.csproj` under any
+    // `bin` or `obj` in `src/`; five under `src/Modules/HR`, matching the control below.*
+    //
+    // ⚠⚠⚠ **AND UNLIKE `DeclaredDependencies.ProjectFileOf`, WHICH RECURSES THE SAME WAY, THIS DOES NOT FAIL
+    // LOUD.** That one contracts on exactly one match and throws otherwise. Here an extra path would simply
+    // join `projects` and be read as another HR project — **the population would grow and the equality
+    // control below would fail with a count mismatch that says nothing about where the extra file came
+    // from.** *A pattern is a weaker mitigation than a filter because nothing states it; that is the whole
+    // reason this paragraph is here rather than a `.Where(...)` that has nothing to exclude today.*
+    var projects = Directory
+      .GetFiles(Path.Combine(RepositoryRootDirectory(), "src", "Modules", "HR"), "*.csproj",
+        SearchOption.AllDirectories)
+      .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
+      .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
+      .OrderBy(path => path, StringComparer.Ordinal)
+      .ToArray();
+
+    // The same population control, from the other direction: five projects on disk, five enumerated above.
+    Assert.Equal(hrAssemblies.Length, projects.Length);
+
+    // ⚠ MATCHED ON THE ELEMENT, NOT ON THE NAME. A bare `Contains("SSAS.Platform")` reported
+    // `SSAS.HR.Domain` as an offender on a clean tree — because a COMMENT in that project file cites
+    // `SSAS.Platform.Domain` as a naming precedent. Prose is not a dependency, and the population control
+    // above is what surfaced the false positive before this shipped.
+    // ⚠ `RepositoryPaths.ProjectNameFromFile`, NOT `Path.GetFileNameWithoutExtension` — which
+    // `RepositoryPathPortabilityTests` bans outright in this suite, and which reddened this test on its
+    // first gate run. The ban is a BLANKET one on purpose: the framework helper is correct for a path the
+    // filesystem produced and wrong for an MSBuild `Include` attribute, and the two are indistinguishable
+    // at a glance. My use was the correct kind; complying is still right, because an exemption would
+    // reintroduce exactly the judgement whose unreliability created the rule.
+    var declared = projects
+      .Select(path => (Project: RepositoryPaths.ProjectNameFromFile(path), Lines: File.ReadAllLines(path)))
+      .Where(entry => entry.Lines.Any(line =>
+        line.Contains("ProjectReference", StringComparison.Ordinal) &&
+        line.Contains("SSAS.Platform", StringComparison.Ordinal)))
+      .Select(entry => $"{entry.Project} declares a Platform ProjectReference")
+      .OrderBy(line => line, StringComparer.Ordinal)
+      .ToArray();
+
+    Assert.Empty(declared);
+  }
+
+  // ---- THE POSITION SURFACE ANSWERS IN ITS OWN NAMESPACES (`AC-POS-0059`, 269).
+  //
+  // ⚠⚠ THE CRITERION IS WRITTEN MORE STRICTLY THAN THE PRODUCT, AND THE STRICT READING WOULD REDDEN ON
+  // CORRECT CODE. It says position errors answer in `position.*` / `job_grade.*` / `salary_grade.*` AND
+  // NEVER in `employee.*` or `department.*`. The mapper declares EIGHTEEN errors and seventeen match those
+  // three prefixes — the eighteenth is `CompanyScopeDenied = "company.scope_denied"`, which is DELIBERATE:
+  // `PositionErrors`' own header records that scope refusals are answered by the Platform boundaries with
+  // their generic errors and are never restated in the module's vocabulary.
+  //
+  // So the assertion is the criterion's ENFORCEABLE half — the two forbidden namespaces — plus a positive
+  // that the position family is actually represented. A guard written to the literal first clause would
+  // fail on a design decision, which is the false positive that gets guards deleted.
+  //
+  // ⚠⚠ AND THE FORBIDDEN CASE IS NOT HYPOTHETICAL — IT HAS HAPPENED IN THIS CODEBASE. `PositionApiErrorMapper`'s
+  // own header records it: *`DEC-DEP-0026` … a shared table once answered a DEPARTMENT MANAGER CONFLICT
+  // with `employee.number_conflict`, because its only unique-constraint arm had been written for the
+  // employee-number pre-check.* That is exactly this ban's subject, in the sibling feature, already once.
+  // The pressure is not inferred from a comment explaining a non-action — it is a recorded defect.
+  [Fact]
+  [Trait("Decision", "ADR-023")]
+  [Trait("Criterion", "AC-POS-0059")]
+  public void No_position_api_error_answers_in_the_employee_or_department_namespace()
+  {
+    var errors = typeof(SSAS.HR.API.Positions.PositionApiErrorMapper)
+      .GetFields(BindingFlags.Public | BindingFlags.Static)
+      .Where(field => field.FieldType == typeof(SSAS.BuildingBlocks.Api.Transport.ApiError))
+      .Select(field => (
+        field.Name,
+        Code: ((SSAS.BuildingBlocks.Api.Transport.ApiError)field.GetValue(null)!).Code))
+      .ToArray();
+
+    // POPULATION CONTROL. An empty or collapsed reflection walk satisfies every ban below.
+    Assert.Equal(18, errors.Length);
+
+    // THE CLAIM: never the neighbouring modules' namespaces. Naming a `department.*` or `employee.*` code
+    // here would make a position refusal indistinguishable from another aggregate's.
+    var offenders = errors
+      .Where(entry =>
+        entry.Code.StartsWith("employee.", StringComparison.Ordinal) ||
+        entry.Code.StartsWith("department.", StringComparison.Ordinal))
+      .Select(entry => $"{entry.Name} = '{entry.Code}'")
+      .OrderBy(line => line, StringComparer.Ordinal)
+      .ToArray();
+
+    Assert.Empty(offenders);
+
+    // ⚠ POSITIVE CONTROL, AND IT CARRIES THE CRITERION'S FIRST CLAUSE IN THE FORM THE PRODUCT SUPPORTS:
+    // all three position-family namespaces are represented, so the ban above is not holding over a set
+    // that answers in no namespace at all.
+    foreach (var prefix in new[] { "position.", "job_grade.", "salary_grade." })
+    {
+      Assert.Contains(errors, entry => entry.Code.StartsWith(prefix, StringComparison.Ordinal));
+    }
   }
 
   // ---- NO REFLECTION-BASED PERMISSION DISCOVERY IN THE POSITION SLICE.
@@ -492,4 +851,103 @@ public sealed class PositionApplicationArchitectureTests
 
     throw new DirectoryNotFoundException("Unable to locate the repository root containing SSAS.ERP.sln.");
   }
+
+  // ================================================================================================
+  // ⚠⚠⚠ THE ABSENCE PREDICATES CAN MATCH SOMETHING (252).
+  // ================================================================================================
+  //
+  // Every `Assert.DoesNotContain(names, name => name.Contains("X"))` in this file PASSES WHEN THE
+  // PREDICATE MATCHES NOTHING, so it cannot distinguish *no command carries X* from *I misspelled X*.
+  // Measured on this exact shape elsewhere in the suite: one literal planted as `"Departmentt"` returned
+  // PASSED, 6 of 6.
+  //
+  // ---- ⚠⚠ NEITHER STANDARD REMEDY WORKS FOR AN ABSENCE-OF-NAME ASSERTION, WHICH IS WHY THIS IS ODD.
+  //
+  // `nameof` is UNAVAILABLE BY CONSTRUCTION — you cannot `nameof` a property whose whole point is that it
+  // must not exist. And a floor on the collection does not help either: `name.Contains("Tenantt")` matches
+  // nothing over a fully populated array just as happily as over an empty one. A floor closes vacuity;
+  // this is not vacuity.
+  //
+  // ---- SO THE LITERAL IS SHARED, AND THE CONTROL BELOW PROVES IT MATCHES.
+  //
+  // ⚠ A control carrying its OWN copy of each literal would prove nothing — a typo at a call site would
+  // leave the control passing. The constants are the SAME symbols the assertions use, so:
+  //
+  //   * misspell a constant  -> `Every_absence_predicate_can_match_something` FAILS
+  //   * misspell at a site   -> unknown identifier, and it does not compile
+  //
+  // `Marker` is appended so the control's property names are not identical to the constants: the predicate
+  // under test is a SUBSTRING match, and a control that only ever matched whole names would not exercise it.
+  private static class Names
+  {
+    public const string Amount = "Amount";
+    public const string Branch = "Branch";
+    public const string Company = "Company";
+    public const string Department = "Department";
+    public const string Headcount = "Headcount";
+    public const string Manager = "Manager";
+    public const string Parent = "Parent";
+    public const string Pay = "Pay";
+    public const string Rate = "Rate";
+    public const string ReportsTo = "ReportsTo";
+    public const string Salary = "Salary";
+    public const string Seat = "Seat";
+    public const string Status = "Status";
+    public const string Tenant = "Tenant";
+    public const string Wage = "Wage";
+  }
+
+  private sealed class NameControl
+  {
+    public string AmountMarker { get; set; } = string.Empty;
+    public string BranchMarker { get; set; } = string.Empty;
+    public string CompanyMarker { get; set; } = string.Empty;
+    public string DepartmentMarker { get; set; } = string.Empty;
+    public string HeadcountMarker { get; set; } = string.Empty;
+    public string ManagerMarker { get; set; } = string.Empty;
+    public string ParentMarker { get; set; } = string.Empty;
+    public string PayMarker { get; set; } = string.Empty;
+    public string RateMarker { get; set; } = string.Empty;
+    public string ReportsToMarker { get; set; } = string.Empty;
+    public string SalaryMarker { get; set; } = string.Empty;
+    public string SeatMarker { get; set; } = string.Empty;
+    public string StatusMarker { get; set; } = string.Empty;
+    public string TenantMarker { get; set; } = string.Empty;
+    public string WageMarker { get; set; } = string.Empty;
+  }
+
+  [Fact]
+  [Trait("Decision", "DEC-POS-0001")]
+  public void Every_absence_predicate_can_match_something()
+  {
+    var control = typeof(NameControl).GetProperties().Select(property => property.Name).ToArray();
+
+    // Anti-vacuity for the control itself, which is otherwise the same trap one level down.
+    Assert.Equal(15, control.Length);
+
+    foreach (var literal in new[]
+    {
+      Names.Amount,
+      Names.Branch,
+      Names.Company,
+      Names.Department,
+      Names.Headcount,
+      Names.Manager,
+      Names.Parent,
+      Names.Pay,
+      Names.Rate,
+      Names.ReportsTo,
+      Names.Salary,
+      Names.Seat,
+      Names.Status,
+      Names.Tenant,
+      Names.Wage,
+    })
+    {
+      Assert.Contains(
+        control,
+        name => name.Contains(literal, StringComparison.Ordinal));
+    }
+  }
+
 }

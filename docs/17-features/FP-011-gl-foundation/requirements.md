@@ -22,6 +22,103 @@ date: 2026-08-23
 > The `OWNER-DECISION-REQUIRED` markers below are left in place as the record of what each line was
 > conditional on when it was drafted, and which decision resolved it. They are no longer open.
 >
+> ### ⚠⚠⚠ **AND THE SENTENCE ABOVE DISPOSES OF ONE MARKER CLASS OF TWO** *(added 2026-09-07; nothing below was changed)*
+>
+> **It names `OWNER-DECISION-REQUIRED` and nothing else. This file also carries FOURTEEN live
+> `| **Open** |` table rows — a second class, unquoted and unpreserved, which the sentence above never
+> mentioned and therefore never cleared.** ⚠ ***THEY ARE CLEARED HERE, AND THEY WERE STALE, NOT OPEN.***
+>
+> **Enumerated from the file rather than from reading. ELEVEN carry a decision id — `OD-GL-0002` (×2),
+> `OD-GL-0003` (×2), `OD-GL-0004` (×3), `OD-GL-0005` (×2), `OD-GL-0006`, `OD-GL-0007` (×2) and `OD-GL-0008`,
+> counting the row that cites `0002`, `0005` and `0007` together once. THREE carry none: two whose cell is
+> `—`, and the row reading *"Whether the code is immutable from creation or only once used — not settled by
+> any existing rule"*.**
+>
+> ⚠⚠⚠ ***THIS PARAGRAPH ORIGINALLY IDENTIFIED THE FOURTEEN ROWS BY LINE NUMBER, AND THE COMMIT THAT WROTE IT
+> FALSIFIED IT.*** **Twenty-eight lines were inserted above those rows by the very commit that cited them,
+> moving every one. *The citations were wrong the moment they were committed — nothing had to be edited
+> afterwards.***
+>
+> ⚠⚠⚠ **AND THIS PARAGRAPH ORIGINALLY PROVED THE POINT BY NAMING WHAT TWO OF THE STALE NUMBERS POINTED AT
+> INSTEAD — WHICH WAS ITSELF A POSITIONAL CLAIM, AND IT ROTTED TWICE WITHIN THE HOUR AS LATER COMMITS MOVED
+> THE FILE AGAIN.** ***A SENTENCE EXPLAINING THAT LINE NUMBERS ROT CANNOT ITSELF CITE LINE NUMBERS. The
+> demonstration has to be described, never located.*** **And the paragraph was arguing, in that same
+> breath, that ***naming the ids makes this note mechanically checkable*** — while identifying its own
+> subjects by the least durable handle in the file.** ***CITE THE ID AND THE QUOTED TEXT. A LINE NUMBER
+> SURVIVES NOTHING, INCLUDING THE EDIT THAT WRITES IT.*** *(Corrected 2026-09-07.)*
+> ***ALL ELEVEN NAME A DECISION THIS PACKAGE HAS ALREADY RULED AND RECORDED IN ITS OWN
+> [`README.md`](README.md) UNDER ITS HEADING `## The nine rulings`, a live unquoted table of nine rows.*** **So
+> `README.md` is authoritative over every cell in the tables below, and where the two disagree the README
+> wins.**
+>
+> ⚠⚠⚠ **THE NINE ARE ENUMERATED HERE RATHER THAN GIVEN AS A RANGE, DELIBERATELY. *A RANGE READS AS AN
+> ENUMERATION AND IS NOT ONE* — it cannot be checked by anything, and this note first said
+> *"`OD-GL-0001` through `OD-GL-0009`"*, which named two ids and implied nine.** ***A DISPOSITION THAT DOES
+> NOT NAME THE IDS IT DISPOSES OF IS THE EXACT DEFECT THIS PACKAGE ALREADY HAS ONCE: not one of the sixteen
+> `OWNER-DECISION-REQUIRED` markers names a decision, which is why the clearance above them was unverifiable
+> for a fortnight.*** **Naming them makes this note mechanically checkable — a reader or a guard can confirm
+> each ruling exists without interpreting prose.**
+>
+> | decision | ruled | so the cells below citing it are |
+> |---|---|---|
+> | **`OD-GL-0001`** | Requirement catalog — lines ratified into `GL.md`, `HR.md`'s flat shape | **stale** |
+> | **`OD-GL-0002`** | **Single currency V1**; `ADR-027` unchanged | **stale** |
+> | **`OD-GL-0003`** | **Tenant-level** chart of accounts | **stale** |
+> | **`OD-GL-0004`** | **Company-level** fiscal calendar | **stale** |
+> | **`OD-GL-0005`** | **No branch dimension in V1** | **stale** |
+> | **`OD-GL-0006`** | **Reversal journal carrying `ReversesJournalId`** | **stale** |
+> | **`OD-GL-0007`** | **Two aggregates** — `JournalDraft` / `JournalEntry` | **stale** |
+> | **`OD-GL-0008`** | **Year-end close out of V1**; period close only | **stale** |
+> | **`OD-GL-0009`** | **No inbound postings**; manual entry only | **stale** |
+>
+> ⚠⚠ **The sharpest instances, because they read as live reasoning rather than as stale labels:**
+> **The `OD-GL-0007` row** — *"`OD-GL-0007` — under option 2 this stops being structurally enforceable"* —
+> **reasons from an option that LOST; the ruling is option 3, two aggregates.** **The two `OD-GL-0002` rows**
+> — *"a multi-currency
+> ledger has a trial balance per currency"* — **`OD-GL-0002` ruled SINGLE CURRENCY V1.**
+>
+> ⚠ **The three id-less rows are left exactly as they are. They cite no decision, so there is nothing to
+> look up, and calling them open or closed would be supplying a referent the document does not.**
+>
+> ⚠⚠⚠ ***AND THE PROMISE IN THE SENTENCE ABOVE IS NOT KEPT BY THE MARKERS THEMSELVES: it says the markers
+> record "which decision resolved it", and not one of the sixteen `OWNER-DECISION-REQUIRED` markers names a
+> decision — every one is a bare suffix on a `REQ-GL-` heading.*** **The resolutions live in `README.md`,
+> which is where this note now sends the reader. *A disposition is scoped to the marker class it names and
+> inherits nothing; that is why fourteen rows sat under a clearance for a fortnight without being covered
+> by it.***
+>
+> ### ⚠⚠⚠ **AND THE STRONGER ARTEFACT: `GL.md` NOW EXISTS, SO THESE LINES ARE NOT MERELY RULED — THEY ARE RATIFIED**
+>
+> **[`docs/00-Master-Product-Specification/Requirement-Catalog/GL.md`](../../00-Master-Product-Specification/Requirement-Catalog/GL.md)
+> — 1,026 bytes, 96 lines, verified 2026-09-07 — carries **`REQ-GL-0001`, `REQ-GL-0002`, `REQ-GL-0003`,
+> `REQ-GL-0004`, `REQ-GL-0005`, `REQ-GL-0006`, `REQ-GL-0007`, `REQ-GL-0008`, `REQ-GL-0009`, `REQ-GL-0010`,
+> `REQ-GL-0011`, `REQ-GL-0012`, `REQ-GL-0013` and `REQ-GL-0014` — all fourteen, each RATIFIED into the master
+> catalog under `OD-GL-0001`, and therefore each `OWNER-DECISION-REQUIRED` suffix on the headings below is
+> DISCHARGED**,
+>
+> ⚠⚠⚠ *(Enumerated 2026-09-07. This said "ALL FOURTEEN `REQ-GL-` ids, `REQ-GL-0001` at `:15`" — **a COUNT
+> plus ONE id plus a LINE NUMBER**, which is the same defect this very block corrects twice elsewhere for
+> `OD-GL`, committed by the same author on the same night, and it SURVIVED the commit that stripped line
+> numbers from this file.* ***THE `REQ-GL` MARKERS WERE DISCHARGED IN FACT AND NAMED AS DISCHARGED BY
+> NOTHING: every disposition in this package cited `OD-GL` ids, and the markers sit on `REQ-GL` headings —
+> TWO ID SPACES THAT NEVER MET.*** *Found by asking why this package was still classified as
+> self-contradictory.)*
+> grouped Journal Entry · Chart of Accounts · Fiscal Calendar · Read and Reporting, with an explicit
+> `Out of V1 Scope` block.** ***THE CATALOG GAP PRESERVED ABOVE UNDER "AS IT WAS" IS CLOSED. `OD-GL-0001`
+> WAS RULED AND EXECUTED.***
+>
+> ⚠⚠ **BUT READ WHAT WAS RATIFIED, BECAUSE THE SHAPE IS THE POINT: `GL.md` HOLDS IDENTIFIERS AND ONE-LINE
+> TITLES AND NOTHING ELSE — no acceptance criteria, no fields, no rules.** ***THE RATIFICATION MOVED THE
+> IDENTIFIERS INTO THE CATALOG. IT DID NOT MOVE THE DETAIL, WHICH STILL LIVES ONLY IN THIS FILE.***
+> **So this document remains the sole authority on what each `REQ-GL-` line actually requires — and that
+> makes a stale `Open` cell here MORE dangerous than it would be in a redundant document, not less: there is
+> no second copy for a reader to check it against.**
+>
+> ⚠ **`GL.md`'s flat, blank-line-separated shape is NOT a defect and must not be "improved" into a table.
+> [`README.md`](README.md)'s `OD-GL-0001` row records the ruling verbatim — *"ratified into `GL.md`,
+> `HR.md`'s flat shape — **precedent
+> over template**"*. The flatness IS the decision.**
+>
 > ## THE CATALOG GAP, AS IT WAS
 >
 > **`docs/00-Master-Product-Specification/Requirement-Catalog/` has no `GL.md`.** The domain is declared

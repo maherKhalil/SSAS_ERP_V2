@@ -4,6 +4,22 @@ using SSAS.Platform.Domain.Enums;
 
 namespace SSAS.Platform.Infrastructure.Persistence.Queries;
 
+// CROSS-TENANT BY DESIGN.
+//
+// This service answers *which tenants does this identity belong to*, which is asked BEFORE a tenant is
+// selected and therefore has no tenant to scope to. `IgnoreQueryFilters()` below is required rather than
+// tolerated: the ambient `CurrentTenantId` is null at this point, and the global filter
+// (`PersistenceDbContext.ConfigureTenantFilter`) fails CLOSED — so with the filter applied this query
+// would return no memberships at all and tenant selection could never begin.
+//
+// ⚠ The scope here is the IDENTITY, not a tenant: `user.IdentityId == identityId` plus an Active status on
+// both sides. **A `TenantId ==` predicate would be wrong, not missing** — it would reduce the answer to the
+// one tenant the caller has not chosen yet.
+//
+// ⚠⚠ `PlatformReadScopeArchitectureTests` requires every Platform read service that ignores the global
+// filter to carry EITHER a hand-written `TenantId ==` predicate OR this marker. **The marker is the
+// grounds, and it is read by a human**: do not add it elsewhere to quieten that test — a read that should
+// be tenant-scoped needs the predicate instead.
 public sealed class IdentityTenantMembershipReadService(
   PlatformDbContext dbContext,
   ITenantAuthenticationEligibilityReadService tenantEligibilityReadService)

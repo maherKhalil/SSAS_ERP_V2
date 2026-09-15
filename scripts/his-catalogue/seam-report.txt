@@ -1,0 +1,53 @@
+PARTITION
+  ERP schemas declared        13
+  ERP tables                  658
+  clinical tables             1096
+
+  per ERP schema:
+    Finance          271
+    HR               123
+    GeneralStores    113
+    Purchasing       26
+    Accounting       21
+    Assets           20
+    Banking          20
+    GL               18
+    PayRoll          15
+    Budgeting        13
+    Receivable       12
+    Contracts        4
+    ZaKat            2
+
+FOREIGN KEYS
+  ERP internal                495
+  clinical internal           1334
+  CROSSING                    159   (erp->clinical 82, clinical->erp 77)
+
+  the joints, densest first:
+    HR <-> Nursing                     39
+    GeneralStores <-> Marketing        15
+    Pharmacy <-> Purchasing            10
+    ApplicationSetup <-> GeneralStores 8
+    Assets <-> Maintenance             8
+    HR <-> InfectionControl            7
+    GeneralStores <-> InPatient        7
+    HR <-> Maintenance                 5
+    Nursing <-> PayRoll                5
+    GeneralStores <-> Nursing          4
+    GeneralStores <-> Maintenance      4
+    ApplicationSetup <-> Banking       3
+
+COMPANY ATTRIBUTION
+  tables with a CompanyID     1199 of 1754
+  tables with NONE            555
+  CompanyID declarations      1199
+  of those NOT NULL           3
+      CompanyId int
+      CompanyId int
+      CompanyID int
+  columns naming a tenant     0 []
+
+TRUST ON THE EDGES
+  foreign keys WITH NOCHECK   99 of 1988
+  (these are where orphans may already exist; they surface as MIGRATION failures,
+   not as source errors, because the source never checked them)

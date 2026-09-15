@@ -70,6 +70,78 @@ public sealed class HrRouteInventoryTests
   // the part worth guarding — a route wired to the wrong constant is an authorization defect no functional
   // test of the happy path would notice.
   [Fact]
+  // ⚠ CITED BY 265: `AC-DEP-0040` -- *each of the four department permissions is required by exactly the
+  // operations listed in `authorization-model.md`, AND BY NO OTHERS*. A SUPERSET for the third time in this
+  // file, on the same grounds as `AC-DEP-0032` below.
+  //
+  // THE *AND BY NO OTHERS* HALF IS THE HARD ONE, AND IT IS CARRIED BY `Assert.Equal` OVER SETS RATHER THAN
+  // BY ANY CLAUSE ABOUT DEPARTMENTS. Set equality fails on an UNLISTED route just as it fails on a missing
+  // one, so no route can quietly acquire a department permission. A per-permission assertion could not do
+  // this: it would have to enumerate the routes that must NOT carry the permission, which is the open set.
+  //
+  // THE PAIRINGS WERE READ AGAINST THE DOCUMENT OPERATION BY OPERATION, not assumed from the names:
+  //   View       -> read one, list, read hierarchy  = the three GETs above
+  //   Create     -> create                          = POST /departments/
+  //   Update     -> rename/change code, move, manager = PUT + /move + /move-to-root + /manager + /manager/remove
+  //   Deactivate -> deactivate AND reactivate       = /activate + /deactivate (one permission, both directions)
+  // and the document's two NEGATIVE rows are here too: change-department and the employee search filter
+  // carry EMPLOYEE permissions, which is `AC-DEP-0042` restated.
+  //
+  // ⚠ THE BOUND, STATED SO IT IS NOT MISTAKEN FOR MORE: `MappedRoutes()` reads the three HR harnesses, so
+  // *no others* means NO OTHER HR ROUTE. A route in another module demanding `HR.Departments.*` is
+  // constructible and would not be seen here. Nothing pushes toward it and no guard is proposed; it is
+  // recorded as the edge of the instrument rather than as a gap.
+  [Trait("Criterion", "AC-DEP-0040")]
+  // ⚠ ALSO CITED BY 269: `AC-POS-0058`'s HARNESS half — *routes and handlers stand 1:1; the exact route
+  // inventory matches.* The exact set equality is what makes it 1:1 in both directions.
+  //
+  // ⚠⚠ CITED IN PART. The criterion says the inventory matches in the module harness AND THE HOST
+  // COMPOSITION, and *a route reachable in one and not the other fails this criterion.* `MappedRoutes()`
+  // reads the three HR harnesses only, so this test alone is the harness side.
+  //
+  // ⚠⚠⚠ CORRECTED BY 271. THIS COMMENT SAID I HAD SEARCHED FOR A HOST-SIDE HR ROUTE INVENTORY AND FOUND NO
+  // HR EQUIVALENT, AND THAT THE HOST HALF WAS THEREFORE COVERED ONLY BY AN ARGUMENT. THAT WAS FALSE, AND
+  // FALSE IN THE WAY THAT MATTERS: I searched for a per-module HR INVENTORY FILE, which is a search over
+  // NAMES, and concluded an absence of the MECHANISM.
+  // `ApiContractRowGuardTests.Every_documented_route_row_is_live_or_carries_a_marker` calls
+  // `PlatformRouteInventory.Under(factory, "/api")` — the entire live surface of the real Host `Program`,
+  // HR routes included — and asserts that every unmarked route row in `FP-008-hr-position/api-contracts.md`
+  // EXISTS THERE. That is an executable Host-composition assertion reaching this package's routes.
+  //
+  // ⚠ WHAT IT CLOSES IS ONE DIRECTION, AND THE RESIDUE IS NOW THE HONEST ONE. The row guard runs
+  // DOCUMENTED -> LIVE-HOST: a route ruled and documented here but absent from the Host composition
+  // reddens it. Nothing runs LIVE-HOST -> RULED, so a route the Host maps that this file never ruled is
+  // still seen by neither instrument, and the guard reaches only routes `api-contracts.md` documents
+  // WITHOUT a marker. The citation stays partial — for that residue, not for the absence I recorded.
+  //
+  // The structural argument in this file's header still holds and is still an argument: both harnesses call
+  // the PRODUCTION mapping extensions, so a route the Host maps through a different path would leave the
+  // harness set SHORT and fail the exact list. It is no longer the ONLY thing covering the Host half.
+  [Trait("Criterion", "AC-POS-0058")]
+  // ⚠ ALSO CITED BY 274: `AC-POS-0068` — *names every HR route exactly, as an ordered set pinned by pattern
+  // AND permission, with the count owned by the test rather than by the document.* That is this test's
+  // SUBJECT rather than a consequence of it, which is the line that admits it and refused `AC-POS-0024`:
+  // that criterion's subject is a permission on two transitions, and this test would have carried it only
+  // as a by-product of asserting the whole surface.
+  //
+  // ⚠ THE COUNT CLAUSE, CORRECTED THE SAME DAY I WROTE IT. I first said the exact set equality below owns
+  // the number "outright", implying no figure is written anywhere. THERE IS ONE: `Assert.Equal(46,
+  // routes.Length)` sits beside the list, deliberately, with its own reason stated at the site. I described
+  // the mechanism from the assertion I had read and not from the one two lines further down — found when a
+  // plant added a route and THIS was the assertion that caught it, not the list.
+  //
+  // The criterion is still satisfied, and the literal is the reason rather than an exception to it: *the
+  // count owned by the TEST rather than by this DOCUMENT* means the number lives where a gate reads it and
+  // a green run depends on it. 41 -> 46 in prose buys until the next route; 41 -> 46 here cannot be wrong
+  // without something going red — which is the opposite of the trap `CutoverManifestArchitectureTests` had
+  // when "ALL TWENTY" stood above a list of thirty-five and nothing checked the sentence.
+  //
+  // ⚠⚠ IT NEEDS NO PARTIAL NOTE, AND THAT IS A CHANGE TO THE CRITERION RATHER THAN TO THIS TEST. As first
+  // reworded it repeated `AC-POS-0058`'s harness/Host clause, which both duplicated that criterion and
+  // claimed a Host reach `MappedRoutes()` does not have. The clause was removed. The division now is:
+  // `0058` owns 1:1 and harness/Host equivalence, `0068` owns exactness and permission-pinning — a route
+  // reachable only through `Program.cs` fails `0058`; a route present under the WRONG PERMISSION fails this.
+  [Trait("Criterion", "AC-POS-0068")]
   public void The_hr_route_inventory_is_exactly_as_ruled()
   {
     var routes = MappedRoutes()
@@ -86,31 +158,31 @@ public sealed class HrRouteInventoryTests
       new[]
       {
         $"GET /api/hr/departments/ => {Policy(HrPermissionNames.ViewDepartments)}",
-        $"GET /api/hr/departments/{{departmentId:guid}} => {Policy(HrPermissionNames.ViewDepartments)}",
-        $"GET /api/hr/departments/{{departmentId:guid}}/children => {Policy(HrPermissionNames.ViewDepartments)}",
+        $"GET /api/hr/departments/{{departmentId}} => {Policy(HrPermissionNames.ViewDepartments)}",
+        $"GET /api/hr/departments/{{departmentId}}/children => {Policy(HrPermissionNames.ViewDepartments)}",
         $"GET /api/hr/employees/ => {Policy(HrPermissionNames.ViewEmployees)}",
-        $"GET /api/hr/employees/{{employeeId:guid}} => {Policy(HrPermissionNames.ViewEmployees)}",
-        $"GET /api/hr/employees/{{employeeId:guid}}/branch-history => {Policy(HrPermissionNames.ViewEmployees)}",
+        $"GET /api/hr/employees/{{employeeId}} => {Policy(HrPermissionNames.ViewEmployees)}",
+        $"GET /api/hr/employees/{{employeeId}}/branch-history => {Policy(HrPermissionNames.ViewEmployees)}",
         $"POST /api/hr/departments/ => {Policy(HrPermissionNames.CreateDepartments)}",
         // Activate and deactivate BOTH carry Deactivate: that permission governs whether a department may
         // receive employees, and both directions change that answer.
-        $"POST /api/hr/departments/{{departmentId:guid}}/activate => {Policy(HrPermissionNames.DeactivateDepartments)}",
-        $"POST /api/hr/departments/{{departmentId:guid}}/deactivate => {Policy(HrPermissionNames.DeactivateDepartments)}",
-        $"POST /api/hr/departments/{{departmentId:guid}}/manager => {Policy(HrPermissionNames.UpdateDepartments)}",
-        $"POST /api/hr/departments/{{departmentId:guid}}/manager/remove => {Policy(HrPermissionNames.UpdateDepartments)}",
-        $"POST /api/hr/departments/{{departmentId:guid}}/move => {Policy(HrPermissionNames.UpdateDepartments)}",
-        $"POST /api/hr/departments/{{departmentId:guid}}/move-to-root => {Policy(HrPermissionNames.UpdateDepartments)}",
+        $"POST /api/hr/departments/{{departmentId}}/activate => {Policy(HrPermissionNames.DeactivateDepartments)}",
+        $"POST /api/hr/departments/{{departmentId}}/deactivate => {Policy(HrPermissionNames.DeactivateDepartments)}",
+        $"POST /api/hr/departments/{{departmentId}}/manager => {Policy(HrPermissionNames.UpdateDepartments)}",
+        $"POST /api/hr/departments/{{departmentId}}/manager/remove => {Policy(HrPermissionNames.UpdateDepartments)}",
+        $"POST /api/hr/departments/{{departmentId}}/move => {Policy(HrPermissionNames.UpdateDepartments)}",
+        $"POST /api/hr/departments/{{departmentId}}/move-to-root => {Policy(HrPermissionNames.UpdateDepartments)}",
         $"POST /api/hr/employees/ => {Policy(HrPermissionNames.CreateEmployees)}",
-        $"POST /api/hr/employees/{{employeeId:guid}}/activate => {Policy(HrPermissionNames.UpdateEmployees)}",
+        $"POST /api/hr/employees/{{employeeId}}/activate => {Policy(HrPermissionNames.UpdateEmployees)}",
         // A department change is an ordinary employee update: DepartmentId is a classification, not a
         // security partition (ADR-024), so nothing crosses an authorization boundary.
-        $"POST /api/hr/employees/{{employeeId:guid}}/change-department => {Policy(HrPermissionNames.UpdateEmployees)}",
-        $"POST /api/hr/employees/{{employeeId:guid}}/deactivate => {Policy(HrPermissionNames.UpdateEmployees)}",
-        $"POST /api/hr/employees/{{employeeId:guid}}/terminate => {Policy(HrPermissionNames.TerminateEmployees)}",
+        $"POST /api/hr/employees/{{employeeId}}/change-department => {Policy(HrPermissionNames.UpdateEmployees)}",
+        $"POST /api/hr/employees/{{employeeId}}/deactivate => {Policy(HrPermissionNames.UpdateEmployees)}",
+        $"POST /api/hr/employees/{{employeeId}}/terminate => {Policy(HrPermissionNames.TerminateEmployees)}",
         // Transfer moves a record across a security partition and holds a permission of its own.
-        $"POST /api/hr/employees/{{employeeId:guid}}/transfer => {Policy(HrPermissionNames.TransferEmployees)}",
-        $"PUT /api/hr/departments/{{departmentId:guid}} => {Policy(HrPermissionNames.UpdateDepartments)}",
-        $"PUT /api/hr/employees/{{employeeId:guid}} => {Policy(HrPermissionNames.UpdateEmployees)}",
+        $"POST /api/hr/employees/{{employeeId}}/transfer => {Policy(HrPermissionNames.TransferEmployees)}",
+        $"PUT /api/hr/departments/{{departmentId}} => {Policy(HrPermissionNames.UpdateDepartments)}",
+        $"PUT /api/hr/employees/{{employeeId}} => {Policy(HrPermissionNames.UpdateEmployees)}",
 
         // ================================================================================================
         // FP-008. TWENTY MORE, TAKING THE HR SURFACE FROM 21 ROUTES TO 41.
@@ -127,29 +199,29 @@ public sealed class HrRouteInventoryTests
         //   * both employee-prefix routes carry EMPLOYEE permissions, never position ones — a change is
         //     `HR.Employees.Update` (`DEC-POS-0019`) and the history read is `HR.Employees.View`, because
         //     both are about a person rather than about the job catalog.
-        $"GET /api/hr/employees/{{employeeId:guid}}/position-history => {Policy(HrPermissionNames.ViewEmployees)}",
-        $"POST /api/hr/employees/{{employeeId:guid}}/change-position => {Policy(HrPermissionNames.UpdateEmployees)}",
+        $"GET /api/hr/employees/{{employeeId}}/position-history => {Policy(HrPermissionNames.ViewEmployees)}",
+        $"POST /api/hr/employees/{{employeeId}}/change-position => {Policy(HrPermissionNames.UpdateEmployees)}",
 
         $"GET /api/hr/positions/ => {Policy(HrPermissionNames.ViewPositions)}",
-        $"GET /api/hr/positions/{{positionId:guid}} => {Policy(HrPermissionNames.ViewPositions)}",
+        $"GET /api/hr/positions/{{positionId}} => {Policy(HrPermissionNames.ViewPositions)}",
         $"POST /api/hr/positions/ => {Policy(HrPermissionNames.CreatePositions)}",
-        $"POST /api/hr/positions/{{positionId:guid}}/activate => {Policy(HrPermissionNames.DeactivatePositions)}",
-        $"POST /api/hr/positions/{{positionId:guid}}/deactivate => {Policy(HrPermissionNames.DeactivatePositions)}",
-        $"PUT /api/hr/positions/{{positionId:guid}} => {Policy(HrPermissionNames.UpdatePositions)}",
+        $"POST /api/hr/positions/{{positionId}}/activate => {Policy(HrPermissionNames.DeactivatePositions)}",
+        $"POST /api/hr/positions/{{positionId}}/deactivate => {Policy(HrPermissionNames.DeactivatePositions)}",
+        $"PUT /api/hr/positions/{{positionId}} => {Policy(HrPermissionNames.UpdatePositions)}",
 
         $"GET /api/hr/job-grades/ => {Policy(HrPermissionNames.ViewJobGrades)}",
-        $"GET /api/hr/job-grades/{{jobGradeId:guid}} => {Policy(HrPermissionNames.ViewJobGrades)}",
+        $"GET /api/hr/job-grades/{{jobGradeId}} => {Policy(HrPermissionNames.ViewJobGrades)}",
         $"POST /api/hr/job-grades/ => {Policy(HrPermissionNames.CreateJobGrades)}",
-        $"POST /api/hr/job-grades/{{jobGradeId:guid}}/activate => {Policy(HrPermissionNames.DeactivateJobGrades)}",
-        $"POST /api/hr/job-grades/{{jobGradeId:guid}}/deactivate => {Policy(HrPermissionNames.DeactivateJobGrades)}",
-        $"PUT /api/hr/job-grades/{{jobGradeId:guid}} => {Policy(HrPermissionNames.UpdateJobGrades)}",
+        $"POST /api/hr/job-grades/{{jobGradeId}}/activate => {Policy(HrPermissionNames.DeactivateJobGrades)}",
+        $"POST /api/hr/job-grades/{{jobGradeId}}/deactivate => {Policy(HrPermissionNames.DeactivateJobGrades)}",
+        $"PUT /api/hr/job-grades/{{jobGradeId}} => {Policy(HrPermissionNames.UpdateJobGrades)}",
 
         $"GET /api/hr/salary-grades/ => {Policy(HrPermissionNames.ViewSalaryGrades)}",
-        $"GET /api/hr/salary-grades/{{salaryGradeId:guid}} => {Policy(HrPermissionNames.ViewSalaryGrades)}",
+        $"GET /api/hr/salary-grades/{{salaryGradeId}} => {Policy(HrPermissionNames.ViewSalaryGrades)}",
         $"POST /api/hr/salary-grades/ => {Policy(HrPermissionNames.CreateSalaryGrades)}",
-        $"POST /api/hr/salary-grades/{{salaryGradeId:guid}}/activate => {Policy(HrPermissionNames.DeactivateSalaryGrades)}",
-        $"POST /api/hr/salary-grades/{{salaryGradeId:guid}}/deactivate => {Policy(HrPermissionNames.DeactivateSalaryGrades)}",
-        $"PUT /api/hr/salary-grades/{{salaryGradeId:guid}} => {Policy(HrPermissionNames.UpdateSalaryGrades)}",
+        $"POST /api/hr/salary-grades/{{salaryGradeId}}/activate => {Policy(HrPermissionNames.DeactivateSalaryGrades)}",
+        $"POST /api/hr/salary-grades/{{salaryGradeId}}/deactivate => {Policy(HrPermissionNames.DeactivateSalaryGrades)}",
+        $"PUT /api/hr/salary-grades/{{salaryGradeId}} => {Policy(HrPermissionNames.UpdateSalaryGrades)}",
 
         // ================================================================================================
         // FP-009 PHASE 2. FIVE MORE, TAKING THE HR SURFACE FROM 41 ROUTES TO 46.
@@ -191,6 +263,31 @@ public sealed class HrRouteInventoryTests
   // association ends — and a DELETE would say otherwise. Asserted so the next module inherits the
   // convention instead of relitigating it.
   [Fact]
+  // ⚠ CITED BY ITEM 220: `AC-EMP-0017` bans a delete ENDPOINT for Employee. This asserts it for the WHOLE HR surface, so it is
+  // a SUPERSET -- named as one rather than duplicated by a narrower Employee-only test (item 220).
+  [Trait("Criterion", "AC-EMP-0017")]
+  // ⚠ CITED BY B18 pass 16: `AC-DEP-0032`'s API-ROUTE clause, and a SUPERSET for the second time. The
+  // criterion bans a delete route for DEPARTMENT; this asserts the whole HR surface mounts no DELETE
+  // verb at all, which covers it and Employee's ban together.
+  [Trait("Criterion", "AC-DEP-0032")]
+  // ⚠ CITED BY 269: `AC-POS-0027`'s TRANSPORT clause — *the composed HTTP surface exposes no `DELETE`
+  // verb.* A SUPERSET for the third time in this file, on the same grounds as the two above.
+  //
+  // ⚠⚠ THE CRITERION'S FIRST CLAUSE IS NOT THIS TEST: *no route, HANDLER, OR REPOSITORY METHOD deletes a
+  // position or a grade* is a claim about application and persistence code that a route scan cannot reach.
+  //
+  // ⚠⚠⚠ CORRECTED, SAME SWEEP: THIS COMMENT ORIGINALLY SAID THE NEAREST NEIGHBOURS WERE ONLY THE SCHEMA
+  // REFUSAL AND THE PERMISSION ABSENCE, AND THAT NEITHER ASSERTED THE ABSENCE OF A DELETE METHOD. THAT WAS
+  // WRONG. `PositionApplicationArchitectureTests.No_position_delete_command_or_handler_exists` scans the HR
+  // application assembly for any Position/JobGrade/SalaryGrade type named `Delete` or `Remove` and asserts
+  // the set is empty — which is the COMMAND and HANDLER half, executably. It is cited for this criterion.
+  //
+  // What genuinely remains is narrower than I first wrote: that scan is over TYPE NAMES in
+  // `SSAS.HR.Application`, so a repository METHOD named `Delete` on a type not so named, in
+  // `SSAS.HR.Infrastructure`, is outside it. Supporting neighbours:
+  // `PositionSchemaSqlServerTests.Deleting_a_referenced_grade_or_position_is_refused` (the DATABASE refuses
+  // it) and `No_position_family_offers_a_delete_or_manage_permission` (nobody could be authorised to).
+  [Trait("Criterion", "AC-POS-0027")]
   public void The_hr_surface_exposes_no_delete_verb()
   {
     var deletes = MappedRoutes()

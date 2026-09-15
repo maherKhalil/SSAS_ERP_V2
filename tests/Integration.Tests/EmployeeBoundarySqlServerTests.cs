@@ -1,4 +1,4 @@
-﻿using Microsoft.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Options;
@@ -72,6 +72,11 @@ public sealed class EmployeeBoundarySqlServerTests
   // authorizer's call site is reached, because no production entity implemented the interface. Asserting the
   // resulting BranchId would prove the value; only observing the INVOCATION proves the wiring.
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: the criterion is literally titled "V:" and this is test V.
+  [Trait("Criterion", "AC-EMP-0020")]
+  // ⚠ CITED BY B18 pass 12, body-confirmed: the STAMPING clause -- an employee created without naming a branch is stamped with the trusted
+  // one, and the authorizer is provably reached. Already cited for `AC-EMP-0020`; one test, two criteria.
+  [Trait("Criterion", "AC-EMP-0004")]
   public async Task V_Creating_a_real_employee_invokes_the_branch_write_authorizer_and_stamps_the_branch()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -92,6 +97,9 @@ public sealed class EmployeeBoundarySqlServerTests
   // Quietly correcting it would hide the attempt, which is the whole reason a supplied value is CONFIRMED
   // rather than trusted.
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: criterion "W:" -- REFUSED, NOT SILENTLY REWRITTEN, and the `EmployeeCountAsync() == 0`
+  // assertion is what makes it the former rather than the latter.
+  [Trait("Criterion", "AC-EMP-0021")]
   public async Task W_A_spoofed_branch_on_employee_create_is_refused()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -114,6 +122,8 @@ public sealed class EmployeeBoundarySqlServerTests
   // Proven at the BOUNDARY, independently of the update contract omitting the field: both defences exist and
   // this is the one that holds even if a future caller reaches the entity another way.
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: criterion "X:".
+  [Trait("Criterion", "AC-EMP-0022")]
   public async Task X_An_ordinary_update_cannot_change_an_employees_branch()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -131,8 +141,44 @@ public sealed class EmployeeBoundarySqlServerTests
     Assert.Equal(fixture.BranchA, await fixture.EmployeeBranchAsync(employeeId));
   }
 
+  // ==================================================================================================
+  // ⚠ AC-EMP-0015's THIRD CLAUSE: A TERMINATED EMPLOYEE REMAINS RETRIEVABLE BY ID (item 220).
+  // ==================================================================================================
+  //
+  // The criterion has three parts. *Cannot be updated, activated, deactivated, transferred or deleted* was
+  // already pinned by three domain tests. **This is the part none of them asserted** -- and it is the half
+  // that would break if anyone implemented the refusals by hiding the row instead of refusing the write.
+  //
+  // Read through the PRODUCTION query handler rather than the context, because the criterion is about what
+  // a caller can retrieve, and a `context.Set<Employee>()` read would pass even if the read service
+  // filtered terminated employees out.
+  [Fact]
+  [Trait("Criterion", "AC-EMP-0015")]
+  public async Task A_terminated_employee_remains_retrievable_by_id()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+    var graph = fixture.Graph(fixture.BranchA);
+    var created = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-T9"));
+    Assert.True(created.IsSuccess);
+
+    Assert.True((await graph.Terminate().HandleAsync(new TerminateEmployeeCommand(
+      created.Value, DateTimeOffset.UtcNow, EmployeeStatusChangeReason.Resignation,
+      await fixture.RowVersionAsync(created.Value)))).IsSuccess);
+
+    var read = await graph.Get().HandleAsync(new GetEmployeeQuery(created.Value));
+
+    Assert.True(read.IsSuccess, read.IsFailure ? read.Error.Code : null);
+    Assert.Equal(created.Value, read.Value.EmployeeId);
+
+    // ⚠ AND IT IS STILL TERMINATED. Retrievable-but-reported-Active would satisfy the letter of the
+    // criterion and lose the fact the retrieval exists to preserve.
+    Assert.Equal(EmployeeStatus.Terminated, read.Value.Status);
+  }
+
   // ---- Y. CROSS-BRANCH UPDATE AND DELETE ARE REFUSED.
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: criterion "Y:" -- the UPDATE half.
+  [Trait("Criterion", "AC-EMP-0023")]
   public async Task Y_A_cross_branch_employee_update_is_refused()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -151,6 +197,8 @@ public sealed class EmployeeBoundarySqlServerTests
   }
 
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: criterion "Y:" -- the DELETE half. The criterion names both, so it takes both tests.
+  [Trait("Criterion", "AC-EMP-0023")]
   public async Task Y_A_cross_branch_employee_delete_is_refused()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -235,6 +283,42 @@ public sealed class EmployeeBoundarySqlServerTests
     Assert.Equal(fixture.CompanyA, await fixture.EmployeeCompanyAsync(employeeId));
   }
 
+  // ---- ⚠ C-C2. AND THE SAME HOLDS ON THE TENANT DIMENSION — `AC-EMP-0002`'s THIRD CLAUSE.
+  //
+  // The criterion has three: `TenantId` is never accepted from the wire; a persisted Employee whose
+  // `TenantId` does not match the trusted tenant is rejected; **and a post-creation `TenantId` change is
+  // rejected.** The first two were asserted; the third was asserted for `Company` and for `TenantUser`
+  // and **not for this aggregate.**
+  //
+  // ⚠ **The guard in `PersistenceDbContext` is dimension-generic** — it walks
+  // `ChangeTracker.Entries<ITenantOwnedEntity>()` and throws on any Modified entry whose `TenantId`
+  // property is modified — **so it almost certainly held for Employee, and "almost certainly" is the
+  // distance between PINNED and UNGUARDED.** A generic guard is exactly the kind that a later
+  // aggregate-specific configuration can exclude an entity from without any test noticing.
+  //
+  // Mirrors `CC` deliberately, one dimension over, so the pair reads as one boundary rather than two
+  // unrelated tests.
+  [Fact]
+  [Trait("Criterion", "AC-EMP-0002")]
+  public async Task CC2_An_ordinary_update_cannot_change_an_employees_tenant()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+    var employeeId = await fixture.SeedEmployeeAsync("EMP-CC2", fixture.BranchA);
+
+    var graph = fixture.Graph(fixture.BranchA);
+    await using var context = await graph.ContextAsync();
+    var employee = await context.Set<Employee>().SingleAsync(candidate => candidate.Id == employeeId);
+
+    employee.TenantId = Guid.NewGuid();
+
+    var refusal = await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
+    Assert.Contains("Tenant ownership cannot be changed", refusal.Message, StringComparison.Ordinal);
+
+    // ⚠ And the row is untouched. Without this the test passes on a guard that throws AFTER writing,
+    // which is a different and worse defect than one that does not throw at all.
+    Assert.Equal(fixture.Tenant, await fixture.EmployeeTenantAsync(employeeId));
+  }
+
   // ---- C-D. CROSS-COMPANY UPDATE AND DELETE ARE REFUSED.
   [Fact]
   public async Task CD_A_cross_company_employee_update_is_refused()
@@ -259,6 +343,9 @@ public sealed class EmployeeBoundarySqlServerTests
   // ================================================================================================
 
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: creates successfully, revokes the branch assignment, then fails -- and the leading success is
+  // its own control, so the refusal is the revocation rather than a boundary that refuses everything.
+  [Trait("Criterion", "AC-EMP-0024")]
   public async Task Revoking_branch_access_mid_session_refuses_the_next_employee_write()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -275,6 +362,9 @@ public sealed class EmployeeBoundarySqlServerTests
   }
 
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: the administrator holds NO branch-access rows, creates successfully on implicit scope, and
+  // fails once the authority is revoked -- which is exactly "removes implicit branch scope".
+  [Trait("Criterion", "AC-EMP-0025")]
   public async Task Revoking_administrator_authority_mid_session_removes_implicit_branch_scope()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -292,6 +382,8 @@ public sealed class EmployeeBoundarySqlServerTests
   }
 
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: succeeds, company assignment revoked, next operation fails, employee count unchanged.
+  [Trait("Criterion", "AC-EMP-0026")]
   public async Task Revoking_company_access_mid_session_refuses_the_next_employee_write()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -409,6 +501,12 @@ public sealed class EmployeeBoundarySqlServerTests
   // Two spellings that normalize alike are the same number, and the binary-collated index is what refuses
   // the second under concurrency.
   [Fact]
+  // ⚠ CITED BY ITEM 218, body-confirmed -- AND THE OBVIOUS CANDIDATE WAS THE WRONG ONE.
+  // `AC-EMP-0006` is UNIQUENESS: *"two employee numbers whose `Trim().ToUpperInvariant()` values are
+  // equal CANNOT BOTH BE CREATED"*. `EmployeeDomainTests.Employee_numbers_that_normalize_alike_are_equal`
+  // matches the words and asserts VALUE EQUALITY, which is a different claim. This one creates
+  // " emp-400 " and then "EMP-400" and asserts the second fails with `NumberConflict`.
+  [Trait("Criterion", "AC-EMP-0006")]
   public async Task Employee_numbers_that_normalize_alike_collide()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -423,7 +521,57 @@ public sealed class EmployeeBoundarySqlServerTests
   }
 
   // ---- NATIONAL ID: unique where present, and many absent values remain possible.
+  // ==================================================================================================
+  // ⚠ AC-EMP-0016 — SEARCH EXCLUDES TERMINATED BY DEFAULT (B18 pass 10).
+  // ==================================================================================================
+  //
+  // Recorded as a candidate gap in pass 09, then established as IMPLEMENTED AND UNASSERTED:
+  // `EmployeeReadService.DefaultStatuses = [Active, Inactive]`, applied when the caller names no status.
+  //
+  // ⚠ WHY NO EXISTING TEST REACHED IT. `The_search_defaults_are_the_documented_ones` asserts
+  // `Assert.Null(LastCriteria.Statuses)` -- **the handler passes NO FILTER**, which is the correct
+  // behaviour at that layer and says nothing about what the read service then does. **The default is not
+  // "exclude terminated", it is "no filter"**, and those coincide only because a layer further down makes
+  // them coincide. That layer had no test.
+  //
+  // The adjacent half was already guarded: `A_terminated_employee_remains_retrievable_by_id` proves a
+  // terminated employee is still reachable BY ID. ⚠ **So the pair had its exception asserted and its rule
+  // -- the one the read service performs silently on EVERY search -- not.**
   [Fact]
+  [Trait("Criterion", "AC-EMP-0016")]
+  public async Task A_search_without_a_status_filter_excludes_terminated_employees()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+    var graph = fixture.Graph(fixture.BranchA);
+
+    var active = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-S1"));
+    var terminated = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-S2"));
+    Assert.True(active.IsSuccess);
+    Assert.True(terminated.IsSuccess);
+
+    Assert.True((await graph.Terminate().HandleAsync(new TerminateEmployeeCommand(
+      terminated.Value, DateTimeOffset.UtcNow, EmployeeStatusChangeReason.Resignation,
+      await fixture.RowVersionAsync(terminated.Value)))).IsSuccess);
+
+    // NO status filter supplied -- the criterion's subject.
+    var page = await graph.Search().HandleAsync(new SearchEmployeesQuery(
+      new EmployeeScopeRequest(
+        EmployeeCompanyScopeMode.CurrentCompany,
+        EmployeeBranchScopeMode.SelectedAuthorizedBranches,
+        [fixture.BranchA])));
+
+    Assert.True(page.IsSuccess, page.IsFailure ? page.Error.Code : null);
+
+    // ⚠ BOTH SIDES. The active one present is what stops this passing on an empty page, which a
+    // terminated-absent assertion alone would allow.
+    Assert.Contains(page.Value.Items, item => item.EmployeeId == active.Value);
+    Assert.DoesNotContain(page.Value.Items, item => item.EmployeeId == terminated.Value);
+  }
+
+  [Fact]
+  // ⚠ CITED BY B18 pass 09 (mechanism search): BOTH clauses in one body: a duplicate national id is refused with `NationalIdConflict`, AND an
+  // employee with NO national id is created successfully -- "uniqueness AND optionality".
+  [Trait("Criterion", "AC-EMP-0009")]
   public async Task A_national_id_is_unique_within_a_company_but_may_be_absent_many_times()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -475,6 +623,9 @@ public sealed class EmployeeBoundarySqlServerTests
   }
 
   [Fact]
+  // ⚠ CITED BY B18 pass 09: `AC-EMP-0035` clause 3 -- *"no history record is ever updated or
+  // deleted"*. Refused with "Append-only" at the persistence boundary.
+  [Trait("Criterion", "AC-EMP-0035")]
   public async Task A_history_row_cannot_be_updated_or_deleted()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -508,6 +659,10 @@ public sealed class EmployeeBoundarySqlServerTests
 
   // ---- PHYSICAL DELETE IS PROHIBITED. Termination is retention, not removal.
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: asserted against the real `TenantDbContext`: a delete of a seeded Employee is refused, which is
+  // the criterion's "a persisted row survives" half. ⚠ The criterion ALSO bans a delete command,
+  // repository method, permission and endpoint EXISTING -- that structural half is not asserted here.
+  [Trait("Criterion", "AC-EMP-0017")]
   public async Task An_employee_cannot_be_physically_deleted()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -533,6 +688,11 @@ public sealed class EmployeeBoundarySqlServerTests
 
   // Termination retains the record, its identifiers and its history.
   [Fact]
+  // ⚠ CITED BY ITEM 221. `AC-EMP-0015`'s third clause -- *"its employee number and national ID remain
+  // reserved within the company"* -- and this already pinned the NUMBER half before the clause was
+  // ever noticed: it terminates EMP-1000 and asserts a re-creation of the same number FAILS.
+  // The national-ID half needed a new test, immediately below.
+  [Trait("Criterion", "AC-EMP-0015")]
   public async Task Termination_retains_the_employee_and_its_history()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -555,11 +715,46 @@ public sealed class EmployeeBoundarySqlServerTests
     Assert.True(reuse.IsFailure);
   }
 
+  // ==================================================================================================
+  // ⚠ AC-EMP-0015's NATIONAL-ID RESERVATION — THE HALF THE NUMBER TEST DOES NOT COVER (item 221).
+  // ==================================================================================================
+  //
+  // The clause reserves TWO identifiers: *"its employee number and national ID remain reserved within the
+  // company"*. The test above pins the number. **Nothing pinned the national ID after termination.**
+  //
+  // A uniqueness test for national ID exists and uses two LIVE employees, so it proves the constraint
+  // holds between actives. ⚠ **It cannot see whether termination releases the value** -- and releasing it
+  // is the plausible implementation mistake, because a terminated employee looks like a row that no
+  // longer needs its identifiers.
+  [Fact]
+  [Trait("Criterion", "AC-EMP-0015")]
+  public async Task A_terminated_employees_national_id_remains_reserved()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+    var graph = fixture.Graph(fixture.BranchA);
+
+    var created = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-1100", nationalId: "NID-9"));
+    Assert.True(created.IsSuccess);
+
+    Assert.True((await graph.Terminate().HandleAsync(new TerminateEmployeeCommand(
+      created.Value, DateTimeOffset.UtcNow, EmployeeStatusChangeReason.Resignation,
+      await fixture.RowVersionAsync(created.Value)))).IsSuccess);
+
+    // A DIFFERENT employee number, so the only thing that can refuse this is the national ID.
+    var reuse = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-1101", nationalId: "nid-9"));
+
+    Assert.True(reuse.IsFailure);
+    Assert.Equal(EmployeeErrors.NationalIdConflict.Code, reuse.Error.Code);
+  }
+
   // ================================================================================================
   // TRANSFER — THE SANCTIONED CHANNEL, ON A REAL EMPLOYEE
   // ================================================================================================
 
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: the branch moves to the destination AND history length is 2 -- initial assignment plus exactly
+  // one transfer record, which is the criterion's "appends exactly one" half.
+  [Trait("Criterion", "AC-EMP-0031")]
   public async Task A_transfer_moves_the_employee_and_appends_exactly_one_record()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -591,6 +786,9 @@ public sealed class EmployeeBoundarySqlServerTests
   }
 
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: creates an Employee, captures its rowversion, mutates, then transfers with the STALE value and
+  // expects a conflict -- the criterion's "a stale value returns a conflict" clause.
+  [Trait("Criterion", "AC-EMP-0019")]
   public async Task A_transfer_with_a_stale_rowversion_is_refused()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -612,6 +810,8 @@ public sealed class EmployeeBoundarySqlServerTests
   }
 
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: the UNAUTHORIZED destination clause; branch unchanged after.
+  [Trait("Criterion", "AC-EMP-0032")]
   public async Task A_transfer_to_an_unreachable_destination_is_refused()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -631,6 +831,8 @@ public sealed class EmployeeBoundarySqlServerTests
   }
 
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: the INACTIVE destination clause -- intersected with active branches.
+  [Trait("Criterion", "AC-EMP-0032")]
   public async Task A_transfer_into_an_inactive_destination_is_refused()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -689,6 +891,9 @@ public sealed class EmployeeBoundarySqlServerTests
   }
 
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: ⚠ the REVALIDATION clause -- access is revoked BEFORE the save, so this proves the destination is
+  // re-checked inside the transaction rather than trusted from the earlier authorization.
+  [Trait("Criterion", "AC-EMP-0032")]
   public async Task Revoking_destination_branch_access_before_the_transfer_refuses_it()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -708,6 +913,8 @@ public sealed class EmployeeBoundarySqlServerTests
 
   // ---- ADR-024 DECISION 12: the narrow recovery out of a deactivated source.
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: an administrator transfers an employee OUT of a deactivated source into an authorized branch.
+  [Trait("Criterion", "AC-EMP-0036")]
   public async Task A_tenant_administrator_can_recover_an_employee_from_an_inactive_branch()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -752,6 +959,9 @@ public sealed class EmployeeBoundarySqlServerTests
 
   // ---- TWO SIMULTANEOUS TRANSFERS: exactly one wins, and the history cannot fork.
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: first succeeds, second fails, and the branch is the FIRST winner's destination -- one success and
+  // one deterministic conflict.
+  [Trait("Criterion", "AC-EMP-0033")]
   public async Task Two_transfers_from_the_same_rowversion_produce_one_winner()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -777,6 +987,19 @@ public sealed class EmployeeBoundarySqlServerTests
 
   // ---- POINT-IN-TIME ATTRIBUTION uses the history, and gives a different answer from the current branch.
   [Fact]
+  // ⚠⚠ PARTLY PINNED, AND CORRECTED TWICE (B18 passes 08 and 09). `AC-EMP-0035` HAS FOUR CLAUSES:
+  //
+  //   1. the history is RETURNED IN EFFECTIVE ORDER        -- ⚠ UNASSERTED, and this test is why:
+  //        it calls `.OrderByDescending(...)` ITSELF, so it passes unchanged if the API returns the
+  //        records in arbitrary order. The sort is the test's, not the product's.
+  //   2. sufficient to determine the branch at a past instant -- ✅ THIS TEST.
+  //   3. no history record is ever updated or deleted      -- ✅ `A_history_row_cannot_be_updated_or_deleted`.
+  //   4. current-state reads use `Employee.BranchId`, point-in-time reads use the log -- ✅ this test
+  //        asserts both sides: the current branch from `EmployeeBranchAsync`, the past one from history.
+  //
+  // I first recorded the criterion UNRESOLVED twice on a name search, then PINNED on a mechanism search.
+  // ⚠ Both were wrong in opposite directions, and a citation would have made the second look settled.
+  [Trait("Criterion", "AC-EMP-0035")]
   public async Task Point_in_time_attribution_differs_from_the_current_branch()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -1436,8 +1659,10 @@ public sealed class EmployeeBoundarySqlServerTests
       var filter = employee!.GetQueryFilter()?.ToString();
       Assert.NotNull(filter);
       Assert.Contains("TenantId", filter!, StringComparison.Ordinal);
-      Assert.DoesNotContain("CompanyId", filter!, StringComparison.Ordinal);
-      Assert.DoesNotContain("BranchId", filter!, StringComparison.Ordinal);
+      // ⚠ COMPILE-CHECKED (252). Renaming either property would have left these searching the filter text
+      // for a name nothing produces any more — green, and asserting nothing about the new one.
+      Assert.DoesNotContain(nameof(Employee.CompanyId), filter!, StringComparison.Ordinal);
+      Assert.DoesNotContain(nameof(Employee.BranchId), filter!, StringComparison.Ordinal);
 
       // The append-only history has no branch column at all, which is why its scope has to be inherited.
       var assignment = context.Model.FindEntityType(typeof(EmployeeBranchAssignment));
@@ -1476,6 +1701,10 @@ public sealed class EmployeeBoundarySqlServerTests
   }
 
   [Fact]
+  // CITED BY B18 pass 20: `AC-DEP-0028` (`BR-HR-0009`) at the DATABASE layer.
+  // `A6c_Create_into_an_inactive_department_is_refused` is the same rule at the API layer. Two
+  // layers, and the pair is what shows the rule is not merely a request-validation convention.
+  [Trait("Criterion", "AC-DEP-0028")]
   public async Task D2_Creating_an_employee_into_an_inactive_department_is_refused()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -1490,6 +1719,57 @@ public sealed class EmployeeBoundarySqlServerTests
     // ---- AND NOTHING WAS WRITTEN. A refusal that left an employee behind would be worse than one that
     // wrote a bad department, because nothing would point at the inconsistency.
     Assert.Equal(0, await fixture.DepartmentHistoryRowCountAsync());
+  }
+
+  // ---- AND REACTIVATION RESTORES THE ABILITY TO RECEIVE THEM (`AC-DEP-0031`).
+  //
+  // ⚠⚠ `D2` AND `D6` ASSERT ONLY THE REFUSAL, AND A GUARD THAT OVER-FIRED WOULD PASS BOTH. Both use
+  // `DepartmentAInactive`, a seed that is never reactivated — so a rule that refused employees into a
+  // department that had EVER been inactive, rather than one that IS inactive, satisfies them completely
+  // and breaks this criterion silently.
+  //
+  // ⚠ THE REFUSAL BELOW IS THE PRECONDITION, NOT DECORATION. Without it the success afterwards is
+  // indistinguishable from a department that was never blocking, and the test would prove nothing about
+  // reactivation. Same department throughout; the ONLY thing that changes between the two attempts is the
+  // status.
+  [Fact]
+  // ---- ⚠⚠⚠ `AC-DEP-0031`: THIS CITATION HAS NEVER BEEN EXECUTED BY ANY RUN (recorded 2026-09-05).
+  //
+  // **The method below post-dates `ce9b28f`, the commit at the last green Integration run
+  // (2026-09-01 10:17).** `Integration.Tests` does not run under `GATE_SCOPE=TASK`, and `GATE_SCOPE=PHASE`
+  // is owner-parked — ***so nothing available to a developer here can change that.*** **No run has observed
+  // these assertions: this is a CLAIM, not a check, and it must not be read as coverage.**
+  //
+  // ⚠ ***THE CITATION IS NOT WITHDRAWN AND SHOULD NOT BE. "NEVER EXECUTED" IS A FACT ABOUT OBSERVATION,
+  // NOT ABOUT DESIGN*** — the two are independent axes, and this pass judged only the first.
+  //
+  // ⚠⚠ **AND THIS FILE DID NOT SAY SO.** *Found by a tree-wide walk, not by reading:* **seven citations in
+  // the repository rest on witnesses no run has ever observed, and ***EXACTLY ONE OF THE SEVEN CARRIED AN
+  // AUTHOR'S WARNING*** — `PayrollSchemaSqlServerTests`, which says *"NOT RUN… must not be reported as
+  // coverage until a PHASE run has seen it."* **Six were silent.** *That is a census of a closed population,
+  // not a sample: **the prose convention does not exist**, and a trait key for UNRUN is the only mechanism
+  // that would have caught these.*
+  [Trait("Criterion", "AC-DEP-0031")]
+  public async Task D2b_Reactivating_a_department_restores_its_ability_to_receive_employees()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+    var graph = fixture.Graph(fixture.BranchA);
+
+    var department = await fixture.SeedDepartmentAsync(fixture.CompanyA, "DEPR", active: false);
+
+    var refused = await graph.Create().HandleAsync(
+      fixture.NewEmployee("EMP-D2B1", department: department));
+
+    Assert.True(refused.IsFailure, "the department is inactive, so this must not have been accepted");
+    Assert.Equal(EmployeeErrors.DepartmentInactive.Code, refused.Error.Code);
+
+    await fixture.ReactivateDepartmentAsync(department);
+
+    var created = await graph.Create().HandleAsync(
+      fixture.NewEmployee("EMP-D2B2", department: department));
+
+    Assert.True(created.IsSuccess, created.IsFailure ? created.Error.Code : null);
+    Assert.Equal(department, await fixture.EmployeeDepartmentAsync(created.Value));
   }
 
   // A department in ANOTHER company. Reported absent rather than refused, so employee creation cannot be
@@ -1555,7 +1835,11 @@ public sealed class EmployeeBoundarySqlServerTests
     Assert.Equal(1, await fixture.DepartmentHistoryCountForAsync(created.Value));
   }
 
+  // `AC-DEP-0029`'s FIRST clause. The second — changing OUT of one succeeds — is `D6b` below, and the
+  // criterion is only covered by the pair: a rule refusing any change TOUCHING an inactive department
+  // satisfies this test alone.
   [Fact]
+  [Trait("Criterion", "AC-DEP-0029")]
   public async Task D6_A_change_into_an_inactive_department_is_refused_and_appends_nothing()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -1571,6 +1855,54 @@ public sealed class EmployeeBoundarySqlServerTests
     Assert.Equal(EmployeeErrors.DepartmentInactive.Code, changed.Error.Code);
     Assert.Equal(fixture.DepartmentA, await fixture.EmployeeDepartmentAsync(created.Value));
     Assert.Equal(1, await fixture.DepartmentHistoryCountForAsync(created.Value));
+  }
+
+  // ---- AND OUT OF ONE SUCCEEDS (`AC-DEP-0029`'s SECOND CLAUSE).
+  //
+  // `D6` above covers the first clause. The second was asserted by nothing, and the two are not the same
+  // rule: an implementation that refused ANY change TOUCHING an inactive department — rather than any
+  // change INTO one — passes `D6` completely and strands every member of a closed department permanently.
+  //
+  // ⚠⚠ THE SEED IS THE WHOLE DESIGN. The home department is ACTIVE FIRST AND DEACTIVATED AFTERWARDS,
+  // never `DepartmentAInactive`. A rule refusing movement involving a department that had EVER been
+  // inactive would satisfy a permanently-inactive seed and break this criterion silently — the same trap
+  // `D2` and `D6` sit in, which is why `AC-DEP-0031` needed the same treatment.
+  //
+  // ⚠ AND THE REFUSAL BELOW IS THE PRECONDITION, NOT DECORATION. If `DeactivateDepartmentAsync` ever
+  // silently failed, the move that follows would just be a move out of an ACTIVE department — which `D4`
+  // already covers — and this test would pass having asserted nothing about inactivity. Proving it through
+  // the product's OWN refusal is stronger than reading the column back, because it is the same rule the
+  // move has to survive.
+  [Fact]
+  [Trait("Criterion", "AC-DEP-0029")]
+  public async Task D6b_A_change_OUT_of_an_inactive_department_succeeds()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+    var graph = fixture.Graph(fixture.BranchA);
+
+    var home = await fixture.SeedDepartmentAsync(fixture.CompanyA, "DEPH", active: true);
+    var destination = await fixture.SeedDepartmentAsync(fixture.CompanyA, "DEPE", active: true);
+
+    var created = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-D6B", department: home));
+    Assert.True(created.IsSuccess, created.IsFailure ? created.Error.Code : null);
+
+    await fixture.DeactivateDepartmentAsync(home);
+
+    // PRECONDITION: `home` really is inactive now, proved by the product refusing an arrival into it.
+    var arrival = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-D6B2", department: home));
+
+    Assert.True(arrival.IsFailure, "the home department is not inactive, so the move below proves nothing");
+    Assert.Equal(EmployeeErrors.DepartmentInactive.Code, arrival.Error.Code);
+
+    // THE CLAIM. Departing is not arriving, and closing an org unit must not strand the people in it.
+    var changed = await graph.ChangeDepartment().HandleAsync(new ChangeEmployeeDepartmentCommand(
+      created.Value, destination, await fixture.RowVersionAsync(created.Value), "Reorg", "Home closed"));
+
+    Assert.True(changed.IsSuccess, changed.IsFailure ? changed.Error.Code : null);
+    Assert.Equal(destination, await fixture.EmployeeDepartmentAsync(created.Value));
+
+    // And the move was RECORDED — a success that appended nothing would lose where the person had been.
+    Assert.Equal(2, await fixture.DepartmentHistoryCountForAsync(created.Value));
   }
 
   [Fact]
@@ -1591,6 +1923,15 @@ public sealed class EmployeeBoundarySqlServerTests
   }
 
   [Fact]
+  // CITED BY B18 pass 20 as `AC-DEP-0036`'s STALE half, bounded. The criterion is *the
+  // department-change endpoint changes the department AND refuses a stale `RowVersion` with `409`*.
+  // This test shows the refusal at the application layer and adds the control that a refused change
+  // APPENDS NOTHING to history.
+  // `A6e_Change_department_succeeds_with_employee_update_authority` is the success half.
+  //
+  // The `409` itself is asserted by neither: `A21_A_stale_rowversion_conflicts` maps the status for
+  // the ordinary employee update, not for the department change.
+  [Trait("Criterion", "AC-DEP-0036")]
   public async Task D8_A_stale_row_version_is_refused_and_appends_nothing()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -1697,6 +2038,14 @@ public sealed class EmployeeBoundarySqlServerTests
 
   // A BRANCH TRANSFER PRESERVES THE DEPARTMENT. +1 branch record, +0 department records.
   [Fact]
+  // CITED BY B18 pass 20: `AC-DEP-0037`'s first clause -- transferring between branches leaves the
+  // department unchanged. `D12_A_department_change_preserves_the_branch_and_writes_no_branch_history`
+  // is the second clause in the opposite direction. The criterion is symmetric and so is the pair;
+  // either alone would leave the other direction free to be wrong.
+  //
+  // And each asserts more than the criterion asks: no history row is appended on the axis that did
+  // NOT move, which is how a preserved value that was rewritten with itself would be caught.
+  [Trait("Criterion", "AC-DEP-0037")]
   public async Task D11_A_branch_transfer_preserves_the_department_and_writes_no_department_history()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -1723,6 +2072,8 @@ public sealed class EmployeeBoundarySqlServerTests
 
   // AND THE CONVERSE. A department change does not move the branch or append branch history.
   [Fact]
+  // CITED BY B18 pass 20: `AC-DEP-0037`'s second clause. See `D11_...` above for the pairing.
+  [Trait("Criterion", "AC-DEP-0037")]
   public async Task D12_A_department_change_preserves_the_branch_and_writes_no_branch_history()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -1743,6 +2094,9 @@ public sealed class EmployeeBoundarySqlServerTests
 
   // TERMINATION KEEPS THE DEPARTMENT. Not cleared, not moved to UNASSIGNED, no history appended.
   [Fact]
+  // CITED BY B18 pass 20, body-confirmed: terminating an employee leaves their department intact,
+  // with the same append-nothing control as the `D11`/`D12` pair.
+  [Trait("Criterion", "AC-DEP-0038")]
   public async Task D13_Termination_preserves_the_department_and_writes_no_department_history()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -1900,6 +2254,14 @@ public sealed class EmployeeBoundarySqlServerTests
   // incumbents and refuses the next hire. This is the refusal half; P8 proves the incumbent half.
   [Fact]
   [Trait("Decision", "OD-POS-005")]
+  // ⚠ CITED BY 269 FOR TWO CRITERIA. `AC-POS-0030`'s `Active` clause — *an employee created after FP-008
+  // requires a `positionId` … and `Active` status* — and `AC-POS-0025`'s CREATION half: *an `Inactive`
+  // position refuses a new employee, ON CREATION and on position change alike.* P8 carries the change half.
+  //
+  // `Assert.Equal(0, EmployeeCountAsync())` is doing real work: a refusal that had already written the
+  // employee would satisfy the error assertion alone.
+  [Trait("Criterion", "AC-POS-0025")]
+  [Trait("Criterion", "AC-POS-0030")]
   public async Task P1_Creating_an_employee_into_an_inactive_position_is_refused()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -1919,6 +2281,12 @@ public sealed class EmployeeBoundarySqlServerTests
   // creation a probe for positions in companies the caller cannot see.
   [Fact]
   [Trait("Rule", "BRULE-POS-0016")]
+  // ⚠ CITED BY 269: `AC-POS-0030`'s SAME-COMPANY clause. Like the position read next door, the property is
+  // an EQUALITY between two errors rather than a single error code — the foreign-company case answers
+  // exactly what a nonexistent identifier answers, and the comment above says that equality IS the
+  // property. Asserting `PositionNotFound` alone would pass against a refusal the caller could still
+  // distinguish.
+  [Trait("Criterion", "AC-POS-0030")]
   public async Task P2_Creating_an_employee_into_another_companys_position_is_refused_as_absent()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -1942,6 +2310,14 @@ public sealed class EmployeeBoundarySqlServerTests
   // expressible — and a profile update leaves the position and its history exactly where they were.
   [Fact]
   [Trait("Decision", "DEC-POS-0010")]
+  // ⚠ CITED BY 269: `AC-POS-0031`'s FIRST clause — *`positionId` is not accepted on the ordinary employee
+  // profile update.* And it asserts the stronger form the comment names: not *does not*, but CANNOT — the
+  // command type has no position member, so the change is INEXPRESSIBLE rather than merely refused.
+  //
+  // ⚠ The criterion's second clause — *sending it is rejected as an UNKNOWN PROPERTY* — is a transport
+  // claim about the strict reader's `fields` allowlist and cannot be reached from the application boundary.
+  // Cited in part; the transport half would live in the employee endpoint tests.
+  [Trait("Criterion", "AC-POS-0031")]
   public async Task P3_An_ordinary_profile_update_cannot_express_a_position_change()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -1966,6 +2342,22 @@ public sealed class EmployeeBoundarySqlServerTests
   // ---- P4. A CHANGE MOVES THE COLUMN AND APPENDS EXACTLY ONE ROW (BRULE-POS-0018).
   [Fact]
   [Trait("Requirement", "FR-POS-0211")]
+  // ⚠ CITED BY 269 FOR TWO CRITERIA.
+  //
+  // `AC-POS-0032` — *changing an employee's position updates `PositionId` AND appends EXACTLY ONE record,
+  // in one transaction; NEITHER HAPPENS WITHOUT THE OTHER.* The count moving 1 -> 2 is what makes "exactly
+  // one" a claim: asserting only that a record exists would pass against a handler appending two.
+  //
+  // `AC-POS-0035`'s THIRD clause — *a position change leaves `BranchId` and `DepartmentId` untouched.* The
+  // last four assertions are that, including the DEPARTMENT HISTORY count, which is the sharper of the two:
+  // a change that left the department column alone while appending a spurious department history row would
+  // pass a column check and fail the intent.
+  //
+  // ⚠ The criterion's other two clauses are the converse — *a branch transfer leaves `PositionId`
+  // untouched, a department change leaves it untouched* — and this test cannot reach them: it performs a
+  // POSITION change. They need the transfer and department-change paths, so `AC-POS-0035` is cited in part.
+  [Trait("Criterion", "AC-POS-0032")]
+  [Trait("Criterion", "AC-POS-0035")]
   public async Task P4_A_position_change_appends_exactly_one_history_row()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -1997,6 +2389,10 @@ public sealed class EmployeeBoundarySqlServerTests
   //
   // A no-op that returned success would append a history row describing no movement at all.
   [Fact]
+  // ⚠ CITED BY 269: `AC-POS-0034`'s SECOND clause — *and NO HISTORY RECORD IS WRITTEN.* The history count
+  // is still 1 after the refusal, which the wire-contract test in `API.Tests` cannot assert because it runs
+  // against a stubbed host. That test carries the status and code; this carries the persistence.
+  [Trait("Criterion", "AC-POS-0034")]
   public async Task P5_A_change_to_the_current_position_is_refused()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -2018,6 +2414,10 @@ public sealed class EmployeeBoundarySqlServerTests
   // historical employment record without a job is unreadable — and a closed record's history stops moving.
   [Fact]
   [Trait("Rule", "BRULE-POS-0020")]
+  // ⚠ CITED BY 269: `AC-POS-0036` — *terminating an employee leaves their `PositionId` AND their full
+  // assignment history intact.* Both are asserted after termination, and the history count is re-asserted
+  // after the refused change so the record is shown to be stable rather than merely present once.
+  [Trait("Criterion", "AC-POS-0036")]
   public async Task P6_A_terminated_employee_retains_their_position_and_refuses_a_change()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -2050,6 +2450,31 @@ public sealed class EmployeeBoundarySqlServerTests
   // finds no row to update and appends nothing — which is what stops two history rows describing one move.
   [Fact]
   [Trait("Decision", "DEC-POS-0021")]
+  // ⚠ CITED BY 269: `AC-POS-0048`'s CONCURRENCY clause — *two concurrent position changes for one employee
+  // serialize on `Employee.RowVersion` with exactly one winner.* The comment above states the mechanism the
+  // criterion names: the assignment record has no token of its own, so the serialization point is the
+  // EMPLOYEE's, and the loser appends nothing — which is what stops two history rows describing one move.
+  //
+  // The criterion's other clause — *`EmployeePositionAssignment` has NO `RowVersion` column* — is asserted
+  // at the schema by `PositionSchemaSqlServerTests.The_aggregates_carry_a_rowversion_and_the_history_does_
+  // not` and structurally by `PositionApplicationArchitectureTests.The_append_only_assignment_carries_no_
+  // row_version`. The absence is the REASON the serialization works, so the two clauses are one argument.
+  // ⚠ ALSO CITED BY 269: `AC-POS-0049` — *the model admits no state in which one employee has two current
+  // positions.* `test-scenarios.md` maps `TS-POS-0057` to `AC-POS-0048` AND `AC-POS-0049`, and its wording
+  // is *no second current position exists afterwards*, which is what `Assert.Equal(first, EmployeePosition)`
+  // asserts here: the loser's destination is not held.
+  //
+  // ⚠⚠ AND THE CLOSURE IS A TYPE, AS IT WAS FOR `AC-POS-0050`. `Employee.PositionId` is a SINGLE COLUMN and
+  // `EmployeePositionAsync` returns one `Guid`, so "holds the winner's position" and "holds no second
+  // position" are the same assertion — there is no representable state for a second one to occupy.
+  // `requirements.md` NFR-POS-0306 says exactly that: *not because a check rejects it, but because a single
+  // column cannot express it.*
+  //
+  // So the criterion needs no structural test: the CONSTRUCTIBLE violation is the concurrent one, and that
+  // is what this asserts. A guard against a second position COLUMN would be a guard against a pressure
+  // nobody has ever felt.
+  [Trait("Criterion", "AC-POS-0048")]
+  [Trait("Criterion", "AC-POS-0049")]
   public async Task P7_Two_concurrent_position_changes_leave_one_winner_and_one_history_row()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -2083,6 +2508,49 @@ public sealed class EmployeeBoundarySqlServerTests
   // which a deactivated position quietly acquires a new holder.
   [Fact]
   [Trait("Decision", "DEC-POS-0021")]
+  // ⚠ CITED BY 269: `AC-POS-0028`'s INCUMBENT clause — *deactivating a position with incumbents succeeds,
+  // AND EVERY INCUMBENT RETAINS IT.* Order two is that assertion: the employee still holds the position
+  // after it is deactivated underneath them. ⚠ AND THIS IS THE ONLY TEST IN THE PRODUCT WHERE A DEACTIVATED
+  // POSITION HAS A HOLDER AT ALL — `PositionAppFixture` cannot seed an employee, so the position suite
+  // cannot express an incumbent.
+  //
+  // Order one is `AC-POS-0025`'s change half — *an `Inactive` position refuses a new employee, on creation
+  // and ON POSITION CHANGE ALIKE.*
+  //
+  // ⚠⚠ THE 0028 CITATION IS A SET OF THREE AND NO MEMBER IS HONEST ALONE, because no test puts the HANDLER
+  // and an INCUMBENT in one assertion. This deactivates by RAW SQL, so it cannot show the handler permits
+  // it; `PositionApplicationSqlServerTests.Deactivating_a_position_asks_no_dependent_question_and_is_
+  // reversible` shows the handler succeeds but has NO incumbents; and what closes the entailment is
+  // `PositionDomainTests.Deactivation_cannot_consult_incumbents_because_it_is_given_nothing_to_consult`,
+  // which is STRUCTURAL — `Deactivate` takes only an actor, an event id and a time, so its behaviour
+  // cannot depend on incumbents. All three links are executable, which is why this is cited as a set
+  // rather than annotated covered-by-mechanism.
+  // ⚠ ALSO CITED BY 269: `AC-POS-0050` — *assigning an employee to a position that is CONCURRENTLY
+  // deactivated either refuses or succeeds against the pre-deactivation state; it NEVER produces an
+  // employee holding an inactive position.* Order one is the refusal branch and order two is the
+  // succeeds-against-pre-deactivation-state branch, so both permitted outcomes are exercised and the
+  // forbidden third — an employee ending up on an inactive position they did not already hold — is
+  // excluded by the pair rather than by either alone.
+  //
+  // The comment above names the mechanism the criterion depends on: the handler reads the destination
+  // INSIDE ITS OWN TRANSACTION, which is what makes the interleave decidable rather than racy.
+  //
+  // ⚠⚠ THIS IS AN EXHAUSTION CITATION, NOT A CONJUNCTION, SO WHAT CLOSES THE OUTCOME SPACE IS STATED
+  // RATHER THAN ASSUMED. Every other criterion in this sweep is *A and B*, covered by asserting A and B.
+  // This one is *either X or Y, never Z*, and a pair only covers it if nothing else can happen.
+  //
+  // THE CLOSURE IS GUARANTEED BY THE TYPE, not by an argument: `ChangePosition` returns a `Result`, so it
+  // either fails or succeeds. On FAILURE nothing moved — asserted here as the employee still holding
+  // `PositionA`. On SUCCESS the employee is asserted to hold the position they moved into BEFORE it was
+  // deactivated. So the forbidden outcome — holding an inactive position they did not already have — is
+  // REFUTED INSIDE EACH BRANCH rather than merely squeezed out between them.
+  //
+  // ⚠ IF THAT CLOSURE WERE AN ARGUMENT INSTEAD OF A TYPE, THIS CITATION WOULD BE WRONG: a criterion
+  // permitting *either X or Y* over an open-ended outcome space is not covered by asserting X and Y, and a
+  // fourth outcome nobody enumerated is exactly what such a citation would hide.
+  [Trait("Criterion", "AC-POS-0025")]
+  [Trait("Criterion", "AC-POS-0028")]
+  [Trait("Criterion", "AC-POS-0050")]
   public async Task P8_A_position_deactivated_before_the_change_is_refused_and_after_it_is_retained()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -2134,6 +2602,89 @@ public sealed class EmployeeBoundarySqlServerTests
     Assert.True(refused.IsFailure);
     Assert.Equal(EmployeeErrors.WritePermissionDenied.Code, refused.Error.Code);
     Assert.Equal(1, await fixture.PositionHistoryCountForAsync(created.Value));
+  }
+
+  // ================================================================================================
+  // ⚠⚠⚠ P10 — THE **ALLOWED** SIDE OF `BRULE-POS-0013`. EVERY EXISTING TEST ASSERTS THE REFUSAL.
+  // ================================================================================================
+  //
+  // ⚠ THE SUBJECT IS `BRULE-POS-0013` — *an `Inactive` Position may not receive a new Employee*
+  // (`business-rules.md:88`) — and it is the identifier with the two sides: refuses while `Inactive`,
+  // accepts once `Active`. `OD-POS-005` is the DECISION it derives from, cited as a reference; its own two
+  // clauses are a different axis (incumbents keep the position / new arrivals are refused), and the first of
+  // those is `P8`'s subject, not this one.
+  //
+  // ⚠⚠ NO `Criterion` TRAIT, DELIBERATELY, AND THE ABSENCE IS THE FINDING. `AC-POS-0028` is *deactivating a
+  // position with incumbents succeeds* — `P8` and `PositionApplicationSqlServerTests:331` between them. It
+  // does NOT cover the allowed side, so tagging this with it would report a criterion as newly covered by a
+  // test that does not assert it, and inflate the traceability count with the one thing that was missing.
+  // **The allowed side has no acceptance criterion. That is worth someone's attention, not a borrowed tag.**
+  //
+  // A lifecycle rule has two sides and only one of them attracts tests, because a refusal is what a defect
+  // report gets written about. Enumerated across both suites, the position family had **only** the refusing
+  // side and the TRANSITION:
+  //
+  //   `P8` (above)                                   deactivated destination is REFUSED
+  //   `PositionApplicationSqlServerTests:331`        reactivation SUCCEEDS, row reads `Active`
+  //   `:412`                                         reactivation succeeds while its grade is inactive
+  //
+  // ⚠⚠ THE SECOND AND THIRD LOOK LIKE THE POSITIVE SIDE AND ARE NOT. They assert a STATE CHANGE — the
+  // handler returned success, the column says `Active`. **Nothing asserted that the position can once again
+  // DO what an active position does**, which is the whole of `BRULE-POS-0013`: receive a new Employee.
+  //
+  // ⚠⚠⚠ THE DEFECT THIS CATCHES AND NOTHING ELSE DOES: A GUARD THAT OVER-FIRES. An assignability check that
+  // refused every position it had ever seen inactive — a cached flag, a status read that never re-read, a
+  // predicate inverted after the first transition — **passes `P8`, passes both reactivation tests, and
+  // passes every refusal test in either suite.** The column would say `Active` and the position would be
+  // unfillable. Only asking for the capability BACK can see it.
+  //
+  // ---- ⚠ THE REFUSAL LEG HERE IS A CONTROL, NOT A COPY OF `P8`.
+  //
+  // Without it a green success proves nothing: if the guard never fired for this destination at all, the
+  // assignment would succeed for the wrong reason and this test would be vacuous — the seed active, the
+  // refusal absent, the reactivation irrelevant. **The control establishes that the guard WAS firing on
+  // this exact position moments earlier, so the success is a reversal rather than a default.** `P8` proves
+  // the refusal happens; this proves it STOPS happening, and only the pair is the rule.
+  //
+  // Both legs use the same employee and the same position, deliberately: a control against a DIFFERENT
+  // position would leave open that the two ids differ in some way the guard cares about.
+  [Fact]
+  [Trait("BusinessRule", "BRULE-POS-0013")]
+  [Trait("Decision", "OD-POS-005")]
+  public async Task P10_A_reactivated_position_accepts_new_assignments_again()
+  {
+    await using var fixture = await EmployeeFixture.CreateAsync();
+    var graph = fixture.Graph(fixture.BranchA);
+
+    var created = await graph.Create().HandleAsync(fixture.NewEmployee("EMP-P10"));
+    var destination = await fixture.SeedPositionAsync(fixture.CompanyA, "POSJ", active: true);
+
+    // ---- THE CONTROL. The guard is observed FIRING on this destination before it is observed releasing.
+    await fixture.DeactivatePositionDirectlyAsync(destination);
+
+    var refused = await graph.ChangePosition().HandleAsync(new ChangeEmployeePositionCommand(
+      created.Value, destination, await fixture.RowVersionAsync(created.Value)));
+
+    Assert.True(refused.IsFailure);
+    Assert.Equal(EmployeeErrors.PositionInactive.Code, refused.Error.Code);
+
+    // ---- THE ASSERTION: THE CAPABILITY COMES BACK.
+    await fixture.ReactivatePositionDirectlyAsync(destination);
+
+    var accepted = await graph.ChangePosition().HandleAsync(new ChangeEmployeePositionCommand(
+      created.Value, destination, await fixture.RowVersionAsync(created.Value)));
+
+    Assert.True(accepted.IsSuccess, accepted.IsFailure ? accepted.Error.Code : null);
+
+    // The move actually happened. A `Result.Success` that moved nothing would satisfy the line above, and
+    // that is the failure `BRULE-POS-0018` exists to prevent — so the record and its history are read back.
+    Assert.Equal(destination, await fixture.EmployeePositionAsync(created.Value));
+
+    // ⚠ THE COUNT PINS A SECOND RULE FOR FREE, AND IT IS EASY TO READ AS BOOKKEEPING: `2` is creation plus
+    // this one move, so it also asserts THE REFUSED ATTEMPT WROTE NO HISTORY ROW. A refusal that logged a
+    // move it did not make would read `3` and fail here — the only place that is checked on a refusal
+    // followed by a success against the SAME destination.
+    Assert.Equal(2, await fixture.PositionHistoryCountForAsync(created.Value));
   }
 
   // ================================================================================================
@@ -2214,35 +2765,6 @@ public sealed class EmployeeBoundarySqlServerTests
   //
   // These proofs travel the real path end to end: composed catalog, real handler, real role, real role
   // assignment, real access-token claims, and a real Employee read authorized by NOTHING BUT those claims.
-
-  // ---- P1. THE COMPOSED CATALOG DEFINES ALL FIVE, AT TENANT SCOPE — AND PLATFORM'S ALONE DEFINES NONE.
-  //
-  // The second half is the control: it is the catalog that shipped, and it is why nothing could be granted.
-  [Fact]
-  public void P1_The_composed_catalog_defines_the_hr_permissions_and_the_platform_catalog_does_not()
-  {
-    var composed = EmployeeFixture.ComposedCatalog();
-    var platformOnly = new PlatformPermissionCatalog();
-
-    foreach (var permission in new[]
-    {
-      HrPermissionNames.ViewEmployees,
-      HrPermissionNames.CreateEmployees,
-      HrPermissionNames.UpdateEmployees,
-      HrPermissionNames.TransferEmployees,
-      HrPermissionNames.TerminateEmployees
-    })
-    {
-      Assert.True(composed.TryGet(permission, out var definition), permission);
-      Assert.Equal(PermissionScope.Tenant, definition.Scope);
-      Assert.False(string.IsNullOrWhiteSpace(definition.Description));
-
-      Assert.False(platformOnly.TryGet(permission, out _), permission);
-    }
-
-    // Composing ADDED; it did not disturb what Platform already owned.
-    Assert.All(platformOnly.All, definition => Assert.True(composed.TryGet(definition.Name.Value, out _)));
-  }
 
   // ---- P2. THE REAL HANDLER GRANTS IT, AND THE ASSIGNMENT IS PERSISTED.
   //
@@ -2384,6 +2906,25 @@ public sealed class EmployeeBoundarySqlServerTests
   // would have to remember all four, and this is what would notice when it forgot one.
   [Fact]
   [Trait("Decision", "BRULE-DOC-0603")]
+  // ⚠ CITES `AC-DOC-0006` — *"An imported employee is INDISTINGUISHABLE from a created one. Same normalized
+  // uniqueness, same stamped branch, exactly one initial branch assignment, one department assignment and
+  // one position assignment, same audit fields. No import-specific relaxation is observable."*
+  //
+  // ***I REFUSED THIS ONCE, ON THE GROUND THAT "same normalized uniqueness" AND "same audit fields" ARE
+  // ASSERTED BY NOTHING. THAT WAS THE WRONG QUESTION.*** **The criterion is not a list of properties to
+  // check one by one — it is a claim that THERE IS ONLY ONE CREATION PATH**, and every listed property is
+  // then whatever that path does, by construction. *`ImportEmployeesCommandHandler` injects
+  // `CreateEmployeeCommandHandler` and its own header says why: "an import that assembled `Employee.Create`
+  // itself would be a second place an employee can come into existence."*
+  //
+  // ⚠⚠ **SO THE WITNESS IS THE TEST THAT WOULD DETECT A SECOND PATH, AND THIS IS IT.** The four rows per
+  // employee are what a hand-rolled import would have to remember; *the assertion is not "imports produce
+  // four rows" but "imports go through the thing that produces four rows."* **A criterion of the form
+  // "X is indistinguishable from Y" is discharged by showing X and Y ARE THE SAME CODE, not by enumerating
+  // the properties they share** — an enumeration is a sample and this is a proof.
+  //
+  // ⚠⚠⚠ ***TIER 2 — UNGATED.*** `Integration.Tests` does not run in `GATE_SCOPE=TASK`; green 2026-09-01.
+  [Trait("Criterion", "AC-DOC-0006")]
   public async Task I1_An_applied_import_creates_every_employee_through_the_ordinary_create_path()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -2412,8 +2953,21 @@ public sealed class EmployeeBoundarySqlServerTests
   //
   // The headline observability criterion. A partial-success import would leave the system in a state no
   // single file describes, and the operator with no way to know which 999 landed.
+  // ⚠ CITES `AC-DOC-0021` — *"All-or-nothing is OBSERVABLE, not just documented. A 1,000-row file with one
+  // invalid row creates ZERO employees... On an applied run, `acceptedCount` EQUALS `rowCount` exactly."*
+  //
+  // **The criterion's own example, at its own size: a thousand rows, one bad at 743, and
+  // `EmployeeCountAsync("BULK-")` is `0`.** *The size is not decoration — "observable, not just documented"
+  // is a claim about a REAL transaction rolling back, and a three-row file would not distinguish a rollback
+  // from a handler that validates everything before writing anything.*
+  //
+  // ⚠⚠ THE SECOND CLAUSE IS `I1`'S, AND THE PAIR IS THE CRITERION: this row shows a REFUSED run accepts
+  // nothing; `I1` shows an APPLIED run's `AcceptedCount` equals its `RowCount`. **Between them they give
+  // both reachable outcomes.** *The criterion's "there is no reachable response in which they differ" is a
+  // universal that two examples cannot prove — named here rather than claimed.*
   [Fact]
   [Trait("Decision", "OD-DOC-003")]
+  [Trait("Criterion", "AC-DOC-0021")]
   public async Task I2_One_bad_row_in_a_thousand_leaves_no_employees_at_all()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -2448,8 +3002,21 @@ public sealed class EmployeeBoundarySqlServerTests
   // ---- I3. EVERY ROW IS VALIDATED, NOT THE FIRST (DEC-DOC-0003).
   //
   // A report naming one bad row in a thousand costs the operator a thousand round trips to find the rest.
+  // ⚠ CITES `AC-DOC-0003` — *"Every row is validated. A file with errors in rows 14 and 902 reports BOTH.
+  // The report is not truncated at the first failure, and `rejectedCount` EQUALS THE NUMBER OF DISTINCT ROWS
+  // IN ERROR."*
+  //
+  // ***THE WORD "DISTINCT" IS THE WHOLE OF THE THIRD CLAUSE AND THIS TEST IS THE ONLY THING THAT SEPARATES
+  // IT: `Errors` HAS FOUR ENTRIES — `[2, 3, 4, 4]` — AND `RejectedCount` IS THREE.*** **Row 4 carries two
+  // problems, a bad date and a bad position code, and it is ONE rejected row.** *An implementation counting
+  // errors rather than rows produces `4`, is off by one for every multi-problem file, and every other
+  // assertion here still passes.*
+  //
+  // ⚠⚠ The first two clauses are the sequence itself: three bad rows in, three row numbers out, so the
+  // report is neither truncated at the first failure nor summarised into a count.
   [Fact]
   [Trait("Decision", "DEC-DOC-0003")]
+  [Trait("Criterion", "AC-DOC-0003")]
   public async Task I3_Every_bad_row_is_reported_rather_than_the_first()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -2468,6 +3035,22 @@ public sealed class EmployeeBoundarySqlServerTests
     // Every row appears, and so does every problem WITHIN a row — the same argument applies inside a row as
     // between rows, so row 4 reports both its date and its position code.
     Assert.Equal([2, 3, 4, 4], report.Value.Errors.Select(error => error.RowNumber));
+
+    // ⚠⚠⚠ THE GAP IS THE CLAIM, AND UNTIL THIS LINE IT WAS AN ACCIDENT OF THE FIXTURE.
+    //
+    // `AC-DOC-0003` says `rejectedCount` equals the number of DISTINCT rows in error. **The only thing that
+    // distinguishes that from "count the errors" is a row with TWO problems**, and row 4 is it. *A later
+    // tidy giving each fixture row a single error would leave both counts at 3, every assertion green, and
+    // a count-the-errors implementation passing forever after.*
+    //
+    // Stated as a RELATION rather than as two more literals: `4 > 3` is what the criterion's word means, and
+    // it survives the fixture growing. **Entailed by the two assertions above, so it cannot newly fail here
+    // — it makes the property they already encode legible instead of latent.**
+    Assert.True(
+      report.Value.Errors.Count > report.Value.RejectedCount,
+      "the fixture no longer contains a row with two errors, so this test can no longer tell " +
+      "`rejectedCount` counting DISTINCT ROWS from it counting ERRORS.");
+
     Assert.Equal(0, await fixture.EmployeeCountAsync("MULTI-"));
   }
 
@@ -2508,7 +3091,20 @@ public sealed class EmployeeBoundarySqlServerTests
   // rejection message at a time — a spreadsheet as an enumeration oracle. The two rejections below are
   // compared FIELD BY FIELD rather than merely both being failures, because "both refused" would still hold
   // if one said `department.not_found` and the other said `company.scope_denied`.
+  // ⚠ CITES `AC-DOC-0022` — *"A `departmentCode` that exists only in a company the caller cannot see is
+  // reported as unresolvable, IN A MESSAGE INDISTINGUISHABLE FROM ONE FOR A CODE THAT EXISTS NOWHERE. An
+  // import cannot be used to enumerate another company's organizational structure one rejection at a time."*
+  //
+  // ***"INDISTINGUISHABLE" IS A CLAIM ABOUT TWO RESPONSES, AND THIS IS THE RARE TEST THAT ASSERTS IT AS
+  // ONE:*** outcome, column, error CODE and error MESSAGE are each compared BETWEEN the two runs rather than
+  // against a literal. **A test asserting each side matched an expected constant would pass while the two
+  // diverged in any field nobody thought to write down.**
+  //
+  // ⚠⚠ AND THE LAST LINE IS THE NON-VACUITY PREMISE WITHOUT WHICH THE WHOLE THING IS EMPTY: the department
+  // really does exist in `CompanyB`. *Two identical refusals prove nothing if the code was absent from both
+  // companies — the test would then be comparing "nowhere" with "nowhere".*
   [Fact]
+  [Trait("Criterion", "AC-DOC-0022")]
   [Trait("Decision", "OD-DOC-004")]
   public async Task I5_A_code_in_another_company_is_refused_identically_to_a_code_that_exists_nowhere()
   {
@@ -2821,8 +3417,22 @@ public sealed class EmployeeBoundarySqlServerTests
   // caller shapes that could plausibly differ: the confined user and the administrator, with and without
   // every HR permission the module defines. The employee genuinely HAS a national identifier, so the
   // absence is a distinction rather than an empty-database artefact.
+  // ⚠ CITES `AC-DOC-0023`'s BEHAVIOURAL HALF — *"No export carries `nationalId`. Asserted over EVERY
+  // export the surface can produce — every filter combination, every scope mode, every permission set."*
+  //
+  // **This half varies the CALLER: administrator and confined user, with and without every HR permission the
+  // module defines, against an employee that genuinely HAS a national identifier — so the absence is a
+  // distinction rather than an empty-database artefact.** *`ImportExportArchitectureTests
+  // .No_export_column_or_row_field_can_carry_a_national_id` carries the other half structurally, closing the
+  // column contract and the row type so no filter can open a third path.*
+  //
+  // ⚠⚠ **NEITHER IS SUFFICIENT ALONE AND THE REASON IS THE CRITERION'S OWN QUANTIFIER.** A caller-shape
+  // sweep is still a SAMPLE over filters; a structural closure says nothing about whether the query actually
+  // projects what the contract declares. *The structural half bounds what CAN be emitted; this half shows
+  // what IS, through real SQL.*
   [Fact]
   [Trait("Decision", "OD-DOC-006")]
+  [Trait("Criterion", "AC-DOC-0023")]
   public async Task X2_No_caller_shape_can_make_an_export_carry_a_national_identifier()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -2886,7 +3496,17 @@ public sealed class EmployeeBoundarySqlServerTests
   //
   // The search has always behaved this way, and an export is a search that leaves the building. Asking by
   // name still works, so audit and payroll extracts remain possible.
+  // ⚠ CITES `AC-DOC-0013` — *"Terminated employees are excluded by default and includable by name."*
+  // **Both clauses, and they are asserted as a CONTRAST over one seeded employee rather than as two
+  // independent facts: `EXP-GONE` is absent from the routine export and present in the one that asks for
+  // `Statuses: [Terminated]`.**
+  //
+  // ⚠⚠ *THE PAIRING IS WHAT MAKES EITHER HALF MEAN ANYTHING.* An exclusion asserted alone is satisfied by
+  // an export that returns nobody; an inclusion asserted alone is satisfied by an export that ignores the
+  // filter and returns everybody. **Only the two together say the status is a FILTER rather than a
+  // constant** — and the same employee on both sides is what removes the seeding as an explanation.
   [Fact]
+  [Trait("Criterion", "AC-DOC-0013")]
   [Trait("Decision", "DEC-DOC-0009")]
   public async Task X4_Terminated_employees_are_excluded_unless_the_caller_asks_for_them()
   {
@@ -2910,8 +3530,17 @@ public sealed class EmployeeBoundarySqlServerTests
   // "Who exported employee data?" is answerable from the actor alone. "Could that person have exported THIS
   // employee?" is not, unless the scope in force at the time is recorded — and scope changes over time, so
   // reconstructing it later from current authorization is unsound.
+  // ⚠ CITES `AC-DOC-0015` AGAINST REAL SQL — *"Every export writes a run record naming the column set and
+  // the scope in force. A failed export writes none."* **The gated half is
+  // `EmployeeImportExportEndpointTests.T23`, which asserts the same property through a STUB repository;
+  // this one asserts it through a database that actually stores the row.**
+  //
+  // ⚠⚠ *A stub proves the handler CALLED the repository. Only this proves the record SURVIVES the write* —
+  // the column set and the scope snapshot are text columns with their own constraints, and a record the
+  // application composes correctly and the database refuses is a record that does not exist.
   [Fact]
   [Trait("Decision", "SEC-DOC-0404")]
+  [Trait("Criterion", "AC-DOC-0015")]
   public async Task X5_The_export_run_records_the_column_set_and_the_scope_that_was_in_force()
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
@@ -3007,6 +3636,20 @@ public sealed class EmployeeBoundarySqlServerTests
   // re-import — three approved statements that could not all hold. The ruling closed it without reopening
   // any of them: the column is RECOGNIZED (so the allowlist stays strict and nothing is silently ignored),
   // empty or `Active` passes, and any other value is a row error whose message names the remedy.
+  //
+  // ⚠⚠⚠ AND `AC-DOC-0002` STILL SAYS THE OPPOSITE, THREE WEEKS AFTER THE RULING. Its current text reads
+  // *"A file carrying `companyId`, `branchId`, `tenantId` OR `status` is refused by the unknown-column rule —
+  // not accepted-and-ignored, and not accepted-and-validated. THERE IS NO CODE PATH THAT READS SUCH A
+  // COLUMN."* **The product recognizes `status`, reads it, and validates it.** The ruling above closed the
+  // three-way conflict in the CODE; the criterion was never updated to match.
+  //
+  // ***THAT IS A SUPERSEDED RULE, NOT A SUPERSEDED MECHANISM — the criterion's normative content is now
+  // FALSE, and like a superseded mechanism it ANNOUNCES NOTHING***: *"is refused by the unknown-column rule"*
+  // carries no marker any text filter could match. **A reader arriving at `AC-DOC-0002` today would conclude
+  // this test documents a bug.**
+  //
+  // ⚠ THIS COMMENT IS CURRENTLY THE ONLY PLACE THE CONTRADICTION IS RECORDED, and it sits in an Integration
+  // test behind a parked scope. **The criteria document is not this lane; flagged rather than edited.**
   //
   // A `status=Terminated` export therefore refuses on re-import, and that refusal is the correct behaviour
   // rather than a residual gap: create-only cannot recreate a terminated person's employment history, and
@@ -3215,12 +3858,14 @@ public sealed class EmployeeBoundarySqlServerTests
   //
   // Silently reducing an over-large page would return a page the caller did not ask for and let them believe
   // they had seen the rest — the rule every other list in the module applies.
+  // Each row names the parameter it refuses (T-260).
   [Theory]
-  [InlineData(0, 50)]
-  [InlineData(1, 0)]
-  [InlineData(1, EmployeeRunHistoryCriteria.MaxPageSize + 1)]
+  [InlineData(0, 50, false)]
+  [InlineData(1, 0, true)]
+  [InlineData(1, EmployeeRunHistoryCriteria.MaxPageSize + 1, true)]
   [Trait("Decision", "FR-DOC-0103")]
-  public async Task H2_An_out_of_range_page_is_refused_rather_than_clamped(int page, int size)
+  public async Task H2_An_out_of_range_page_is_refused_rather_than_clamped(
+    int page, int size, bool sizeIsTheFault)
   {
     await using var fixture = await EmployeeFixture.CreateAsync();
     using var graph = fixture.Graph(fixture.BranchA);
@@ -3230,8 +3875,12 @@ public sealed class EmployeeBoundarySqlServerTests
 
     Assert.True(imports.IsFailure);
     Assert.True(exports.IsFailure);
-    Assert.Equal(EmployeeErrors.InvalidPagination.Code, imports.Error.Code);
-    Assert.Equal(EmployeeErrors.InvalidPagination.Code, exports.Error.Code);
+    var expected = sizeIsTheFault
+      ? EmployeeErrors.InvalidPageSize.Code
+      : EmployeeErrors.InvalidPageNumber.Code;
+
+    Assert.Equal(expected, imports.Error.Code);
+    Assert.Equal(expected, exports.Error.Code);
 
     // And the boundary itself is accepted, so the refusal is a ceiling rather than an off-by-one.
     Assert.True((await graph.SearchImportRuns().HandleAsync(
@@ -3315,8 +3964,11 @@ public sealed class EmployeeBoundarySqlServerTests
     // can hold it, which is what `DEC-DOC-0016` decided.
     var properties = typeof(EmployeeExportRunListItem).GetProperties().Select(p => p.Name).ToArray();
 
-    Assert.DoesNotContain("ScopeCompanyIds", properties);
-    Assert.DoesNotContain("ScopeBranchIds", properties);
+    // ⚠ THE WITNESS IS THE ENTITY THAT LEGITIMATELY CARRIES THEM (252). `EmployeeExportRun` holds the
+    // materialized scope at execution; the LIST ITEM must not. Compile-checking against it states both
+    // halves of `DEC-DOC-0016` in one place, so a rename cannot silence one half and leave the other.
+    Assert.DoesNotContain(nameof(EmployeeExportRun.ScopeCompanyIds), properties);
+    Assert.DoesNotContain(nameof(EmployeeExportRun.ScopeBranchIds), properties);
     Assert.DoesNotContain(properties, name => name.Contains("Scope", StringComparison.Ordinal));
 
     // The import listing has no snapshot to omit, and equally must not grow one.
@@ -3527,7 +4179,7 @@ public sealed class EmployeeBoundarySqlServerTests
       var handler = new AssignPermissionToRoleCommandHandler(
         new RoleRepository(platform),
         catalog,
-        new PlatformUnitOfWork(platform, new NoOpDispatcher()),
+        TestUnitOfWork.Platform(platform, new NoOpDispatcher()),
         new TestTenant(Tenant),
         new TestUser(),
         new TestClock());
@@ -3789,6 +4441,9 @@ public sealed class EmployeeBoundarySqlServerTests
     public async Task<Guid?> EmployeeCompanyAsync(Guid employeeId) =>
       await ScalarGuidAsync("Employees", "CompanyId", "EmployeeId", employeeId);
 
+    public async Task<Guid?> EmployeeTenantAsync(Guid employeeId) =>
+      await ScalarGuidAsync("Employees", "TenantId", "EmployeeId", employeeId);
+
     public async Task<int> EmployeeCountAsync() => await CountAsync("Employees");
 
     // ---- A ROW BELONGING TO A DIFFERENT TENANT, WRITTEN THE ONLY WAY IT CAN BE.
@@ -3866,6 +4521,61 @@ public sealed class EmployeeBoundarySqlServerTests
       ExecuteAsync($"""
         UPDATE [tenant].[Positions]
         SET [Status] = N'Inactive', [StatusChangedUtc] = SYSDATETIMEOFFSET()
+        WHERE [PositionId] = '{positionId}';
+        """);
+
+    // The mirror, for the same reason `SeedPositionAsync` is raw SQL: reactivation is a PRECONDITION of the
+    // assignment being tested, not the behaviour under test. Driving `ReactivatePositionCommandHandler` here
+    // would make an employee test fail when a position handler broke, which is the coupling the seeder's own
+    // comment declines.
+    //
+    // ⚠⚠⚠ THIS INJECTION IS NOT PROTECTED THE WAY THE DEACTIVATE ONE IS, SO ITS GROUNDS ARE ASSERTED HERE.
+    //
+    // `DeactivatePositionDirectlyAsync` is checked by `P10`'s own control: if that UPDATE produced a state
+    // the product never produces, the refusal leg would not refuse and the test would go red. **NOTHING
+    // checks this one.** It is the load-bearing leg, and a green over a row the product cannot produce would
+    // be a test that is green about a fiction.
+    //
+    // SO THE COLUMN SETS WERE COMPARED RATHER THAN ASSUMED EQUIVALENT:
+    //
+    //   `Position.Reactivate` (`Position.cs:268-270`) writes EXACTLY `Status`, `StatusChangedUtc` and
+    //   `StatusChangedBy` — enumerated by reading the method, which has no other assignment.
+    //   This UPDATE writes those same three. `StatusChangedBy` is set for that reason alone; the deactivate
+    //   mirror omits it and is inconsistent with the domain, which its control conceals.
+    //
+    // ⚠ AND THE COLUMN THAT ACTUALLY DECIDES: `EmployeeRepository.FindAssignablePositionAsync:158-164`
+    // projects `CompanyId`/`Id` as its predicate and `Status` as the whole of `IsActive`. Assignability
+    // reads NOTHING ELSE, so even the one field this UPDATE could get wrong is not on the path under test.
+    //
+    // ⚠⚠ THE GROUNDS ARE BOUND TO THE PATH, NOT TO THE PRODUCT, AND THE DIFFERENCE IS NOT PEDANTRY.
+    //
+    // What is established above is *the injected row matches on every column assignability reads*. It is NOT
+    // *the injection is what the product does*: `Reactivate` also raises `PositionReactivated`
+    // (`Position.cs:272`) and this UPDATE raises nothing. The enumeration behind the column list covered the
+    // method's ASSIGNMENTS; the broader claim would have needed its EFFECTS, which is a different scope.
+    //
+    // ⚠ NOTHING ACTS ON THAT EVENT AS AT 2026-09-02 — AND THE MECHANISM IS NOT "NO HANDLER EXISTS".
+    //
+    // `IDomainEventConsumer` is NOT type-generic. `DomainEventDispatcher.cs:66-79` loops EVERY registered
+    // consumer over EVERY event, so `PositionReactivated` IS delivered. The single registration
+    // (`PlatformPersistenceServiceCollectionExtensions.cs:436`) is `LocalizationCacheDomainEventConsumer`,
+    // whose switch matches four `TenantLocalizationOverride*` events and drops everything else on
+    // `_ => (Guid?)null`. Delivered, matched by nothing, discarded.
+    //
+    // ⚠⚠ SO SUBSCRIBING IS CHEAPER AND NEARER THAN "NOBODY LISTENS" IMPLIES — one arm on an existing switch
+    // or a second registration, not a new delivery path. The divergence is UNOBSERVABLE TODAY rather than
+    // harmless by design, and a test needing the event's CONSEQUENCES must drive
+    // `ReactivatePositionCommandHandler` rather than this UPDATE.
+    //
+    // ⚠⚠⚠ AND HOW THIS WAS NEARLY GOT WRONG, BECAUSE THE NEXT READER WILL REACH FOR THE SAME INSTRUMENT:
+    // searching for the TYPE NAME returns six hits with no handler among them, which reads as proof. With an
+    // UNTYPED dispatcher every consumer is a candidate and the type name appears in NONE of them — so that
+    // search is blind to the only mechanism that could refute it. It returned the right answer for a reason
+    // that does not hold. **Check the dispatcher's SHAPE before believing a name search about events.**
+    public Task ReactivatePositionDirectlyAsync(Guid positionId) =>
+      ExecuteAsync($"""
+        UPDATE [tenant].[Positions]
+        SET [Status] = N'Active', [StatusChangedUtc] = SYSDATETIMEOFFSET(), [StatusChangedBy] = N'{Actor}'
         WHERE [PositionId] = '{positionId}';
         """);
 
@@ -4099,6 +4809,19 @@ public sealed class EmployeeBoundarySqlServerTests
       await ExecuteAsync($"""
         UPDATE [tenant].[Departments]
         SET [Status] = N'Inactive', [StatusChangedUtc] = SYSDATETIMEOFFSET(), [StatusChangedBy] = N'{Actor}',
+            [ModifiedUtc] = SYSDATETIMEOFFSET(), [ModifiedBy] = N'{Actor}'
+        WHERE [DepartmentId] = '{departmentId}'
+        """);
+    }
+
+    // The mirror of the deactivation above, and direct for the same reason: this is an ARRANGE step, and
+    // the department lifecycle handlers are exercised by `DepartmentApplicationSqlServerTests`. What is
+    // under test HERE is the EMPLOYEE side's response to the resulting status.
+    public async Task ReactivateDepartmentAsync(Guid departmentId)
+    {
+      await ExecuteAsync($"""
+        UPDATE [tenant].[Departments]
+        SET [Status] = N'Active', [StatusChangedUtc] = SYSDATETIMEOFFSET(), [StatusChangedBy] = N'{Actor}',
             [ModifiedUtc] = SYSDATETIMEOFFSET(), [ModifiedBy] = N'{Actor}'
         WHERE [DepartmentId] = '{departmentId}'
         """);
@@ -4392,7 +5115,6 @@ public sealed class EmployeeBoundarySqlServerTests
 
       public string? Email => null;
 
-      public Guid? CompanyId => null;
 
       public string? SessionId => null;
 
@@ -4473,7 +5195,7 @@ public sealed class EmployeeBoundarySqlServerTests
         new EmployeeFixture.TestTenant(fixture.Tenant));
 
       accessor = new TenantDbContextAccessorShim(provider);
-      unitOfWork = new TenantUnitOfWork(provider, new NoOpDispatcher());
+      unitOfWork = TestUnitOfWork.Tenant(provider, new NoOpDispatcher());
     }
 
     public long SessionId { get; }
@@ -4572,17 +5294,33 @@ public sealed class EmployeeBoundarySqlServerTests
 
     public UpdateEmployeeProfileCommandHandler Update() => new(
       new EmployeeRepository(accessor), unitOfWork,
+      new TestCurrentCompany(Company),
       new EmployeeFixture.TestUser(), new EmployeeFixture.TestClock());
 
+    // ---- T-091's DEACTIVATOR IS A NO-OP HERE, AND THAT IS STATED RATHER THAN CONVENIENT.
+    //
+    // These tests are about the TENANT database's boundaries. The account-closure half writes the PLATFORM
+    // database, which this fixture does not stand up at all. A no-op keeps the boundary tests testing the
+    // boundary — **and it means nothing here proves the account closes.** That is asserted where the two
+    // sides both exist: `EmployeeTerminationAccountClosureTests` in the API suite.
     public TerminateEmployeeCommandHandler Terminate() => new(
-      new EmployeeRepository(accessor), unitOfWork,
+      new EmployeeRepository(accessor), unitOfWork, new NoOpTenantUserDeactivator(),
+      new TestCurrentCompany(Company),
       new EmployeeFixture.TestUser(), new EmployeeFixture.TestClock());
+
+    private sealed class NoOpTenantUserDeactivator : SSAS.BuildingBlocks.Tenancy.ITenantUserDeactivator
+    {
+      public Task<Result> DeactivateForEmployeeAsync(
+        Guid employeeId, CancellationToken cancellationToken = default) =>
+        Task.FromResult(Result.Success());
+    }
 
     // FP-009. The export's default status set is Active AND Inactive, so a test about what a DEFAULT export
     // carries needs a real inactive employee — produced by the real transition, because a hand-written status
     // could be one no transition allows.
     public DeactivateEmployeeCommandHandler Deactivate() => new(
       new EmployeeRepository(accessor), unitOfWork,
+      new TestCurrentCompany(Company),
       new EmployeeFixture.TestUser(), new EmployeeFixture.TestClock());
 
     // The scoped context is owned by this graph, exactly as a request scope owns it in production.
@@ -4609,6 +5347,7 @@ public sealed class EmployeeBoundarySqlServerTests
     public TransferEmployeeCommandHandler Transfer() => new(
       new EmployeeRepository(accessor), BranchAccess, transferScope, unitOfWork,
       new EmployeeFixture.TestTenant(fixture.Tenant),
+      new TestCurrentCompany(Company),
       new TestCurrentTenantUser(tenantUserId),
       new EmployeeFixture.TestUser(),
       new EmployeeFixture.TestClock());
@@ -4665,7 +5404,6 @@ public sealed class EmployeeBoundarySqlServerTests
 
     public string? Email => null;
 
-    public Guid? CompanyId => null;
 
     public string? SessionId => null;
 

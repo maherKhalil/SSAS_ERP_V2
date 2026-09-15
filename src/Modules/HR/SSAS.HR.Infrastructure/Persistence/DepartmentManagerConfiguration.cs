@@ -17,6 +17,22 @@ namespace SSAS.HR.Infrastructure.Persistence;
 // this table's foreign keys point OUTWARD, so it is a dependent of Department and of Employee and a
 // principal of neither, and the graph stays acyclic with full referential integrity.
 //
+// ---- ASSERTED SINCE 2026-09-01, NOT ONLY REASONED (244).
+//
+// `CutoverCopyOrderCycleTests.A_foreign_key_cycle_makes_the_copy_order_undecidable`, in
+// `tests/Platform.Tests/TenantStorage/`, constructs a model whose two tenant-owned tables reference
+// each other and asserts the failure. Its matched control asserts that the SAME two tables, with one
+// of the two foreign keys removed, produce a plan -- so the failure is attributable to the cycle
+// rather than to the tables being undescribable.
+//
+// PRECISION, BECAUSE THIS COMMENT NAMES `Order`: the test calls the public
+// `TenantCutoverCopyPlan.Build`. `Order` is private and the cycle check -- the point at which no
+// table is ready -- is inside it, so `Build` is the only way to reach it.
+//
+// AND THE BOUND, WHICH IS THE HALF A CITATION USUALLY LOSES: WHAT IS TESTED IS THAT THE PLANNER
+// REFUSES A CYCLE. That THIS table's shape would produce one is still read from the model rather
+// than executed. The mechanism is proven; applying it to this table is an argument.
+//
 // ---- THE PRIMARY KEY IS THE DEPARTMENT.
 //
 // "At most one manager per department" is therefore a fact of the schema, not something a handler

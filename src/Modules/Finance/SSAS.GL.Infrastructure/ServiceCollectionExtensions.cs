@@ -29,6 +29,8 @@ public static class ServiceCollectionExtensions
     // ---- WRITE-SIDE PORTS. Scoped, because each resolves the tenant's context per request.
     services.AddScoped<IAccountRepository, AccountRepository>();
     services.AddScoped<IFiscalCalendarRepository, FiscalCalendarRepository>();
+    services.AddScoped<SSAS.GL.Application.Calendar.IFiscalYearDefinitionLock, Persistence.SqlServerFiscalYearDefinitionLock>();
+    services.AddScoped<SSAS.GL.Application.Calendar.IFiscalPeriodPostingLock, Persistence.SqlServerFiscalPeriodPostingLock>();
     services.AddScoped<IJournalDraftRepository, JournalDraftRepository>();
     services.AddScoped<IJournalEntryRepository, JournalEntryRepository>();
 

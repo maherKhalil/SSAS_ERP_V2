@@ -152,6 +152,16 @@ public sealed class DepartmentSchemaSqlServerTests
   // this proves the half that has a database guarantee, and nothing more.
   [Fact]
   [Trait("Decision", "ADR-026")]
+  // CITED BY B18 pass 22 -- `AC-DEP-0012`'s SECOND CLAUSE, VERBATIM INCLUDING ITS INSTRUMENT. The
+  // criterion names the constraint: *the database check constraint `CK_Departments_ParentIsNotSelf`
+  // refuses it as well when attempted directly in SQL*. This test bypasses every handler with a raw
+  // UPDATE and asserts the SqlException message contains that exact name.
+  //
+  // ⚠ EARLIER PASSES RECORDED THIS CLAUSE AS UNRESOLVED -- *whether a CHECK CONSTRAINT is asserted
+  // separately is unsearched* -- because they searched the DOMAIN and APPLICATION suites. The answer
+  // was in the SCHEMA suite, which is exactly where `AC-DEP-0024`'s answer was too. A criterion whose
+  // clause names a database object is answered by the suite that talks to the database.
+  [Trait("Criterion", "AC-DEP-0012")]
   public async Task A_department_cannot_be_its_own_parent_even_in_raw_sql()
   {
     await using var fixture = await DepartmentFixture.CreateAsync();
@@ -218,6 +228,17 @@ public sealed class DepartmentSchemaSqlServerTests
   // unrepresentable. That is the difference this table's shape exists to buy.
   [Fact]
   [Trait("Decision", "ADR-026")]
+  // CITED BY B18 pass 20, body-confirmed -- VERBATIM INCLUDING ITS INSTRUMENT. `AC-DEP-0024` says
+  // *at most one manager, enforced by the primary key of `tenant.DepartmentManagers` RATHER THAN BY
+  // A HANDLER CHECK*. This test inserts twice through the fixture, bypassing every handler, and then
+  // asserts the `SqlException` message names `PK_DepartmentManagers`. The key does the refusing and
+  // the assertion reads the key's own name.
+  //
+  // B18 pass 19 offered `Concurrent_manager_assignment_cannot_produce_two_rows` for this criterion.
+  // Reading that test's body refuted it: its own comment records that BOTH callers may legitimately
+  // succeed, because assignment is an upsert and the handler REASSIGNS. It is a good invariant test
+  // and it cannot discriminate key-enforcement from handler-enforcement, which is the whole clause.
+  [Trait("Criterion", "AC-DEP-0024")]
   public async Task A_department_can_have_at_most_one_manager()
   {
     await using var fixture = await DepartmentFixture.CreateAsync();
@@ -644,7 +665,6 @@ public sealed class DepartmentSchemaSqlServerTests
 
       public string? Email => null;
 
-      public Guid? CompanyId => null;
 
       public string? SessionId => null;
 

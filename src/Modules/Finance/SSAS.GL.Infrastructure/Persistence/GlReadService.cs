@@ -90,16 +90,27 @@ internal sealed class GlReadService(ITenantDbContextAccessor contextAccessor) : 
       years = years.Where(year => year.CompanyId == requested);
     }
 
+    // ---- ⚠ ORDERED BEFORE PROJECTING, AND THE ORDER OF THOSE TWO IS NOT A STYLE CHOICE.
+    //
+    // This ordered by `StartUtc` ON THE PROJECTED `FiscalPeriodListItem`, and EF Core cannot translate an
+    // ORDER BY over a client-constructed object: the whole query threw
+    // "The LINQ expression ... could not be translated" at runtime, on every call. **It was found the
+    // first time anything constructed this class** -- see the item 233 test -- because `GlReadService`
+    // had never been instantiated in any suite.
+    //
+    // Ordering on the ENTITY and projecting afterwards produces the same rows in the same order and
+    // translates to a plain ORDER BY on the column.
     return await years
-      .SelectMany(year => year.Periods, (year, period) => new FiscalPeriodListItem(
-        period.Id,
-        year.Id,
-        year.Code,
-        period.Name,
-        period.StartUtc,
-        period.EndUtc,
-        period.Status == FiscalPeriodStatus.Open))
-      .OrderBy(period => period.StartUtc)
+      .SelectMany(year => year.Periods, (year, period) => new { Year = year, Period = period })
+      .OrderBy(row => row.Period.StartUtc)
+      .Select(row => new FiscalPeriodListItem(
+        row.Period.Id,
+        row.Year.Id,
+        row.Year.Code,
+        row.Period.Name,
+        row.Period.StartUtc,
+        row.Period.EndUtc,
+        row.Period.Status == FiscalPeriodStatus.Open))
       .ToListAsync(cancellationToken);
   }
 
@@ -139,8 +150,13 @@ internal sealed class GlReadService(ITenantDbContextAccessor contextAccessor) : 
       query = query.Where(entry => entry.Reference == trimmed);
     }
 
+    // ⚠ COMPANY-SCOPED TOO (255). `JournalEntry` is `ICompanyOwnedEntity` and there is no global company
+    // filter, so a tenant-only predicate here reads every company's reversals. It excludes nothing
+    // legitimate — a reversal always carries its original's `CompanyId` — but without it a row created by
+    // raw SQL or a future handler could flip `IsReversed` on a journal from a company the caller cannot see.
     var reversals = context.Set<JournalEntry>().AsNoTracking()
-      .Where(candidate => candidate.TenantId == scope.TenantId);
+      .Where(candidate => candidate.TenantId == scope.TenantId
+        && scope.CompanyIds.Contains(candidate.CompanyId));
 
     return await query
       .OrderByDescending(entry => entry.EntryDateUtc)
@@ -166,8 +182,13 @@ internal sealed class GlReadService(ITenantDbContextAccessor contextAccessor) : 
     var context = await contextAccessor.GetRequiredAsync(cancellationToken);
 
     var accounts = context.Set<Account>().AsNoTracking();
+    // ⚠ COMPANY-SCOPED TOO (255). `JournalEntry` is `ICompanyOwnedEntity` and there is no global company
+    // filter, so a tenant-only predicate here reads every company's reversals. It excludes nothing
+    // legitimate — a reversal always carries its original's `CompanyId` — but without it a row created by
+    // raw SQL or a future handler could flip `IsReversed` on a journal from a company the caller cannot see.
     var reversals = context.Set<JournalEntry>().AsNoTracking()
-      .Where(candidate => candidate.TenantId == scope.TenantId);
+      .Where(candidate => candidate.TenantId == scope.TenantId
+        && scope.CompanyIds.Contains(candidate.CompanyId));
 
     return await context.Set<JournalEntry>().AsNoTracking()
       .Where(entry => entry.TenantId == scope.TenantId
@@ -183,6 +204,100 @@ internal sealed class GlReadService(ITenantDbContextAccessor contextAccessor) : 
         entry.ReversesJournalEntryId,
         reversals.Any(candidate => candidate.ReversesJournalEntryId == entry.Id),
         entry.Lines
+          .OrderBy(line => line.LineNumber)
+          .Select(line => new JournalLineDetail(
+            line.LineNumber,
+            line.AccountId,
+            accounts.Where(account => account.Id == line.AccountId).Select(account => account.Code.Value).First(),
+            accounts.Where(account => account.Id == line.AccountId).Select(account => account.Name.Value).First(),
+            line.Debit,
+            line.Credit,
+            line.Description))
+          .ToList()))
+      .FirstOrDefaultAsync(cancellationToken);
+  }
+
+  // ================================================================================================
+  // THE DRAFT READS (T-098). SAME PREDICATES AS THE JOURNAL READS, AND THAT IS THE POINT.
+  // ================================================================================================
+  //
+  // Tenant and company come from the scope, never from the caller, exactly as `SearchJournalsAsync` does.
+  // A draft is scratch space rather than a ledger entry, **and that changes nothing about who may see it**:
+  // it belongs to a company and is readable only by someone the scope admits to that company.
+  public async Task<IReadOnlyList<JournalDraftListItem>> SearchJournalDraftsAsync(
+    GlReadScope scope,
+    Guid? companyId,
+    DateTimeOffset? fromUtc,
+    DateTimeOffset? toUtc,
+    string? reference,
+    CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(scope);
+
+    var context = await contextAccessor.GetRequiredAsync(cancellationToken);
+
+    var query = context.Set<JournalDraft>().AsNoTracking()
+      .Where(draft => draft.TenantId == scope.TenantId && scope.CompanyIds.Contains(draft.CompanyId));
+
+    if (companyId is { } requested)
+    {
+      query = query.Where(draft => draft.CompanyId == requested);
+    }
+
+    if (fromUtc is { } from)
+    {
+      query = query.Where(draft => draft.EntryDateUtc >= from);
+    }
+
+    if (toUtc is { } to)
+    {
+      query = query.Where(draft => draft.EntryDateUtc < to);
+    }
+
+    if (!string.IsNullOrWhiteSpace(reference))
+    {
+      var trimmed = reference.Trim();
+      query = query.Where(draft => draft.Reference == trimmed);
+    }
+
+    // ---- ORDERED BY DATE THEN ID, NOT BY NUMBER.
+    //
+    // `SearchJournalsAsync` breaks ties on `JournalNumber`. **A draft has no number** — it is assigned at
+    // posting — so the id is the only stable tiebreak, and a stable one is required or two calls can
+    // return the same rows in a different order.
+    return await query
+      .OrderByDescending(draft => draft.EntryDateUtc)
+      .ThenBy(draft => draft.Id)
+      .Select(draft => new JournalDraftListItem(
+        draft.Id,
+        draft.CompanyId,
+        draft.EntryDateUtc,
+        draft.Description,
+        draft.Reference,
+        draft.Lines.Sum(line => line.Debit)))
+      .ToListAsync(cancellationToken);
+  }
+
+  public async Task<JournalDraftDetail?> GetJournalDraftAsync(
+    GlReadScope scope, Guid journalDraftId, CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(scope);
+
+    var context = await contextAccessor.GetRequiredAsync(cancellationToken);
+
+    var accounts = context.Set<Account>().AsNoTracking();
+
+    return await context.Set<JournalDraft>().AsNoTracking()
+      .Where(draft => draft.TenantId == scope.TenantId
+        && scope.CompanyIds.Contains(draft.CompanyId)
+        && draft.Id == journalDraftId)
+      .Select(draft => new JournalDraftDetail(
+        draft.Id,
+        draft.CompanyId,
+        draft.EntryDateUtc,
+        draft.Description,
+        draft.Reference,
+        draft.Lines
           .OrderBy(line => line.LineNumber)
           .Select(line => new JournalLineDetail(
             line.LineNumber,
@@ -279,13 +394,23 @@ internal sealed class GlReadService(ITenantDbContextAccessor contextAccessor) : 
         TotalDebits = group.Sum(line => line.Debit),
         TotalCredits = group.Sum(line => line.Credit)
       })
+      // ---- ⚠ ORDERED ON THE ENTITY, PROJECTED AFTERWARDS. THE SAME DEFECT AS `GetFiscalPeriodsAsync`.
+      //
+      // This ordered by `Code` on the projected `TrialBalanceRow`, and EF Core cannot translate an ORDER
+      // BY over a client-constructed object: the query threw "The LINQ expression ... could not be
+      // translated" on every call. `NormalizedCode` is the ordering column the account search already
+      // uses, and it is a mapped scalar rather than a value-converted one.
+      //
+      // **Both instances were found the first time anything constructed this class** (item 233), and
+      // `EmployeeReadService` has always had the correct shape -- join, order on the ENTITY, project last.
       .Join(
         context.Set<Account>().AsNoTracking(),
         row => row.AccountId,
         account => account.Id,
-        (row, account) => new TrialBalanceRow(
-          account.Id, account.Code.Value, account.Name.Value, row.TotalDebits, row.TotalCredits))
-      .OrderBy(row => row.Code)
+        (row, account) => new { Account = account, row.TotalDebits, row.TotalCredits })
+      .OrderBy(row => row.Account.NormalizedCode)
+      .Select(row => new TrialBalanceRow(
+        row.Account.Id, row.Account.Code.Value, row.Account.Name.Value, row.TotalDebits, row.TotalCredits))
       .ToListAsync(cancellationToken);
 
     return new TrialBalance(rows);

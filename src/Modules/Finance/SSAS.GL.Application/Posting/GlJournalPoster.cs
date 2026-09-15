@@ -1,5 +1,7 @@
 using System.Globalization;
 using SSAS.BuildingBlocks.Tenancy.Persistence;
+using SSAS.GL.Application.Calendar;
+using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.GL.Application.Abstractions;
 using SSAS.GL.Contracts.Posting;
 using SSAS.GL.Domain.Accounts;
@@ -48,6 +50,8 @@ public sealed class GlJournalPoster(
   IJournalEntryRepository journals,
   IAccountRepository accounts,
   IFiscalCalendarRepository calendar,
+  IFiscalPeriodPostingLock postingLock,
+  ICurrentTenant currentTenant,
   ITenantUnitOfWork unitOfWork) : IJournalPoster
 {
   public async Task<JournalPostingOutcome> PostAsync(
@@ -61,6 +65,26 @@ public sealed class GlJournalPoster(
     // must still be so when the row is written. Reading outside the transaction and writing inside it leaves
     // exactly the window those rules exist to close.
     await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
+
+    // ---- THE POSTING FENCE, TAKEN BEFORE THE PERIOD IS READ (249). See `IFiscalPeriodPostingLock`.
+    //
+    // ⚠ A RE-READ INSIDE THIS TRANSACTION WOULD NARROW THIS WINDOW AND NOT CLOSE IT under READ COMMITTED.
+    // THE READ MUST FOLLOW THE LOCK. Measured 2026-09-01: without the fence a second connection closed
+    // the period while a poster's transaction held its read -- it did not block -- and the journal
+    // committed into a period whose status was `Closed`.
+    if (currentTenant.TenantId is not { } tenantId)
+    {
+      return JournalPostingOutcome.Refused(JournalPostingStatus.PeriodStateChanging);
+    }
+
+    var fenced = await postingLock.AcquireForPostingAsync(
+      tenantId, request.CompanyId, cancellationToken);
+
+    if (fenced.IsFailure)
+    {
+      return JournalPostingOutcome.Refused(JournalPostingStatus.PeriodStateChanging, fenced.Error.Message);
+    }
+
 
     var draft = JournalDraft.Create(request.EntryDateUtc, request.Description, request.Reference);
     if (draft.IsFailure)
@@ -85,7 +109,29 @@ public sealed class GlJournalPoster(
       return JournalPostingOutcome.Refused(JournalPostingStatus.Unbalanced, postable.Error.Message);
     }
 
-    var year = await calendar.GetCoveringAsync(request.CompanyId, draft.Value.EntryDateUtc, cancellationToken);
+    var covering = await calendar.GetCoveringAsync(request.CompanyId, draft.Value.EntryDateUtc, cancellationToken);
+
+    // A `Failure` is AMBIGUITY - more than one fiscal year covers this date (T-187).
+    // **Payroll posts through this path too**, so the same broken calendar reaches the
+    // ledger from two directions and both must refuse rather than pick.
+    //
+    // ---- ⚠ THIS STAYS `PeriodNotFound` WHILE THE WINDOW BELOW SAYS `CalendarAmbiguous`, AND THE
+    // ---- ASYMMETRY IS MEASURED RATHER THAN OVERLOOKED (T-188).
+    //
+    // The remedy argument in `PostingWindowStatus.CalendarAmbiguous` turns on an OPERATOR reading the
+    // status. `JournalPostingStatus` has exactly ONE consumer outside this file —
+    // `PayrollRunCommandHandlers`, at two sites — and **both refuse on `!IsPosted` first and refine the
+    // message only for `PeriodClosed`.** Everything else, this included, collapses into a generic
+    // `LedgerRefusedPosting`. **No operator ever reads this value**, so a new one would be inert.
+    //
+    // Widening the enum is cost without effect TODAY. It stops being inert the moment a consumer starts
+    // distinguishing more than `PeriodClosed`, and that is the trigger to revisit.
+    if (covering.IsFailure)
+    {
+      return JournalPostingOutcome.Refused(JournalPostingStatus.PeriodNotFound);
+    }
+
+    var year = covering.Value;
     if (year is null)
     {
       return JournalPostingOutcome.Refused(JournalPostingStatus.PeriodNotFound);
@@ -144,7 +190,37 @@ public sealed class GlJournalPoster(
       return JournalPostingOutcome.Refused(JournalPostingStatus.ReversalTargetUnavailable);
     }
 
-    var year = await calendar.GetCoveringAsync(original.CompanyId, request.ReversalDateUtc, cancellationToken);
+    // ---- THE POSTING FENCE, TAKEN BEFORE THE PERIOD IS READ (249). See `IFiscalPeriodPostingLock`.
+    //
+    // ⚠ A RE-READ INSIDE THIS TRANSACTION WOULD NARROW THIS WINDOW AND NOT CLOSE IT under READ COMMITTED.
+    // THE READ MUST FOLLOW THE LOCK. Measured 2026-09-01: without the fence a second connection closed
+    // the period while a poster's transaction held its read -- it did not block -- and the journal
+    // committed into a period whose status was `Closed`.
+    if (currentTenant.TenantId is not { } tenantId)
+    {
+      return JournalPostingOutcome.Refused(JournalPostingStatus.PeriodStateChanging);
+    }
+
+    var fenced = await postingLock.AcquireForPostingAsync(
+      tenantId, original.CompanyId, cancellationToken);
+
+    if (fenced.IsFailure)
+    {
+      return JournalPostingOutcome.Refused(JournalPostingStatus.PeriodStateChanging, fenced.Error.Message);
+    }
+
+
+    var covering = await calendar.GetCoveringAsync(original.CompanyId, request.ReversalDateUtc, cancellationToken);
+
+    // A `Failure` is AMBIGUITY - more than one fiscal year covers this date (T-187).
+    // **Payroll posts through this path too**, so the same broken calendar reaches the
+    // ledger from two directions and both must refuse rather than pick.
+    if (covering.IsFailure)
+    {
+      return JournalPostingOutcome.Refused(JournalPostingStatus.PeriodNotFound);
+    }
+
+    var year = covering.Value;
     if (year is null)
     {
       return JournalPostingOutcome.Refused(JournalPostingStatus.PeriodNotFound);
@@ -188,10 +264,41 @@ public sealed class GlJournalPoster(
 
   // A QUERY. No transaction, no write, no reservation — see the contract's own comment on why this exists
   // and what it deliberately does not promise.
+  //
+  // ---- ⚠ AND IT TAKES NO POSTING FENCE, WHICH IS CORRECT AND NOT AN OMISSION (249).
+  //
+  // After 249 two of this type's three public methods take `IFiscalPeriodPostingLock` and this one does
+  // not, so a reader will reasonably wonder whether it was missed. IT WAS NOT. The fence exists to make a
+  // period's state hold from a READ to a WRITE inside one transaction; this method writes nothing and
+  // promises nothing. `PayrollRunCommandHandlers` records the consequence on its side: the window
+  // inspected at approval IS NOT A RESERVATION, so a period may close between this answer and the
+  // posting, and `PostAsync` answering `PeriodClosed` is the honest outcome when it does.
+  //
+  // ⚠⚠ FENCING THIS WOULD BE WORSE THAN USELESS: it would hold a shared lock across a read that grants
+  // nothing, making the answer look like a promise it cannot keep.
   public async Task<PostingWindow> InspectPostingWindowAsync(
     Guid companyId, DateTimeOffset entryDateUtc, CancellationToken cancellationToken = default)
   {
-    var year = await calendar.GetCoveringAsync(companyId, entryDateUtc, cancellationToken);
+    var covering = await calendar.GetCoveringAsync(companyId, entryDateUtc, cancellationToken);
+
+    // ---- ⚠ THIS ONE IS A QUERY, AND ITS ANSWER IS THE ONE THAT WORRIES ME MOST (T-187).
+    //
+    // A `Failure` is AMBIGUITY — more than one fiscal year covers this date. **`PostingWindow` has no
+    // vocabulary for that**: its statuses describe a period's state, not a calendar's integrity, and
+    // widening the contract would change what every caller must handle for a condition none of them can
+    // remedy.
+    //
+    // ---- IT ANSWERS `CalendarAmbiguous`, AND T-187 ANSWERED `PeriodNotFound` HERE (T-188).
+    //
+    // That degradation was wrong for a reason stronger than incompleteness: **`PeriodNotFound` prescribes
+    // "define the calendar", and an operator with two overlapping years who follows it defines a THIRD.**
+    // The status did not merely fail to help; it instructed the harmful action on the ledger's authority.
+    if (covering.IsFailure)
+    {
+      return new PostingWindow(PostingWindowStatus.CalendarAmbiguous, null);
+    }
+
+    var year = covering.Value;
     if (year is null)
     {
       return new PostingWindow(PostingWindowStatus.PeriodNotFound, null);

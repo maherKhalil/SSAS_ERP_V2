@@ -21,6 +21,14 @@ public sealed class FiscalYearConfiguration : IEntityTypeConfiguration<FiscalYea
 
     builder.HasKey(year => year.Id);
 
+    
+
+    // The key is assigned in the constructor, so the store generates nothing (see the guard
+
+    // `Every_constructor_keyed_entity_declares_its_key_value_generated_never`).
+
+    builder.Property(year => year.Id).ValueGeneratedNever();
+
     builder.Property(year => year.TenantId).IsRequired();
     builder.Property(year => year.CompanyId).IsRequired();
 
@@ -59,6 +67,13 @@ public sealed class FiscalYearConfiguration : IEntityTypeConfiguration<FiscalYea
     builder.HasIndex(year => new { year.TenantId, year.CompanyId, year.Code })
       .IsUnique()
       .HasDatabaseName("UX_GlFiscalYears_Tenant_Company_Code");
+
+    // ---- AND THERE IS DELIBERATELY NO INDEX ON (StartUtc, EndUtc). THE ABSENCE IS THE DECISION.
+    //
+    // Years must not overlap, and no index can enforce that — `DEC-L-084`. `DefineFiscalYearCommandHandler`
+    // is the only enforcement, and `CalendarCommandHandlers.cs:73` weighs the residual exposure and
+    // accepts it. **Adding a range index here would be reasonable for query support and would still
+    // constrain nothing** — so it must not be read as closing the gap.
   }
 }
 
@@ -81,6 +96,14 @@ public sealed class FiscalPeriodConfiguration : IEntityTypeConfiguration<FiscalP
     });
 
     builder.HasKey(period => period.Id);
+
+    
+
+    // The key is assigned in the constructor, so the store generates nothing (see the guard
+
+    // `Every_constructor_keyed_entity_declares_its_key_value_generated_never`).
+
+    builder.Property(period => period.Id).ValueGeneratedNever();
 
     // Present because FiscalPeriod is ITenantOwnedEntity — which it must be, or the E3 cutover manifest
     // (derived by reflection over that interface) would not carry this table and the periods would silently

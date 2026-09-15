@@ -75,8 +75,8 @@ public sealed class EmployeeDepartmentArchitectureTests
     // No EffectiveToUtc: closing an interval means UPDATING the previous row, which is the history mutation
     // this model exists to prevent. The interval is derived by ordering.
     Assert.Null(type.GetProperty("EffectiveToUtc"));
-    Assert.Null(type.GetProperty("ModifiedUtc"));
-    Assert.Null(type.GetProperty("ModifiedBy"));
+    Assert.Null(type.GetProperty(nameof(SSAS.BuildingBlocks.Domain.IAuditableEntity.ModifiedUtc)));
+    Assert.Null(type.GetProperty(nameof(SSAS.BuildingBlocks.Domain.IAuditableEntity.ModifiedBy)));
   }
 
   // ---- THE FACTORIES ARE INTERNAL, so nothing outside the domain assembly can fabricate a history row.
@@ -104,6 +104,12 @@ public sealed class EmployeeDepartmentArchitectureTests
   // Two independent locks, and both must hold. The property has no public setter, so no code can assign it;
   // and the ordinary update command has no department parameter, so no REQUEST can express it.
   [Fact]
+  // CITED BY B18 pass 20, body-confirmed: an employee's department cannot be changed through the
+  // ordinary update. The test asserts it BY CONSTRUCTION -- `Employee.DepartmentId` has no public
+  // setter, and neither `UpdateEmployeeProfileCommand` nor `TransferEmployeeCommand` declares a
+  // department property -- which is stronger than a validator rejecting the field, and is why the
+  // criterion's *rejected rather than silently ignored* holds: there is no field to ignore.
+  [Trait("Criterion", "AC-DEP-0035")]
   public void The_department_cannot_be_changed_through_an_ordinary_employee_update()
   {
     var departmentId = typeof(Employee).GetProperty(nameof(Employee.DepartmentId));
@@ -188,6 +194,19 @@ public sealed class EmployeeDepartmentArchitectureTests
   [Fact]
   public void The_hr_domain_still_references_no_platform_assembly()
   {
+    // ⚠ DECLARED AND EMITTED, BECAUSE THEY FAIL ON DIFFERENT DAYS (272). `GetReferencedAssemblies()` reads
+    // emitted metadata and the compiler omits a reference no type is taken from, so a `.csproj` could
+    // declare Platform and pass here until somebody first used a type. Declared catches the capability at
+    // merge time; emitted catches consumption through a transitive path no `.csproj` of ours names.
+    // The control proves the predicate fires where a Platform reference legitimately exists.
+    Assert.Contains(
+      DeclaredDependencies.Of("SSAS.Host.API"),
+      name => name.StartsWith("SSAS.Platform", StringComparison.Ordinal));
+
+    Assert.DoesNotContain(
+      DeclaredDependencies.Of(HrDomainAssembly),
+      name => name.StartsWith("SSAS.Platform", StringComparison.Ordinal));
+
     Assert.DoesNotContain(
       HrDomainAssembly.GetReferencedAssemblies(),
       reference => reference.Name?.StartsWith("SSAS.Platform", StringComparison.Ordinal) ?? false);

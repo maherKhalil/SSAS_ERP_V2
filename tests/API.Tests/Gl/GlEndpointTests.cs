@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Net;
 using SSAS.GL.Application.Permissions;
 using SSAS.GL.Application.Reads;
@@ -120,6 +121,47 @@ public sealed class GlEndpointTests : IClassFixture<GlApiTestHost>
   // STRICT READING
   // ================================================================================================
 
+  // ⚠ THE REFUSAL NAMES THE INPUT IT CONCERNS, END TO END (T-269).
+  //
+  // Asserted through a real request rather than on the constant, because the field has to survive four
+  // hops it did not used to make: the value object attaching it to the domain `Error`, the mapper carrying
+  // it onto the `ApiError`, `ApiProblems` choosing to project it, and the extension surviving
+  // serialization. A test on `AccountErrors.InvalidCode` proves none of that.
+  //
+  // `code` and `name` are the whole payload here and both can fail the same way, so **a caller told only
+  // `request.invalid` cannot mark either.** That is the collapse this addresses: 129 domain codes answer
+  // with one wire code, and the field is what makes the answer actionable rather than merely readable.
+  [Fact]
+  public async Task A_refusal_names_the_input_it_concerns()
+  {
+    var response = await host.Client.SendAsync(GlApiTestHost.Request(
+      HttpMethod.Post, "/api/gl/accounts", host.TokenWith(GlPermissionNames.CreateAccounts),
+      """{"code":"","name":"Receivables"}"""));
+
+    Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    Assert.Equal("request.invalid", await GlApiTestHost.ProblemCodeAsync(response));
+
+    using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+
+    Assert.Equal("code", document.RootElement.GetProperty("field").GetString());
+  }
+
+  // And a refusal that concerns NO single input carries no `field` at all -- absent, not null. A client
+  // binding to it would otherwise be told to mark an input called `null`.
+  [Fact]
+  public async Task A_refusal_that_names_no_input_carries_no_field_member()
+  {
+    var response = await host.Client.SendAsync(GlApiTestHost.Request(
+      HttpMethod.Post, "/api/gl/accounts", host.TokenWith(GlPermissionNames.CreateAccounts),
+      """{"code":"4100","name":"Receivables","surprise":true}"""));
+
+    Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+    using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+
+    Assert.False(document.RootElement.TryGetProperty("field", out _));
+  }
+
   [Fact]
   [Trait("Decision", "TS-GL-0026")]
   public async Task An_unknown_property_is_refused_rather_than_ignored()
@@ -187,6 +229,66 @@ public sealed class GlEndpointTests : IClassFixture<GlApiTestHost>
     Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
   }
 
+  // ==============================================================================================
+  // ⚠⚠⚠ CITES `AC-GL-0008`. THE GUARDED FAILURE IS A SILENT OVERWRITE IN THE GENERAL LEDGER.
+  // ==============================================================================================
+  //
+  // *"An account's name may be updated. Concurrent updates are detected by `RowVersion` and THE LOSER IS
+  // REFUSED RATHER THAN SILENTLY OVERWRITING."*
+  //
+  // **Written because GL had no such test while its siblings did:** `concurrency.conflict` is asserted 21
+  // times across this repository — `CompaniesMutationEndpointTests` twice, `DepartmentEndpointTests` once,
+  // and others — **and ZERO times under `tests/API.Tests/Gl/` or `tests/Finance.Tests/`.** *The mechanism was
+  // already present (`RenameAccountCommandHandler.ApplyConcurrencyToken`), so the failure was constructible
+  // and merely unwitnessed.*
+  //
+  // ---- ⚠⚠⚠ *"RATHER THAN SILENTLY OVERWRITING"* — ASSERTED AS A **SAVE COUNT**, AND THE ROUTE THERE MATTERS.
+  //
+  // My first version read the name back and asserted it was unchanged. **It failed — the account WAS
+  // renamed** — and that is a property of the FIXTURE, not a defect: *`host.Accounts` is an in-memory stub
+  // and the object IS the store*, so `account.Rename(...)` is visible the instant the handler calls it,
+  // whether or not the save then fails. **Against a real context the same mutation sits on a tracked entity
+  // and a failed `SaveChangesAsync` never commits it.**
+  //
+  // ***AND A SAVE COUNT DOES NOT RESCUE IT HERE EITHER — I ADDED ONE, TRIED IT, AND IT WAS VACUOUS.***
+  //
+  // `CompaniesMutationEndpointTests` asserts `SaveCount == 0` for this clause and it MEANS something there,
+  // because that test supplies a STALE ROWVERSION and its handler refuses BEFORE reaching the save.
+  // ⚠⚠ **THIS TEST INJECTS THE FAILURE AT THE SAVE ITSELF, SO THE COUNTER CANNOT INCREMENT WHATEVER THE
+  // HANDLER DOES.** *`Assert.Equal(0, SaveCount)` would have passed on any implementation at all* — an
+  // assertion whose subject is fixed by the arrangement rather than observed from the behaviour.
+  //
+  // ⚠ *Why the injection is unavoidable at this layer: `RowVersion` mismatch is detected by EF at
+  // `SaveChangesAsync`, and there is no EF here. The stub cannot detect staleness, so the refusal has to be
+  // handed to it — which is precisely what makes the "nothing committed" question unanswerable.*
+  //
+  // ***SO THE CLAUSE IS TIER-2 BY CONSTRUCTION AFTER ALL, AND FOR A SHARPER REASON THAN I FIRST GAVE: not
+  // "the stub lacks a counter" but "the refusal cannot originate where the criterion needs it to."***
+  //
+  // ---- ⚠ AND WHAT THIS DOES **NOT** COVER, STATED SO IT IS NOT READ AS COVERED.
+  //
+  // The criterion says the conflict is DETECTED BY `RowVersion`. **This test injects the persistence
+  // layer's verdict and asserts what the route does with it; it does not prove `RowVersion` is the thing
+  // that produced the verdict.** *That is EF configuration (`AccountConfiguration` marks it a concurrency
+  // token) and is asserted semantically by nothing — the migration-drift guard notices a change to it, but
+  // drift is not concurrency.*
+  [Fact]
+  [Trait("Criterion", "AC-GL-0008")]
+  public async Task An_account_rename_losing_the_row_version_race_is_refused_and_changes_nothing()
+  {
+    host.Accounts.Accounts[GlApiTestHost.AccountId] = Account.Create("4100", "Receivables").Value;
+    host.UnitOfWork.Failure = new SSAS.BuildingBlocks.Domain.Error(
+      "Persistence.ConcurrencyConflict", "The row was modified by another caller.");
+
+    var response = await host.Client.SendAsync(GlApiTestHost.Request(
+      HttpMethod.Put, $"/api/gl/accounts/{GlApiTestHost.AccountId}",
+      host.TokenWith(GlPermissionNames.UpdateAccounts),
+      """{"name":"Renamed by the loser","rowVersion":"AAAAAAAAB9E="}"""));
+
+    Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    Assert.Equal("concurrency.conflict", await GlApiTestHost.ProblemCodeAsync(response));
+  }
+
   [Fact]
   public async Task A_malformed_row_version_has_its_own_code()
   {
@@ -239,6 +341,19 @@ public sealed class GlEndpointTests : IClassFixture<GlApiTestHost>
 
   [Fact]
   [Trait("Decision", "api-contracts.md")]
+  // ⚠ CITES `AC-GL-0010`'s SECOND CLAUSE — *"an account outside it is reported as NOT FOUND rather than as
+  // FORBIDDEN."* **`A_missing_account_is_404` is its necessary pair: the criterion asks for the two cases to
+  // be INDISTINGUISHABLE, and one test alone cannot state a relation between two responses.**
+  //
+  // ⚠⚠ The first clause — *"a caller sees only accounts within their authorized scope"* — is asserted in
+  // `GlSchemaSqlServerTests.A_scope_authorized_for_one_company_reads_none_of_the_others_rows`, which
+  // enumerates SEVEN read sites with a present/absent pair at each. ***THAT HALF IS TIER 2 AND UNGATED;
+  // THIS HALF IS GATED.***
+  //
+  // ⚠ `Assert.NotEqual(Forbidden)` below is SUBSUMED by the `Assert.Equal(NotFound)` above it — if the
+  // status is `NotFound` it cannot be `Forbidden`. *It is emphasis naming the criterion's word, not a second
+  // check*, and is recorded as such so nobody counts it as one.
+  [Trait("Criterion", "AC-GL-0010")]
   public async Task An_account_outside_the_callers_scope_is_reported_as_absent_and_not_as_forbidden()
   {
     // Deliberately indistinguishable from "no such account". Reporting 403 would let a caller enumerate the
@@ -259,6 +374,200 @@ public sealed class GlEndpointTests : IClassFixture<GlApiTestHost>
     var response = await host.Client.SendAsync(GlApiTestHost.Request(
       HttpMethod.Post, "/api/gl/accounts", host.TokenWith(GlPermissionNames.CreateAccounts),
       """{"code":"4100","name":"Receivables"}"""));
+
+    Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    Assert.Equal("gl.conflict", await GlApiTestHost.ProblemCodeAsync(response));
+  }
+
+  // ---- THE JOURNAL-NUMBER RACE ANSWERS 409, NOT 500 (T-165).
+  //
+  // `NextJournalNumberAsync` is a read-then-write and `UX_GlJournalEntries_Tenant_Company_Year_Number`
+  // decides the race at commit. **The loser used to answer 500**: the unit of work returns the generic
+  // `Persistence.UniqueConstraint`, `GlApiErrorMapper` had no arm for it, and the default was
+  // `WriteFailure` — while `Gl.JournalNumberConflict`, mapped to 409, was returned by nothing.
+  //
+  // ⚠ **THE SECOND HALF OF THAT SENTENCE STOPPED BEING TRUE IN T-245**, and this test is why it still
+  // matters. The mapper now has a generic `Persistence.UniqueConstraint` arm, so an untranslated race here
+  // would answer 409 `gl.unique_conflict` rather than 500 — **which means a broken translation no longer
+  // announces itself with a server error.** Asserting the CODE rather than the status is what keeps this
+  // test able to tell "the handler translated it" from "the floor caught it".
+  //
+  // ⚠ **This asserts the STATUS AND THE CODE, and the code is the load-bearing half.** A 409 alone would
+  // also be produced by an inactive account or an already-reversed journal; only `gl.conflict` arriving
+  // from `JournalErrors.NumberConflict` says the translation happened.
+  // ---- THE OTHER TWO GL UNIQUENESS RACES (T-177), AND THEY ARE A DIFFERENT SHAPE FROM THE JOURNAL NUMBER.
+  //
+  // A lost journal-number race is satisfied by retrying — the retry allocates a new number. **These two are
+  // not**: the race and the pre-check produce the same condition, so retrying the identical request fails
+  // again and the caller must change the code. Same 409, different instruction.
+  [Fact]
+  [Trait("Decision", "DEC-DEP-0027")]
+  // ⚠ CITES THE SECOND HALF OF `AC-GL-0007` — *"...a duplicate code is refused WITH A NAMED ERROR."*
+  //
+  // ***THE PROOF IS IN THE CODE ASSERTED, NOT IN THE STATUS.*** The test injects the FLOOR's generic
+  // `Persistence.UniqueConstraint` and asserts `gl.conflict`, **which is not what the floor produces** —
+  // `GlApiErrorMapper` maps `Persistence.UniqueConstraint` to `gl.unique_conflict` and only
+  // `Gl.AccountCodeConflict` to `gl.conflict`. *So a 409 alone would prove nothing; the CODE is what says
+  // the handler translated rather than the floor caught.*
+  //
+  // ⚠⚠ THE FIRST HALF OF THE CRITERION — uniqueness within the owning scope — IS SEPARATE AND UNGATED:
+  // `GlSchemaSqlServerTests.Two_accounts_cannot_share_a_code_within_a_tenant` inserts twice against real SQL.
+  // **That half is TIER 2; this half is gated.**
+  //
+  // ⚠⚠⚠ AND TWO THINGS IN THIS CRITERION'S TEXT ARE STALE AND ARE THE OWNER'S, NOT FIXED HERE:
+  // it names **`GL.Accounts.Manage`, a permission that has never existed** (this module carries
+  // `Create`/`Update`/`Deactivate`/`View`) — the same defect `T-136` recorded for `api-contracts.md` and did
+  // not record for `acceptance-criteria.md` — and its note presents `OD-GL-0003` as an OPEN question when
+  // `authorization-model.md` records it as ruled TENANT-LEVEL and
+  // `GlArchitectureTests.The_account_table_has_no_company_column_in_the_composed_model` enforces the ruling.
+  [Trait("Criterion", "AC-GL-0007")]
+  public async Task A_persistence_conflict_on_account_create_maps_to_409_rather_than_500()
+  {
+    host.UnitOfWork.Failure = new SSAS.BuildingBlocks.Domain.Error(
+      "Persistence.UniqueConstraint", "Unique index violated.");
+
+    var response = await host.Client.SendAsync(GlApiTestHost.Request(
+      HttpMethod.Post, "/api/gl/accounts", host.TokenWith(GlPermissionNames.CreateAccounts),
+      """{"code":"4100","name":"Receivables"}"""));
+
+    Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    Assert.Equal("gl.conflict", await GlApiTestHost.ProblemCodeAsync(response));
+  }
+
+  // ⚠ The fiscal-year translation names the CODE race only. The OVERLAP race has no index behind it
+  // (`DEC-L-084`) and is unchanged by this — `GlFiscalYearOverlapChainSqlServerTests` is what covers the
+  // guard that remains its only enforcement.
+  // ---- LOSING THE CALENDAR LOCK IS A 409 AND IT IS THE ONE THAT IS WORTH RETRYING (T-184).
+  //
+  // `Gl.FiscalCalendarBusy` is transient: the caller is not wrong and nothing about the request needs
+  // changing. **That is the opposite of the two other 409s on this route** — a duplicate code and an
+  // overlapping range both mean the input must change, and repeating the request cannot help.
+  //
+  // Same status, three different instructions, which is why the CODE is asserted and not just the status.
+  // ---- TWO YEARS COVERING ONE DATE IS REFUSED, NOT RESOLVED BY PICKING (T-187).
+  //
+  // T-184 closed the race that could CREATE an overlap. It could not close what the race already wrote,
+  // and `DEC-L-084` means no constraint will ever catch it — so this read is the last line of defence.
+  //
+  // ⚠ **AND ORDERING WOULD NOT HAVE BEEN ENOUGH.** The pick was unstable between calls, and a journal
+  // and its reversal resolve in SEPARATE calls: an entry could land in year A and the entry cancelling it
+  // in year B. An `ORDER BY` makes that consistent rather than correct, and consistency makes a
+  // tiebreak nobody ratified look decided.
+  [Fact]
+  [Trait("Decision", "DEC-L-084")]
+  public async Task Two_fiscal_years_covering_one_date_refuse_the_posting()
+  {
+    var debit = Account.Create("5400", "Utilities").Value;
+    host.Accounts.Accounts[debit.Id] = debit;
+    var credit = Account.Create("1200", "Cash at bank").Value;
+    host.Accounts.Accounts[credit.Id] = credit;
+
+    var draft = JournalDraft.Create(new DateTimeOffset(2026, 6, 1, 0, 0, 0, TimeSpan.Zero),
+      "Overlapped", null).Value;
+    draft.CompanyId = GlApiTestHost.CompanyA;
+    draft.ReplaceLines([(debit.Id, 100m, 0m, null), (credit.Id, 0m, 100m, null)]);
+    host.Drafts.Drafts[draft.Id] = draft;
+
+    // Two years that BOTH cover 1 June 2026. Only a pre-T-184 race could have written this, which is
+    // exactly why the seed is explicit rather than produced through the API.
+    foreach (var code in new[] { "FY2026", "FY2026-DUPLICATE" })
+    {
+      var year = SSAS.GL.Domain.Calendar.FiscalYear.Create(
+        code,
+        new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+        new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero),
+        [(code, new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+          new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero))]).Value;
+      year.CompanyId = GlApiTestHost.CompanyA;
+      host.Calendar.Years[year.Id] = year;
+    }
+
+    var response = await host.Client.SendAsync(GlApiTestHost.Request(
+      HttpMethod.Post, $"/api/gl/journal-drafts/{draft.Id}/posting",
+      host.TokenWith(GlPermissionNames.PostJournals)));
+
+    // The SPECIFIC refusal. A 409 alone would also be produced by a closed period or an inactive
+    // account, and neither of those means "repair the calendar".
+    Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    Assert.Equal("gl.conflict", await GlApiTestHost.ProblemCodeAsync(response));
+  }
+
+  [Fact]
+  [Trait("Decision", "DEC-L-084")]
+  public async Task A_busy_fiscal_calendar_is_409_and_names_a_retryable_condition()
+  {
+    host.CalendarLock.Failure = SSAS.GL.Domain.Calendar.CalendarErrors.CalendarDefinitionBusy;
+
+    var response = await host.Client.SendAsync(GlApiTestHost.Request(
+      HttpMethod.Post, "/api/gl/fiscal-years", host.TokenWith(GlPermissionNames.ManagePeriods),
+      """{"code":"FY2026","startUtc":"2026-01-01T00:00:00Z","endUtc":"2027-01-01T00:00:00Z","periods":[{"name":"P1","startUtc":"2026-01-01T00:00:00Z","endUtc":"2027-01-01T00:00:00Z"}]}"""));
+
+    Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    Assert.Equal("gl.conflict", await GlApiTestHost.ProblemCodeAsync(response));
+  }
+
+  [Fact]
+  [Trait("Decision", "DEC-DEP-0027")]
+  public async Task A_persistence_conflict_on_fiscal_year_define_maps_to_409_rather_than_500()
+  {
+    host.UnitOfWork.Failure = new SSAS.BuildingBlocks.Domain.Error(
+      "Persistence.UniqueConstraint", "Unique index violated.");
+
+    var response = await host.Client.SendAsync(GlApiTestHost.Request(
+      HttpMethod.Post, "/api/gl/fiscal-years", host.TokenWith(GlPermissionNames.ManagePeriods),
+      """{"code":"FY2026","startUtc":"2026-01-01T00:00:00Z","endUtc":"2027-01-01T00:00:00Z","periods":[{"name":"P1","startUtc":"2026-01-01T00:00:00Z","endUtc":"2027-01-01T00:00:00Z"}]}"""));
+
+    Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    Assert.Equal("gl.conflict", await GlApiTestHost.ProblemCodeAsync(response));
+  }
+
+  [Fact]
+  [Trait("Decision", "DEC-DEP-0027")]
+  // ⚠ CITES `AC-GL-0013` — *"Two journals in the same fiscal year cannot share a journal number; the second
+  // is refused with `Gl.JournalNumberConflict`."*
+  //
+  // **The CODE is what discharges it.** `GlApiErrorMapper` sends `Gl.JournalNumberConflict` to `gl.conflict`
+  // and the floor's `Persistence.UniqueConstraint` to `gl.unique_conflict`, so asserting `gl.conflict` says
+  // the handler TRANSLATED rather than the floor caught — the distinction the comment above spells out.
+  //
+  // ⚠⚠ ***THE SCHEMA TEST DOES NOT WITNESS THIS CRITERION AND IS NOT CITED TO IT.***
+  // `GlSchemaSqlServerTests.Journal_numbers_are_unique_within_company_and_fiscal_year` asserts that an index
+  // **NAMED** `UX_GlJournalEntries_Tenant_Company_Year_Number` exists with `is_unique = 1` — *not its
+  // columns.* **An index of that name over the wrong columns passes**, and a migration is exactly where a
+  // definition changes while a name is kept. *It asserts the NAME of the enforcer; the criterion is about
+  // its EFFECT.*
+  //
+  // ⚠ The criterion's own note is worth carrying: it asserts UNIQUENESS ONLY. Gaplessness was raised under
+  // `OD-GL-0004` and **deliberately not promised**, so nothing here should be read as claiming it.
+  [Trait("Criterion", "AC-GL-0013")]
+  public async Task A_duplicate_journal_number_is_409_rather_than_500()
+  {
+    var debit = Account.Create("5300", "Rent").Value;
+    host.Accounts.Accounts[debit.Id] = debit;
+
+    var credit = Account.Create("1100", "Bank").Value;
+    host.Accounts.Accounts[credit.Id] = credit;
+
+    var draft = JournalDraft.Create(DateTimeOffset.UtcNow, "Racing", null).Value;
+    draft.CompanyId = GlApiTestHost.CompanyA;
+    draft.ReplaceLines([(debit.Id, 100m, 0m, null), (credit.Id, 0m, 100m, null)]);
+    host.Drafts.Drafts[draft.Id] = draft;
+
+    var year = SSAS.GL.Domain.Calendar.FiscalYear.Create(
+      "FY2026",
+      new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+      new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero),
+      [("FY", new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+        new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero))]).Value;
+    year.CompanyId = GlApiTestHost.CompanyA;
+    host.Calendar.Years[year.Id] = year;
+
+    // What SQL Server 2601/2627 becomes by the time it reaches this handler.
+    host.UnitOfWork.Failure = new SSAS.BuildingBlocks.Domain.Error("Persistence.UniqueConstraint", "Unique index violated.");
+
+    var response = await host.Client.SendAsync(GlApiTestHost.Request(
+      HttpMethod.Post, $"/api/gl/journal-drafts/{draft.Id}/posting",
+      host.TokenWith(GlPermissionNames.PostJournals)));
 
     Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
     Assert.Equal("gl.conflict", await GlApiTestHost.ProblemCodeAsync(response));
@@ -295,6 +604,112 @@ public sealed class GlEndpointTests : IClassFixture<GlApiTestHost>
 
     Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
     Assert.Equal("gl.account_inactive", await GlApiTestHost.ProblemCodeAsync(response));
+
+    // ---- ⚠ AND THE ACCOUNT, WHICH IS WHAT THE NAME PROMISES.
+    //
+    // Two accounts are on this draft and only one of them is inactive. A refusal carrying the CONDITION
+    // alone sends the poster to check both -- and `AccountErrors.Inactive` has interpolated the code
+    // since it was written, so the only thing missing was an assertion that it survives the mapper and
+    // reaches the body. **`5200`, not `1000`: the assertion discriminates because the arrangement does.**
+    using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+
+    Assert.Contains(
+      "5200", document.RootElement.GetProperty("detail").GetString(), StringComparison.Ordinal);
+  }
+
+  // ==================================================================================================
+  // ⚠⚠⚠ THE CAPABILITY HALF OF `BR-GL-0004`, AND THE FIRST SUCCESSFUL POST THIS SUITE HAS EVER MADE.
+  // ==================================================================================================
+  //
+  // *"Accounts marked as inactive cannot receive transactions"* has an unstated other half — **an account
+  // that is active CAN** — and a suite of refusals proves a guard FIRES, never that it STOPS firing.
+  //
+  // ---- WHY THIS IS NOT ALREADY COVERED, ESTABLISHED BY READING RATHER THAN ASSUMED.
+  //
+  // The refusal is asserted at three layers: `AccountDomainTests:64` (domain),
+  // `Posting_to_an_inactive_account_…` above (this suite, stubs) and `GlPostingChainSqlServerTests:226`
+  // (the real handler, real SQL). **The capability is asserted at exactly one** —
+  // `AccountDomainTests:92`, `EnsureCanReceiveTransactions().IsSuccess` after `Reactivate()`, which is the
+  // domain predicate in isolation and never a posting.
+  //
+  // ⚠ AND THE GAP IS WIDER THAN THIS ONE RULE. **All four `/posting` requests in this file are refusals** —
+  // `422 unbalanced`, `409 conflict` twice, `409 account_inactive`. Until this test there was no successful
+  // post at the API layer at all, so *posting works* was asserted by nothing here and every refusal above
+  // was uncontrolled: a handler that refused EVERY draft satisfied all four.
+  //
+  // ---- THE DIFFERENTIAL IS THE DESIGN, AND ONE BIT IS ALL THAT MOVES.
+  //
+  // The arrangement is the refusal test's, unchanged — same two accounts, same balanced draft, same fiscal
+  // year, same request. **The account is reactivated between the two calls and nothing else differs**, so
+  // the `201` cannot be attributed to a friendlier fixture. `Assert.Empty(host.Journals.Added)` before and
+  // `Assert.Single(…)` after is the same claim at the repository: **no entry existed, then exactly one
+  // did.** A refusal that quietly posted anyway, or a success that posted twice, fails one of those.
+  //
+  // ⚠⚠ `Reactivate()` IS CALLED ON THE INSTANCE THE STUB HOLDS, which is what makes this a live-state
+  // check rather than a re-arrangement: `EnsureCanReceiveTransactions` reads `IsActive` at post time
+  // (`Account.cs:132-137` — *asked at post time against live state*), so the second request sees the
+  // mutation without the draft, the year or the repository being rebuilt.
+  //
+  // ⚠⚠⚠ PLANTED, AND THE PLANT SETTLED A DISPUTED CLAIM RATHER THAN MERELY CONFIRMING THIS TEST.
+  // `Account.Reactivate()` was made a no-op in `src/` and reverted, `git diff -- src/` clean afterwards.
+  // **TWO tests reddened and no others:**
+  //
+  //   this one                                                        the posting layer
+  //   `AccountDomainTests.Deactivation_is_reversible_…`               the domain predicate, `:92`
+  //
+  // **So the domain capability half is REAL and detecting** — it was recorded elsewhere as not existing,
+  // and the plant is what settles that, because a capability assertion that survives its own mechanism
+  // being deleted is decoration. ⚠ It also shows the two do not substitute for each other: the domain test
+  // cannot see a handler that never calls the guard, and this one cannot see `IsActive` directly.
+  //
+  // ⚠ INHERITED, NOT INTRODUCED: the draft carries `DateTimeOffset.UtcNow` against a fiscal year fixed to
+  // 2026, copied from the refusal test so the two arrangements stay identical. **It is a wall-clock
+  // dependency and it will fail on 2027-01-01** — recorded here because the differential's whole value is
+  // that the two tests share one arrangement, and diverging to fix this in only one of them would cost more
+  // than it saves. Fix both together or neither.
+  [Fact]
+  [Trait("Decision", "BR-GL-0004")]
+  public async Task Reactivating_an_account_restores_its_ability_to_receive_a_posting()
+  {
+    var account = Account.Create("5200", "Office Supplies").Value;
+    account.Deactivate();
+    host.Accounts.Accounts[account.Id] = account;
+
+    var other = Account.Create("1000", "Cash").Value;
+    host.Accounts.Accounts[other.Id] = other;
+
+    var draft = JournalDraft.Create(DateTimeOffset.UtcNow, "Posting", null).Value;
+    draft.CompanyId = GlApiTestHost.CompanyA;
+    draft.ReplaceLines([(account.Id, 100m, 0m, null), (other.Id, 0m, 100m, null)]);
+    host.Drafts.Drafts[draft.Id] = draft;
+
+    var year = SSAS.GL.Domain.Calendar.FiscalYear.Create(
+      "FY2026",
+      new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+      new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero),
+      [("FY", new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+        new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero))]).Value;
+    year.CompanyId = GlApiTestHost.CompanyA;
+    host.Calendar.Years[year.Id] = year;
+
+    // ---- THE CONTROL: this arrangement really is refused while the account is inactive.
+    var refused = await host.Client.SendAsync(GlApiTestHost.Request(
+      HttpMethod.Post, $"/api/gl/journal-drafts/{draft.Id}/posting",
+      host.TokenWith(GlPermissionNames.PostJournals)));
+
+    Assert.Equal(HttpStatusCode.Conflict, refused.StatusCode);
+    Assert.Equal("gl.account_inactive", await GlApiTestHost.ProblemCodeAsync(refused));
+    Assert.Empty(host.Journals.Added);
+
+    // ---- ONE BIT MOVES.
+    account.Reactivate();
+
+    var posted = await host.Client.SendAsync(GlApiTestHost.Request(
+      HttpMethod.Post, $"/api/gl/journal-drafts/{draft.Id}/posting",
+      host.TokenWith(GlPermissionNames.PostJournals)));
+
+    Assert.Equal(HttpStatusCode.Created, posted.StatusCode);
+    Assert.Single(host.Journals.Added);
   }
 
   // ================================================================================================

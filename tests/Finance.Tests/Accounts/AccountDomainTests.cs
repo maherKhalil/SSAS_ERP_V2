@@ -19,7 +19,7 @@ public sealed class AccountDomainTests
     Assert.DoesNotContain(typeof(ICompanyOwnedEntity), typeof(Account).GetInterfaces());
 
     // And no CompanyId property at all — the absence is structural, not merely unmapped.
-    Assert.Null(typeof(Account).GetProperty("CompanyId"));
+    Assert.Null(typeof(Account).GetProperty(nameof(SSAS.BuildingBlocks.Domain.ICompanyOwnedEntity.CompanyId)));
   }
 
   [Fact]

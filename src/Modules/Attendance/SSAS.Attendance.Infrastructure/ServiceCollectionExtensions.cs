@@ -26,6 +26,7 @@ public static class ServiceCollectionExtensions
     // manifest from the model -- absent from Shared-to-Dedicated cutover, which fails SILENTLY.
     services.AddSingleton<ITenantModelContributor, AttendanceTenantModelContributor>();
 
+    services.AddScoped<ILeaveSubmissionLock, SqlServerLeaveSubmissionLock>();
     services.AddScoped<IWorkingCalendarRepository, WorkingCalendarRepository>();
     services.AddScoped<IAttendancePeriodRepository, AttendancePeriodRepository>();
     services.AddScoped<IAttendanceRecordRepository, AttendanceRecordRepository>();
@@ -34,6 +35,11 @@ public static class ServiceCollectionExtensions
     services.AddScoped<ILeaveRequestRepository, LeaveRequestRepository>();
 
     services.AddScoped<IAttendanceScopeResolver, AttendanceScopeResolver>();
+
+    // FP-015's self-service scope (T-089), and a SEPARATE registration for T-088's measured reason: every
+    // Attendance command handler takes IAttendanceScopeResolver, so self-service dependencies added to it
+    // would become construction-time dependencies of every attendance write.
+    services.AddScoped<IAttendanceSelfServiceScopeResolver, AttendanceSelfServiceScopeResolver>();
     services.AddScoped<IAttendanceReadService, AttendanceReadService>();
     services.AddScoped<ILeaveApprovalRouter, LeaveApprovalRouter>();
 

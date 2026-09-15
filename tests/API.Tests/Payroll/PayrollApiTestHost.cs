@@ -57,10 +57,15 @@ public sealed class PayrollApiEndpointGroup
 // here would be scaffolding for a dimension the module does not have, and its absence is what makes that
 // visible.
 //
-// ---- AND THE TWO CROSS-MODULE CONTRACTS ARE STUBBED, WHICH IS THE PROOF.
+// ---- AND EVERY CROSS-MODULE CONTRACT IS STUBBED, WHICH IS THE PROOF.
 //
-// `IJournalPoster` and `IEmployeeRoster` are the ONLY routes out of this module. That they can be replaced
-// here — with no GL or HR service registered at all — is the boundary demonstrated rather than asserted.
+// ⚠ **This said "the TWO cross-module contracts" and named `IJournalPoster` and `IEmployeeRoster`. There
+// are four.** FP-013 added `IAttendanceSummary` and T-153 added `IEmployeeEngagementDirectory`, and the
+// count went stale both times because nothing reads prose (`DEC-L-002`).
+//
+// **The claim itself was always sound and is left standing**: that all of them can be replaced here — with
+// no GL, HR or Attendance service registered at all — is the boundary demonstrated rather than asserted.
+// **A number in a comment is not one of them; `The_payroll_host_registers_no_foreign_module_service` is.**
 public sealed class PayrollApiTestHost : IAsyncLifetime
 {
   public const string Issuer = "https://ssas.tests/payroll";
@@ -90,6 +95,8 @@ public sealed class PayrollApiTestHost : IAsyncLifetime
 
   public StubCompensationRepository Compensation { get; } = new();
 
+  public StubOneOffPaymentRepository OneOffPayments { get; } = new();
+
   public StubPayrollPeriodRepository Periods { get; } = new();
 
   public StubPayrollRunRepository Runs { get; } = new();
@@ -98,10 +105,21 @@ public sealed class PayrollApiTestHost : IAsyncLifetime
 
   public StubEmployeeRoster Roster { get; } = new();
 
+  public StubEmployeeEngagementDirectory Engagement { get; } = new();
+
+  // The self-service pair, one object because a test setting one and forgetting the other would produce a
+  // dangling link by accident rather than by intent.
+  public StubSelfServiceDirectory SelfService { get; } = new();
+
   // FP-013's third route out of the module. See the stub for why its absence failed every test here.
   public StubAttendanceSummary Attendance { get; } = new();
 
   public HttpClient Client => client ?? throw new InvalidOperationException("The test host has not started.");
+
+  // Exposed for `The_payroll_host_registers_no_foreign_module_service`, which is the guard that makes the
+  // boundary claim above testable rather than asserted in prose.
+  public IServiceProvider Services =>
+    application?.Services ?? throw new InvalidOperationException("The test host has not started.");
 
   private static string FirstMethodOf(RouteEndpoint endpoint)
   {
@@ -109,6 +127,15 @@ public sealed class PayrollApiTestHost : IAsyncLifetime
 
     return methods is { Count: > 0 } ? methods[0] : "?";
   }
+
+  // The mapped endpoint itself, for assertions about a route's CONTRACT rather than its policy — the
+  // handler's MethodInfo lives in its metadata, which is the only way to reach query and header parameters.
+  public RouteEndpoint MappedEndpoint(string pattern) =>
+    ((IEndpointRouteBuilder)(application ??
+      throw new InvalidOperationException("The test host has not started."))).DataSources
+      .SelectMany(source => source.Endpoints)
+      .OfType<RouteEndpoint>()
+      .Single(endpoint => endpoint.RoutePattern.RawText == pattern);
 
   public IReadOnlyList<(string Method, string Pattern, string Policy)> MappedRoutes() =>
   [
@@ -164,15 +191,25 @@ public sealed class PayrollApiTestHost : IAsyncLifetime
     builder.Services.AddSingleton<IPayrollReadService>(Reads);
     builder.Services.AddSingleton<IPayElementRepository>(Elements);
     builder.Services.AddSingleton<IEmployeeCompensationRepository>(Compensation);
+    builder.Services.AddSingleton<IOneOffPaymentRepository>(OneOffPayments);
     builder.Services.AddSingleton<IPayrollPeriodRepository>(Periods);
     builder.Services.AddSingleton<IPayrollRunRepository>(Runs);
 
     // The two doors out of the module, and nothing else from GL or HR is registered at all.
     builder.Services.AddSingleton<IJournalPoster>(Ledger);
     builder.Services.AddSingleton<IEmployeeRoster>(Roster);
+    builder.Services.AddSingleton<IEmployeeEngagementDirectory>(Engagement);
     builder.Services.AddSingleton<IAttendanceSummary>(Attendance);
 
     builder.Services.AddScoped<IPayrollScopeResolver, PayrollScopeResolver>();
+
+    // ---- FP-015's SELF-SERVICE SCOPE (T-088). A THIRD DOOR OUT OF THE MODULE, STUBBED LIKE THE OTHER TWO.
+    //
+    // `SelfService.LinkedEmployee` decides what the caller resolves to: a value for a linked employee, null
+    // for the unmapped case that must answer 404 rather than 500.
+    builder.Services.AddSingleton<IUserEmployeeResolver>(SelfService);
+    builder.Services.AddSingleton<IEmployeePlacementDirectory>(SelfService);
+    builder.Services.AddScoped<IPayrollSelfServiceScopeResolver, PayrollSelfServiceScopeResolver>();
     builder.Services.AddScoped<CreatePayElementCommandHandler>();
     builder.Services.AddScoped<UpdatePayElementCommandHandler>();
     builder.Services.AddScoped<SetPayElementActivationCommandHandler>();
@@ -217,6 +254,8 @@ public sealed class PayrollApiTestHost : IAsyncLifetime
     Runs.Reset();
     Ledger.Reset();
     Roster.Reset();
+    Engagement.Reset();
+    SelfService.Reset();
     Attendance.Reset();
     UnitOfWork.Failure = null;
   }

@@ -1,5 +1,6 @@
 ﻿using SSAS.BuildingBlocks.Api.Transport;
 using SSAS.BuildingBlocks.Domain;
+using SSAS.HR.API.Positions;
 
 namespace SSAS.HR.API.Employees;
 
@@ -29,15 +30,63 @@ namespace SSAS.HR.API.Employees;
 // hide it; a 500 is visible and gets fixed. Nothing is guessed from the code's shape.
 public static class EmployeeApiErrorMapper
 {
+  // ⚠ THE FORMAT GATE HAS ITS OWN CODE BECAUSE THE DECISION REQUIRES THE ANSWER TO NAME CSV (T-274).
+  //
+  // `DEC-DOC-0001`: *"Import accepts UTF-8 CSV only in V1... The response to an unsupported format is
+  // `400`, naming CSV."* `request.invalid` names nothing, so the route was answering a caller who sent
+  // XLSX with the same code as one who sent a CSV with a bad header -- and FP-009's contract table
+  // separates those two rows deliberately.
+  //
+  // Declared here rather than in the shared `ApiErrors` for the reason `company.scope_denied` is declared
+  // per mapper: `The_shared_api_project_names_no_business_concept` refuses a business noun in
+  // BuildingBlocks, and `employee_import` is one.
+  public static readonly ApiError ImportFormatUnsupported = new(400, "employee_import.format_unsupported");
+
   public static readonly ApiError NotFound = new(404, "employee.not_found");
   public static readonly ApiError NumberConflict = new(409, "employee.number_conflict");
   public static readonly ApiError NationalIdConflict = new(409, "employee.national_id_conflict");
   public static readonly ApiError TransitionInvalid = new(409, "employee.transition_invalid");
   public static readonly ApiError CompanyScopeDenied = new(403, "company.scope_denied");
+
+  // ⚠ A PRECONDITION, NOT A CORRECTION (T-268).
+  //
+  // 129 domain codes collapse into `request.invalid` and 128 of them say **fix your input**. This one
+  // says *an active company must be selected before company-scoped operations* -- **you are not in a
+  // state where this input means anything.** The remedy is a different call followed by the same request
+  // unchanged, and a client that cannot tell it from a bad field name cannot offer the company picker.
+  //
+  // The status stays 400: it IS a client error. **The status is the category; the code is the
+  // instruction**, and only the instruction differs.
+  //
+  // Declared here rather than in the shared `ApiErrors`, for the same reason `CompanyScopeDenied` above
+  // is: `The_shared_api_project_names_no_business_concept` refuses a business noun in BuildingBlocks.
+  // **The repetition across mappers is that rule being obeyed, not duplication** -- the gate refused the
+  // shared version of this very constant.
+  public static readonly ApiError CompanySelectionRequired = new(400, "company.selection_required");
   public static readonly ApiError BranchScopeDenied = new(403, "branch.scope_denied");
   public static readonly ApiError BranchSelectionRequired = new(409, "branch.selection_required");
 
-  public static ApiError Map(Error error)
+  // ---- A SERVER FAILURE, AND A SPECIFIC ONE (T-091).
+  //
+  // 500 because nothing the caller did caused it and no change to their request avoids it — the same
+  // reasoning the default arm gives. **But not the generic `WriteFailure`:** this one leaves state that
+  // needs repairing, and an operator reading `hr.request_failed` in a log has no way to learn that. The
+  // distinct code is what makes the half-state findable.
+  public static readonly ApiError TerminationIncomplete = new(500, "employee.termination_incomplete");
+
+  // ⚠ THE DOMAIN MESSAGE IS ATTACHED HERE BECAUSE THIS IS THE LAST PLACE IT EXISTS (T-261).
+  //
+  // Ninety-six call sites hand an already-mapped `ApiError` straight to `ApiProblems.Problem` and never
+  // see the original `Error`. Attaching the message to the result is one edit per mapper; passing it
+  // alongside would have been ninety-six.
+  //
+  // `ApiError.ShowsDetail` decides whether it reaches the caller: an authorization refusal (401/403)
+  // drops it unless that code opted in, because `branch.scope_denied` has nine different messages behind
+  // it and showing them would separate a branch that does not exist from one that is forbidden.
+  public static ApiError Map(Error error) =>
+    MapCore(error).Explaining(error.Message, error.Field);
+
+  private static ApiError MapCore(Error error)
   {
     ArgumentNullException.ThrowIfNull(error);
 
@@ -49,18 +98,21 @@ public static class EmployeeApiErrorMapper
       "Employee.InvalidFullName" => ApiErrors.RequestInvalid,
       "Employee.InvalidEmploymentDate" => ApiErrors.RequestInvalid,
       "Employee.TerminationBeforeEmployment" => ApiErrors.RequestInvalid,
+      "Employee.TerminationIncomplete" => TerminationIncomplete,
       "Employee.InvalidTransitionReason" => ApiErrors.RequestInvalid,
       "Employee.InvalidTransferReason" => ApiErrors.RequestInvalid,
       "Employee.TransferDestinationUnchanged" => ApiErrors.RequestInvalid,
       "Employee.InvalidReadScope" => ApiErrors.RequestInvalid,
-      "Employee.InvalidPagination" => ApiErrors.RequestInvalid,
+      "Employee.InvalidPageNumber" => ApiErrors.PageNumberInvalid,
+      "Employee.InvalidPageSize" => ApiErrors.PageSizeInvalid,
+      "Employee.InvalidExportCeiling" => ApiErrors.ExportCeilingInvalid,
 
       // ---- SCOPE. Generic within each dimension; never says which condition applied.
       // ---- THE COMPANY HEADER: SYNTAX IS THE CALLER'S PROBLEM, SCOPE IS NOT THEIR BUSINESS.
       //
       // A missing or malformed X-Company-Id is a MALFORMED REQUEST. The caller can already see their own
       // header, so saying so discloses nothing — and a generic denial would leave them guessing at a typo.
-      "Company.SelectionRequired" => ApiErrors.RequestInvalid,
+      "Company.SelectionRequired" => CompanySelectionRequired,
       "Company.InvalidSelectionFormat" => ApiErrors.RequestInvalid,
 
       // Every VALIDATION outcome collapses to one answer: unauthorized, inactive, wrong tenant and
@@ -112,6 +164,43 @@ public static class EmployeeApiErrorMapper
       "Employee.DepartmentInactive" => ApiErrors.RequestInvalid,
       "Employee.DepartmentUnchanged" => ApiErrors.RequestInvalid,
       "Employee.DepartmentHistoryImmutable" => ApiErrors.WriteFailure,
+
+      // ---- POSITION (T-080). THE SAME FIVE-AND-ONE SHAPE AS DEPARTMENT ABOVE, AND FOR THE SAME REASONS.
+      //
+      // These were declared and unmapped, so every one answered `500 request.failed` — on
+      // `POST /api/hr/employees` and on `POST /{employeeId}/change-position`, both of which reach this
+      // mapper. The comment at `PositionEndpointRouteBuilderExtensions.cs:806` already said *"its
+      // `Employee.Position*` arms are the ones that describe an unusable destination here"*. There were
+      // none. **The route was right about what should exist and wrong about what did.**
+      //
+      // ---- THREE OF THE FIVE 400s ARE DISCLOSURE-SENSITIVE; TWO ARE NOT, AND THE DISTINCTION IS REAL.
+      //
+      // `NotFound`, `Inactive` and `InDifferentCompany` are the three a caller could otherwise use to probe
+      // for a position outside their company (`BR-PLT-0002`), so they must be indistinguishable on the
+      // wire. `Unchanged` names a position the caller can already read, and `Required` names none at all —
+      // neither discloses anything. **They are 400 because they describe the request, which is the same
+      // reason the department four are**, and the collapse the other three need falls out of that rather
+      // than being imposed on them.
+      "Employee.PositionRequired" => ApiErrors.RequestInvalid,
+      "Employee.PositionNotFound" => ApiErrors.RequestInvalid,
+      "Employee.PositionInactive" => ApiErrors.RequestInvalid,
+      "Employee.PositionUnchanged" => PositionApiErrorMapper.PositionUnchanged,
+      "Employee.PositionInDifferentCompany" => ApiErrors.RequestInvalid,
+
+      // ---- EXPLICIT DESPITE MATCHING THE DEFAULT, AND THIS ARM IS NOT REDUNDANT.
+      //
+      // History immutability is a violated invariant, not a caller error: nothing the caller sends can
+      // cause it and nothing they send differently would avoid it. A 500 is the honest answer, exactly as
+      // `Employee.DepartmentHistoryImmutable` above answers it.
+      //
+      // **It is written out because the fallthrough producing the same status is a coincidence, not a
+      // decision.** Delete this line and the wire behaviour is identical — which is precisely why it must
+      // stay: `DepartmentHistoryImmutable` has no such comment, and its 500 had to be read as an inference
+      // from the arm existing rather than as a recorded reason. That ambiguity is the thing being avoided
+      // here, and the guard in `ModuleErrorMappingArchitectureTests` sees this arm only because it reads
+      // the source text rather than calling `Map`.
+      "Employee.PositionHistoryImmutable" => ApiErrors.WriteFailure,
+
       "Employee.InvalidActor" => ApiErrors.Forbidden,
       "Authorization.Unauthorized" => ApiErrors.Forbidden,
 
@@ -163,7 +252,17 @@ public static class EmployeeApiErrorMapper
       // is answered as one.
       "EmployeeImportRun.InvalidImportKey" => ApiErrors.RequestInvalid,
       "EmployeeImportRun.InvalidFileName" => ApiErrors.RequestInvalid,
-      "EmployeeImportRun.InvalidActor" => ApiErrors.Forbidden,
+      // ---- 500, CORRECTED IN T-096, AND IT BRINGS THIS SITE INTO LINE WITH T-080's RULING.
+      //
+      // T-080 ruled 500 at the import-contracts site and gave the reason: `ImportEmployeesCommandHandler`
+      // already refuses a missing actor with `Employee.InvalidActor` (403), so **reaching the aggregate's
+      // own actor guard means the handler's precondition passed and the aggregate refused anyway** — an
+      // internal inconsistency, not a caller fault. `AuthenticationSubject.Create` caps the subject at the
+      // same length the aggregate checks, so the gap is unreachable.
+      //
+      // **Answering 403 told a caller they lacked authority when the system had reached an impossible
+      // state.** One site was right by that ruling and this one was never brought into line.
+      "EmployeeImportRun.InvalidActor" => ApiErrors.WriteFailure,
       "EmployeeImportRun.InvalidCounts" => ApiErrors.WriteFailure,
       "EmployeeExportRun.InvalidColumnSet" => ApiErrors.WriteFailure,
 

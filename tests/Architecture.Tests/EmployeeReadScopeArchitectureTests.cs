@@ -1,11 +1,14 @@
-﻿using System.Reflection;
+using System.Reflection;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.BuildingBlocks.Infrastructure.Persistence;
+using SSAS.BuildingBlocks.Tenancy;
 using SSAS.BuildingBlocks.Tenancy.Branches;
+using SSAS.HR.Contracts.Employment;
 using SSAS.BuildingBlocks.Tenancy.Companies;
 using SSAS.HR.Application.Employees;
 using SSAS.HR.Application.Employees.Reads;
@@ -33,6 +36,12 @@ namespace SSAS.Architecture.Tests;
 //
 // In particular, none of these can be made to pass by ADDING A GLOBAL QUERY FILTER: the filter test asserts
 // the opposite, and the scope-parameter tests are about the shape of the API, which a filter never touches.
+// ---- PLANT RECORD (T-249): the floors here were observed to fire.
+//
+// An audit listed this file as having no recorded plant. Collapsing every file walk in it -- changing
+// the search pattern to `*.csx`, so directories still exist and simply match nothing -- reddens two
+// tests. **That is the silent shape**: a walk rooted at a directory THROWS if the directory is gone,
+// so the only failure that passes quietly is downstream of the root.
 public sealed class EmployeeReadScopeArchitectureTests
 {
   private static readonly Assembly HrApplicationAssembly = typeof(IEmployeeReadService).Assembly;
@@ -155,6 +164,10 @@ public sealed class EmployeeReadScopeArchitectureTests
   // the branch authority. A resolver that stopped consulting one of them would have to keep an unused
   // dependency to pass this — and an unused dependency is exactly what a reviewer notices.
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: the resolver depends on `ICurrentUser`, `ITenantCompanyAccessResolver` AND
+  // `ITenantBranchAccessResolver` -- permission, company scope and branch scope, the three independent
+  // dimensions the criterion names.
+  [Trait("Criterion", "AC-EMP-0040")]
   public void The_scope_resolver_depends_on_all_three_authorization_sources()
   {
     var dependencies = typeof(EmployeeScopeResolver)
@@ -237,7 +250,8 @@ public sealed class EmployeeReadScopeArchitectureTests
         permission.StartsWith("HR.Departments.", StringComparison.Ordinal) ||
         permission.StartsWith("HR.Positions.", StringComparison.Ordinal) ||
         permission.StartsWith("HR.JobGrades.", StringComparison.Ordinal) ||
-        permission.StartsWith("HR.SalaryGrades.", StringComparison.Ordinal),
+        permission.StartsWith("HR.SalaryGrades.", StringComparison.Ordinal) ||
+        permission.StartsWith("HR.EmployeeDocuments.", StringComparison.Ordinal),
         $"Unexpected HR permission resource: {permission}"));
   }
 
@@ -260,11 +274,69 @@ public sealed class EmployeeReadScopeArchitectureTests
   // The tenant filter stays, and this test asserts it stays: tenant is a routing invariant with exactly one
   // value per context, which is the case a filter actually fits.
   [Fact]
-  public void No_global_query_filter_scopes_company_or_branch()
+  // ⚠ CITED BY B18, body-confirmed: asserts no global query filter mentions `CompanyId` or `BranchId` -- the criterion verbatim, and
+  // the criterion itself says "the two architecture guards assert" this.
+  [Trait("Criterion", "AC-EMP-0030")]
+  // ---- ⚠⚠⚠ BOTH PLANES, AND UNTIL T-093 THIS WALKED ONE (252 GAVE IT A CONTROL, NOT A POPULATION).
+  //
+  // The name said *no global query filter*, unqualified. The walk was the composed TENANT context, so
+  // **every filter on `PlatformDbContext` was outside it** — and the Platform plane is where a company
+  // dimension would most plausibly be introduced, because that is the plane that knows about companies.
+  //
+  // ⚠⚠ THIS TEST IS THE EXEMPLAR OF A PATTERN WORTH STATING PLAINLY: **anti-vacuity and name-honesty are
+  // independent, and the first disguises the second.** It already carried the strongest anti-vacuity
+  // control in this suite — a counter incremented PAST the `continue`, so a model producing no filters
+  // could not pass — and that control is genuinely good. It says nothing whatever about whether the walk
+  // covers what the name claims. **A well-controlled guard reads as a trustworthy one, so nobody re-reads
+  // its population.** It took naming the pattern to see it here.
+  //
+  // ⚠ SEARCHED BEFORE WIDENING (T-093): `HasQueryFilter` appears EXACTLY ONCE in all of `src` —
+  // `PersistenceDbContext.cs:109`, the tenant filter. No company or branch filter exists on either plane,
+  // so this widens onto clean ground rather than onto a live violation.
+  //
+  // ---- ⚠⚠⚠ AND WHAT THAT *ONE* IS, BECAUSE "NO COMPANY FILTER" MUST READ AS CHOSEN, NOT AS MISSING.
+  //
+  // **The single global query filter in the entire product is TENANT.** Company scoping is per-read-site
+  // BY CONSTRUCTION (ADR-025 decision 10), and branch never had a global filter at all. So this guard is
+  // asserting a state somebody decided — *reads are scoped where they are written, not by the model* —
+  // rather than merely failing to find a counterexample.
+  //
+  // ⚠ THAT DISTINCTION IS THE WHOLE VALUE OF THE COMMENT. A reader who takes "no company filter" as an
+  // absence nobody chose will helpfully add one, and a global company filter would silently narrow every
+  // existing query — including the reads whose correctness depends on seeing ACROSS companies.
+  //
+  // ⚠⚠ INDEPENDENTLY CORROBORATED, WHICH IS WHY IT IS STATED THIS STRONGLY. Counting filters here reaches
+  // the same conclusion as a separate reading of the WRITE path: company isolation has a floor on writes
+  // (`TenantDbContext:415-457`, fails closed) and nothing on reads. Two instruments, two routes, neither
+  // looking for the other's answer.
+  //
+  // ⚠⚠⚠ REACH PROBE, BOTH COLOURS MEASURED. A company-scoped filter was planted on `TenantDatabase` in
+  // `PlatformDbContext.OnModelCreating` — a Platform entity, on the Platform plane, which is exactly where
+  // the old walk could not look:
+  //
+  //   OLD tenant-only walk -> GREEN, with a live company filter on the Platform model.
+  //   BOTH-PLANE walk      -> RED: *"a global query filter in the PlatformModel scopes a company or branch
+  //                           dimension: TenantDatabase.CompanyId"*.
+  //
+  // The Platform floor of 1 is not decorative either: it passes today, which means that plane really does
+  // carry filters and a collapse there would be caught rather than read as compliance.
+  public void No_global_query_filter_on_either_plane_scopes_company_or_branch()
   {
-    using var context = ComposedTenantContext();
+    using var tenant = ComposedTenantContext();
+    using var platform = ModelOnlyPlatformContext();
 
-    foreach (var entity in context.Model.GetEntityTypes())
+    // ONE FLOOR PER MODEL (T-265). A floor over the union cannot see one plane's filters collapse while
+    // the other's clear the bar alone — and the two are built by different code on different days.
+    AssertNoCompanyOrBranchFilter(tenant.Model, "ComposedTenantModel", 1);
+    AssertNoCompanyOrBranchFilter(platform.Model, "PlatformModel", 1);
+  }
+
+  private static void AssertNoCompanyOrBranchFilter(IModel model, string name, int floor)
+  {
+    var examined = 0;
+    var offenders = new List<string>();
+
+    foreach (var entity in model.GetEntityTypes())
     {
       var filter = entity.GetQueryFilter()?.ToString();
       if (filter is null)
@@ -272,9 +344,43 @@ public sealed class EmployeeReadScopeArchitectureTests
         continue;
       }
 
-      Assert.DoesNotContain("CompanyId", filter, StringComparison.Ordinal);
-      Assert.DoesNotContain("BranchId", filter, StringComparison.Ordinal);
+      examined++;
+
+      // ⚠ COMPILE-CHECKED (252). These were bare strings, and a renamed property would have emptied the
+      // search rather than failed it: the filter text would stop containing the old name and this would
+      // have gone on passing while asserting nothing about the new one.
+      foreach (var dimension in new[] { nameof(Employee.CompanyId), nameof(Employee.BranchId) })
+      {
+        if (filter.Contains(dimension, StringComparison.Ordinal))
+        {
+          offenders.Add($"{entity.ClrType.Name}.{dimension}");
+        }
+      }
     }
+
+    // ⚠⚠ ANTI-VACUITY, AND THIS TEST HAD NONE (252). Every assertion above lives inside `if (filter is
+    // null) continue;`. A model that contributed NO query filter at all — a contributor dropped, the model
+    // composed differently, `GetQueryFilter` changing shape — would skip every iteration and this test
+    // would report success having examined nothing. THAT IS THE FAILURE IT EXISTS TO CATCH, INVERTED:
+    // "no filter scopes company or branch" is trivially true when there are no filters.
+    Assert.True(
+      examined >= floor,
+      $"no entity in the {name} carries a query filter at all, so this examined nothing and passed " +
+      "vacuously — the guarantee is that no filter scopes company or branch, which is worthless if the " +
+      "model has stopped producing filters");
+
+    // ⚠ THE MODEL IS NAMED BECAUSE THIS RUNS TWICE, and the two planes are the point of the widening.
+    Assert.True(offenders.Count == 0,
+      $"a global query filter in the {name} scopes a company or branch dimension: " +
+      $"{string.Join(", ", offenders)}.\n" +
+      "  ⚠ THIS IS NOT NECESSARILY WRONG. IT IS UNDECIDED. Company is deliberately not filtered globally " +
+      "(ADR-025 decision 10) and branch never was: both are per-read-site by construction, and the single " +
+      "global filter in the product is TENANT. Adding a second one is an ARCHITECTURAL CHANGE that has to " +
+      "be argued, not a bug to be fixed quietly in either direction.\n" +
+      "  What makes it consequential: a global filter silently scopes every EXISTING query, including the " +
+      "reads whose correctness depends on seeing across companies — and nothing at those read sites would " +
+      "change or fail to say so. If the filter is intended, take it to ADR-025 decision 10 and record the " +
+      "reversal there before making this test agree with it. If it is not, scope the read, not the model.");
   }
 
   // ---- 9. AND THE TENANT FILTER IS STILL THERE.
@@ -299,6 +405,10 @@ public sealed class EmployeeReadScopeArchitectureTests
   // Every employee read starts from a single scoped-query method that states tenant, company and branch. A
   // second entry point to the entity set is how one read comes to be written without one of them.
   [Fact]
+  // ⚠ CITED BY B18, body-confirmed: exactly ONE `Set<Employee>()` in the source, and the scoped query carries explicit `TenantId` and
+  // `scope.Companies.CompanyIds.Contains` predicates -- which is "emits an explicit predicate", asserted
+  // rather than inspected, as the criterion requires.
+  [Trait("Criterion", "AC-EMP-0029")]
   public void Every_employee_read_is_composed_through_one_scoped_query()
   {
     var source = ReadHrCode("SSAS.HR.Infrastructure", "Persistence", "EmployeeReadService.cs");
@@ -325,6 +435,15 @@ public sealed class EmployeeReadScopeArchitectureTests
   {
     Assert.Equal(typeof(IReadOnlyList<Guid>), typeof(AuthorizedCompanyScope).GetProperty("CompanyIds")!.PropertyType);
     Assert.Equal(typeof(IReadOnlyList<Guid>), typeof(AuthorizedBranchScope).GetProperty("BranchIds")!.PropertyType);
+
+    // ⚠ THE LOOPS BELOW ARE SILENT WHEN EMPTY. `ScopeTypes` collapsing, or a binding-flag change that
+    // stops yielding public instance properties, leaves every `Assert.False` unexecuted and this green.
+    // The exact assertions above guard two NAMED properties; nothing guarded the walk over the rest.
+    Assert.NotEmpty(ScopeTypes);
+
+    Assert.NotEmpty(ScopeTypes
+      .SelectMany(type => type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+      .ToArray());
 
     foreach (var type in ScopeTypes)
     {
@@ -377,7 +496,8 @@ public sealed class EmployeeReadScopeArchitectureTests
 
     var handler = ReadHrCode("SSAS.HR.Application", "Employees", "Reads", "SearchEmployeesQueryHandler.cs");
 
-    Assert.Contains(nameof(EmployeeErrors.InvalidPagination), handler, StringComparison.Ordinal);
+    Assert.Contains(nameof(EmployeeErrors.InvalidPageNumber), handler, StringComparison.Ordinal);
+    Assert.Contains(nameof(EmployeeErrors.InvalidPageSize), handler, StringComparison.Ordinal);
     Assert.DoesNotContain("Math.Min", handler, StringComparison.Ordinal);
     Assert.DoesNotContain("Math.Clamp", handler, StringComparison.Ordinal);
   }
@@ -423,7 +543,27 @@ public sealed class EmployeeReadScopeArchitectureTests
   //
   // So its surface is ENUMERATED. Adding a method here fails this test and forces the author to justify it,
   // which is exactly the conversation that should happen.
+  //
+  // ---- ⚠ CITES `AC-POS-0037`'s LOAD-BEARING CLAUSE — *"No update or delete path exists for
+  // `EmployeePositionAssignment`."*
+  //
+  // **The exact member set below IS that assertion.** `AppendPositionAssignmentAsync` stands with no update
+  // and no remove counterpart, and *an exact set is what notices one being added* — a ban list naming
+  // `Update`/`Delete` would miss `ReviseAsync` or `SupersedeAsync`.
+  //
+  // ⚠⚠ THE POPULATION, STATED BECAUSE THIS TEST ENUMERATES ONE PORT AND THE CLAUSE IS ABOUT ALL OF THEM.
+  // Three types name `EmployeePositionAssignment` in the HR application layer: **this repository, the only
+  // one with a method that TAKES or RETURNS it**; `IPositionRepository`, which names it solely in a comment
+  // about restricted foreign keys; and `IEmployeeReadService`, which reads. *So this surface is the whole
+  // write population today — and if a SECOND port ever gains such a method, nothing here would notice.*
+  //
+  // ⚠⚠⚠ AND THE CRITERION'S OTHER CLAUSES ARE ELSEWHERE, so this citation is not read as carrying them:
+  // the marker and the absent `RowVersion` are
+  // `PositionApplicationArchitectureTests.The_append_only_assignment_carries_no_row_version`, and the
+  // RUNTIME refusal is `TenantAppendOnlyGuardTests` — gated only since `69c2f0a`; before that it was
+  // Integration-only, green at a date.
   [Fact]
+  [Trait("Criterion", "AC-POS-0037")]
   public void The_employee_repository_surface_is_the_approved_write_path_only()
   {
     var methods = typeof(IEmployeeRepository).GetMethods()
@@ -499,6 +639,147 @@ public sealed class EmployeeReadScopeArchitectureTests
   }
 
   // ================================================================================================
+  // 18. THE STANDING DIRECTORY HAS EXACTLY ONE CALLER, AND IT IS THE SEAM (T-090, AC-SS-0012).
+  // ================================================================================================
+  //
+  // `IEmploymentStandingDirectory` is answered by the SAME class as the placement directory, so it opens no
+  // new door in the employee-set list. What it does open is a second question that can be asked ABOUT an
+  // employee from outside HR, and the value of the answer is that ONE place acts on it.
+  //
+  // **The ruling that put the refusal at the resolver rather than in each self-service read only holds
+  // while there is one caller.** A second injection site would be a second place deciding what a terminated
+  // employee may reach — which is the per-handler shape `REQ-SS-0003` rejected, arriving through a caller
+  // instead of through a handler.
+  //
+  // So: an exact inventory of one, the same shape as its neighbour. **A second requires a person.**
+  [Fact]
+  [Trait("Criterion", "AC-SS-0012")]
+  public void Only_the_user_employee_resolver_injects_the_standing_directory()
+  {
+    // Every assembly that references SSAS.BuildingBlocks.Tenancy and could therefore ask for this contract.
+    var candidates = new[]
+    {
+      typeof(SSAS.Platform.Infrastructure.Persistence.Queries.UserEmployeeResolver).Assembly,
+      typeof(SSAS.Platform.Application.Permissions.PlatformPermissionNames).Assembly,
+      typeof(SSAS.Payroll.Application.Reads.PayrollSelfServiceScopeResolver).Assembly,
+      typeof(SSAS.Attendance.Application.Approval.LeaveApprovalRouter).Assembly,
+      HrApplicationAssembly,
+      typeof(SSAS.HR.Infrastructure.ServiceCollectionExtensions).Assembly
+    };
+
+    var injecting = candidates
+      .Distinct()
+      .SelectMany(assembly => assembly.GetTypes())
+      .Where(type => type.GetConstructors(BindingFlags.Public | BindingFlags.Instance)
+        .Any(constructor => constructor.GetParameters()
+          .Any(parameter => parameter.ParameterType == typeof(IEmploymentStandingDirectory))))
+      .Select(type => type.Name)
+      .OrderBy(name => name, StringComparer.Ordinal)
+      .ToArray();
+
+    // NOT VACUOUS. An empty result would mean the sweep stopped finding anything — and this assertion
+    // would then pass forever while the caller set grew unwatched.
+    Assert.NotEmpty(injecting);
+
+    // ---- TWO, AS OF T-092, AND THE SECOND WAS APPROVED RATHER THAN ADMITTED.
+    //
+    // `LinkEmployeeToTenantUserCommandHandler` asks the same question for the opposite reason: the resolver
+    // asks *may this employee still be reached*, the link handler asks *does this employee exist and is
+    // their employment current* before writing a row that cannot have a foreign key.
+    //
+    // **The two act on the answer DIFFERENTLY and that is the point of them both being listed.** The
+    // resolver collapses `Unknown` and `Ended` into one refusal, because its caller is an end user and
+    // telling them apart would disclose that a record exists. The link handler distinguishes them, because
+    // its caller is an administrator acting on an employee they named and can already read.
+    //
+    // A third injector still requires a person — and would have to state which of those two it is.
+    Assert.Equal(
+      ["LinkEmployeeToTenantUserCommandHandler", "UserEmployeeResolver"],
+      injecting);
+  }
+
+  // ================================================================================================
+  // 17. AND ONLY ONE TYPE MAY INJECT THE UNAUTHORIZED DOOR (FP-015, T-088).
+  // ================================================================================================
+  //
+  // ⚠ NAME CORRECTED 2026-09-06. This paragraph and the one at the fourth-file ruling below both said
+  // `EmployeeCompanyDirectoryService`, WHICH IS NOT A TYPE IN THIS PRODUCT — `grep -rin "CompanyDirectory"
+  // src/` returns nothing. The subject is `EmployeePlacementDirectoryService`, and the `[Fact]` immediately
+  // under this comment carried the true name the whole time. Everything the two paragraphs SAY is correct;
+  // only the name was wrong, and it reached a published report before anyone opened the file.
+  //
+  // `EmployeePlacementDirectoryService` is the one employee read that applies NO company authorization. Its
+  // safety rests on two things, and only the first is structural:
+  //
+  //   1. tenant isolation, enforced by the tenant database's global filter;
+  //   2. **the identifier never being caller-supplied** — it arrives from `UserEmployeeLink`, keyed by
+  //      tenant and tenant-user, so the only reachable value is the caller's own employee.
+  //
+  // **The second lives entirely in who calls it.** A second injection site could pass any employee
+  // identifier it liked and would face no company check — which is the property the door list polices,
+  // arriving through a caller instead of through a file.
+  //
+  // So the caller set is an exact inventory, the same shape as the door list. **A second injection site
+  // requires a person, exactly as a fourth door did.**
+  //
+  // ---- ⚠⚠⚠ PART 2 IS ENFORCED, BUT NOT HERE AND NOT AS WRITTEN (plant-verified 2026-09-06).
+  //
+  // Adding `Guid? forEmployeeId` to `IPayrollSelfServiceScopeResolver.ResolveForOwnEmployeeAsync` — flowed
+  // into the lookup so it DISPLACES `userEmployees.ResolveEmployeeIdAsync` — and binding it from the query
+  // string reddens `PayrollSelfServiceTests.The_self_route_contract_names_no_employee_on_any_surface`.
+  // **The identical resolver change with NO route exposing it leaves the gate GREEN.**
+  //
+  // ***So the enforced property is "no employee identifier appears on the self route's CONTRACT", not "the
+  // identifier is never caller-supplied". The two coincide only because there is exactly one caller of that
+  // resolver and it is a route.*** A second caller that is not a route — another handler, a job, another
+  // module's application layer — may pass a caller-supplied identifier, and the plant says nothing reddens.
+  //
+  // ⚠ AND THIS TEST DOES NOT COVER THAT EITHER: it pins who injects `IEmployeePlacementDirectory`. A new
+  // CALLER of the resolver injects no directory, so it is outside this population. The two guards read as
+  // adjacent and their populations do not touch.
+  //
+  // The honest form of the lock's second part, replacing the prose claim:
+  //   verified by plant, 2026-09-06 — `PayrollSelfServiceTests.The_self_route_contract_names_no_employee
+  //   _on_any_surface`; enforcement set size 1; a non-route caller is outside its population.
+  // **Today the operand is absent from the contract, which is stronger than the prose claims. Nothing
+  // preserves that.**
+  [Fact]
+  [Trait("Decision", "DEC-PAY-0017")]
+  public void Only_the_self_service_scope_resolvers_inject_the_placement_directory()
+  {
+    // Every assembly that references SSAS.HR.Contracts and could therefore ask for this contract.
+    var candidates = new[]
+    {
+      typeof(SSAS.Payroll.Application.Reads.PayrollSelfServiceScopeResolver).Assembly,
+      typeof(SSAS.Attendance.Application.Approval.LeaveApprovalRouter).Assembly,
+      HrApplicationAssembly,
+      typeof(SSAS.HR.Infrastructure.ServiceCollectionExtensions).Assembly
+    };
+
+    var injecting = candidates
+      .Distinct()
+      .SelectMany(assembly => assembly.GetTypes())
+      .Where(type => type.GetConstructors(BindingFlags.Public | BindingFlags.Instance)
+        .Any(constructor => constructor.GetParameters()
+          .Any(parameter => parameter.ParameterType == typeof(IEmployeePlacementDirectory))))
+      .Select(type => type.Name)
+      .OrderBy(name => name, StringComparer.Ordinal)
+      .ToArray();
+
+    // NOT VACUOUS. An empty result would mean the sweep stopped finding anything — and this assertion
+    // would then pass forever while the caller set grew unwatched.
+    Assert.NotEmpty(injecting);
+
+    // TWO, AS OF T-089. `AttendanceSelfServiceScopeResolver` joined by the same route the first one did:
+    // it asks *which employee am I*, derives its scope from that employee's own placement, and never takes
+    // an employee identifier from a caller. **A third still needs a person** — that is the entire point of
+    // an exact set rather than a `.Any()`.
+    Assert.Equal(
+      ["AttendanceSelfServiceScopeResolver", "PayrollSelfServiceScopeResolver"],
+      injecting);
+  }
+
+  // ================================================================================================
   // 16. ONLY TWO FILES MAY TOUCH THE EMPLOYEE ENTITY SET AT ALL.
   // ================================================================================================
   //
@@ -522,7 +803,29 @@ public sealed class EmployeeReadScopeArchitectureTests
       .OrderBy(name => name, StringComparer.Ordinal)
       .ToArray();
 
-    // ---- THREE FILES, BECAUSE THERE ARE NOW TWO SANCTIONED READ SHAPES (RULED 2026-08-24, DEC-PAY-0017).
+    // ---- AND A FOURTH FILE, RULED 2026-08-28 (FP-015, T-088). ITS LOCK IS DIFFERENT AND THAT IS THE RULING.
+  //
+  // `EmployeePlacementDirectoryService` serves FP-015's self-service read: given an employee, which company.
+  // (Name corrected 2026-09-06; see the note at item 17. Verified: three `Set<Employee>()` reads at lines 68,
+  // 95 and 128 of that file, each keyed on `employee.Id == employeeId` alone, no company predicate — so the
+  // description below is accurate about the type it now names.)
+  // **It applies NO company authorization, unlike the three above** — and that is not a lost check, it is
+  // the ruling. The caller it exists for is an ordinary employee reading their own record, and an employee
+  // is not necessarily granted authority to administer the company they work for. Requiring one would
+  // refuse exactly the caller the door was opened for.
+  //
+  // **A second door with a good lock is a sanctioned shape. This door's lock has two parts:**
+  //
+  //   1. TENANT ISOLATION — the tenant database's global filter, so another tenant's employee is not found.
+  //   2. A SINGLE ASSERTED CALLER — the identifier is never caller-supplied. It arrives from
+  //      `UserEmployeeLink`, keyed by tenant and tenant-user, so the only reachable value is the caller's
+  //      own employee.
+  //
+  // **Part 2 lives entirely in WHO CALLS IT, which is prose, and prose expires (`DEC-L-072`).** So it is
+  // asserted rather than described — see `Only_the_self_service_scope_resolvers_inject_the_placement_directory`
+  // below. A second injection site then requires a person, exactly as a fourth door did.
+
+  // ---- THREE FILES, BECAUSE THERE ARE NOW TWO SANCTIONED READ SHAPES (RULED 2026-08-24, DEC-PAY-0017).
     //
     // `EmployeeRosterService.cs` joined this list by a RULING, not by growing an exception. The distinction
     // is the whole reason the list is exact:
@@ -558,6 +861,7 @@ public sealed class EmployeeReadScopeArchitectureTests
     Assert.Equal(
       [
         "EmployeeApproverDirectoryService.cs",
+        "EmployeePlacementDirectoryService.cs",
         "EmployeeReadService.cs",
         "EmployeeRepository.cs",
         "EmployeeRosterService.cs"
@@ -839,6 +1143,18 @@ public sealed class EmployeeReadScopeArchitectureTests
 
   // The REAL model: Platform's tenant entities plus HR's contribution, exactly as the Host composes it. A
   // filter test run against a contributor-free context would prove nothing about Employee.
+  // The PLATFORM plane, model construction only — no connection is ever opened. Added in T-093 so the
+  // filter guard covers both planes rather than the one its author happened to be working in.
+  private static SSAS.Platform.Infrastructure.Persistence.PlatformDbContext ModelOnlyPlatformContext()
+  {
+    var options = new DbContextOptionsBuilder<SSAS.Platform.Infrastructure.Persistence.PlatformDbContext>()
+      .UseSqlServer("Server=model-only;Database=model-only;Integrated Security=True")
+      .Options;
+
+    return new SSAS.Platform.Infrastructure.Persistence.PlatformDbContext(
+      options, new ModelUser(), new ModelTenant(), new ModelClock());
+  }
+
   private static TenantDbContext ComposedTenantContext()
   {
     var options = new DbContextOptionsBuilder<TenantDbContext>()
@@ -913,7 +1229,6 @@ public sealed class EmployeeReadScopeArchitectureTests
 
     public string? Email => null;
 
-    public Guid? CompanyId => null;
 
     public string? SessionId => null;
 

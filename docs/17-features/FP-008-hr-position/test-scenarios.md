@@ -147,6 +147,12 @@ Three more exist because of specific defects this codebase has already produced,
 
 - **TS-POS-0044** — the cutover cycle. FP-007 found the equivalent in design review, and the executable
   assertion (`TS-DEP-0044`) is what keeps it found. One convenience column reintroduces it.
+  - ⚠⚠⚠ **CORRECTED 2026-09-01: `TS-DEP-0044` IS NOT AN EXECUTABLE ASSERTION AND NEVER WAS.** It is an
+    approved, unimplemented FP-007 scenario, so **the thing named here as *what keeps it found* was keeping
+    nothing.** **What exists is `CutoverCopyOrderCycleTests` (`tests/Platform.Tests/TenantStorage/`), which
+    proves the planner refuses foreign-key cycles among tenant-owned entities — the MECHANISM, not any
+    entity's shape.** ⚠ **So the convenience column would still be caught, but only by running a cutover;
+    nothing names Position, and `TS-POS-0044` remains unwritten.**
 - **TS-POS-0060** — the route inventory across **both** harnesses. FP-007 shipped a route that was reachable
   in tests and unreachable in production, and the guard that should have caught it was *vacuously* green.
 - **TS-POS-0052** — permissions defined, not merely named. FP-006 shipped constants that authorized nothing,

@@ -132,6 +132,11 @@ public sealed class EmployeeEndpointTests : IClassFixture<EmployeeApiTestHost>
   // a department can be unusable, because those refusals reach the wire today whether or not anyone
   // intended to test them.
   [Fact]
+  // CITED BY B18 pass 20 for `AC-DEP-0033`'s FIRST clause only. The criterion (`FR-DEP-0109`) has
+  // three: creating without a department is refused (here), creating with a department from another
+  // company is refused, and creating with an `Active` department in the same company succeeds. Only
+  // this clause is pinned at this layer.
+  [Trait("Criterion", "AC-DEP-0033")]
   public async Task A6b_Create_without_a_department_is_refused()
   {
     const string body = """
@@ -145,6 +150,9 @@ public sealed class EmployeeEndpointTests : IClassFixture<EmployeeApiTestHost>
   }
 
   [Fact]
+  // CITED BY B18 pass 20: `AC-DEP-0028` at the API layer. See
+  // `D2_Creating_an_employee_into_an_inactive_department_is_refused` in the SQL boundary suite.
+  [Trait("Criterion", "AC-DEP-0028")]
   public async Task A6c_Create_into_an_inactive_department_is_refused()
   {
     var body = $$"""
@@ -183,6 +191,21 @@ public sealed class EmployeeEndpointTests : IClassFixture<EmployeeApiTestHost>
   // The permission is HR.Employees.Update, NOT Transfer: DepartmentId is a classification, not a security
   // partition (ADR-024), so nothing moves across an authorization boundary.
   [Fact]
+  // CITED BY B18 pass 20 for two criteria it genuinely carries:
+  //   * `AC-DEP-0036` -- the SUCCESS half (the endpoint changes the department). Its stale-token
+  //     half is `D8_A_stale_row_version_is_refused_and_appends_nothing` in the SQL boundary suite,
+  //     and the `409` is asserted by neither.
+  //   * `AC-DEP-0042` -- the POSITIVE control. The criterion is *requires `HR.Employees.Update`,
+  //     NOT `HR.Departments.Update`*, which is a three-way discrimination: this caller holds the
+  //     employee permission and succeeds, `A6f` holds neither and is forbidden, and `A6g` holds
+  //     ONLY the department permissions and is forbidden. `A6g` is the criterion's *not* half
+  //     exactly, and without THIS test a handler that forbade everyone would satisfy both refusals.
+  //
+  // NOTE FOR THE SPECIFICATION: `AC-DEP-0036` names the route
+  // `POST /api/hr/employees/{id}/department` and the endpoint under test is `.../change-department`.
+  // The criterion names a route the surface does not expose.
+  [Trait("Criterion", "AC-DEP-0036")]
+  [Trait("Criterion", "AC-DEP-0042")]
   public async Task A6e_Change_department_succeeds_with_employee_update_authority()
   {
     var response = await Send(
@@ -194,7 +217,56 @@ public sealed class EmployeeEndpointTests : IClassFixture<EmployeeApiTestHost>
     Assert.Equal(HttpStatusCode.OK, response.StatusCode);
   }
 
+  // ================================================================================================
+  // ⚠⚠ THE OTHER HALF OF `AC-DEP-0036`, AND THE NAME SAYS WHICH HALF — IT IS NOT THE AUTHORITATIVE ONE.
+  // ================================================================================================
+  //
+  // `AC-DEP-0036` is two clauses: *changes the department* AND *refuses a stale `RowVersion` with `409`*.
+  // `A6e` above asserts the first. **Until this test the second was asserted only in
+  // `EmployeeBoundarySqlServerTests.D8_…`, which the merge gate does not run** — so a change-department
+  // guard that stopped refusing stale versions passed everything a merge is defended by.
+  //
+  // ---- ⚠⚠⚠ WHAT THIS ASSERTS, AND WHAT IT DELIBERATELY DOES NOT.
+  //
+  // `ChangeEmployeeDepartmentCommandHandler:99` compares the supplied version against the one the
+  // repository returns and fails with `ConcurrencyConflict` before any write. **THAT PRE-CHECK is what this
+  // test covers, through production handler code.** ⚠ **The handler's own comment at `:96` says the
+  // rowversion token AT COMMIT is *"the authoritative check"* — and this test does NOT reach it, because a
+  // stubbed unit of work never commits.** The name says `pre_check` for that reason; do not rename it to
+  // something that sounds like it covers concurrency, and do not let it carry the criterion's second clause
+  // as though the authoritative half were asserted.
+  //
+  // ---- WHY A STUB IS LEGITIMATE HERE WHEN IT IS NOT ELSEWHERE.
+  //
+  // **A stub that SUPPLIES INPUT to the code under test is a fixture; a stub that REPLACES the code under
+  // test is a substitution.** The repository feeds `employee.RowVersion` in; the comparison and the refusal
+  // are the real handler's. ⚠ Contrast `AC-EMP-0015`, whose subject IS `IEmployeeReadService` — asserting
+  // that here would test the stub.
   [Fact]
+  [Trait("Criterion", "AC-DEP-0036")]
+  public async Task A6h_Change_department_refuses_a_stale_rowversion_at_the_handler_pre_check()
+  {
+    // ⚠ THE MATCHING CASE IS THE CONTROL AND IT IS NOT DECORATION. `A6e` sends the SAME route with the
+    // stub's current version and expects `200`. Without that pairing this test cannot distinguish
+    // *the handler refuses STALE versions* from *the handler refuses EVERYTHING* — which is `B22`'s shape
+    // landing on the very test that came out of `B22`.
+    var body = $$"""
+      {"departmentId":"{{EmployeeApiTestHost.DepartmentB}}","expectedRowVersion":"AAAAAAAAAAA="}
+      """;
+
+    var response = await Send(
+      HttpMethod.Post,
+      $"{Route}/{EmployeeApiTestHost.EmployeeId}/change-department",
+      UpdateToken,
+      body);
+
+    Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    Assert.Equal("concurrency.conflict", await EmployeeApiTestHost.ProblemCodeAsync(response));
+  }
+
+  [Fact]
+  // CITED BY B18 pass 20: `AC-DEP-0042`'s no-authority refusal. See `A6e` for the three-way reading.
+  [Trait("Criterion", "AC-DEP-0042")]
   public async Task A6f_Change_department_without_the_update_permission_is_forbidden()
   {
     var response = await Send(
@@ -211,6 +283,9 @@ public sealed class EmployeeEndpointTests : IClassFixture<EmployeeApiTestHost>
   // Department permissions are the sharp probe here: a reader might reasonably assume "it changes a
   // department, so it needs a department permission". It does not — it changes an EMPLOYEE.
   [Fact]
+  // CITED BY B18 pass 20: `AC-DEP-0042`'s *NOT `HR.Departments.Update`* clause, exactly -- a caller
+  // holding only the department permissions is forbidden. See `A6e` for the three-way reading.
+  [Trait("Criterion", "AC-DEP-0042")]
   public async Task A6g_Change_department_with_only_department_permissions_is_forbidden()
   {
     var token = host.TokenWith(
@@ -470,12 +545,27 @@ public sealed class EmployeeEndpointTests : IClassFixture<EmployeeApiTestHost>
     Assert.DoesNotContain("RowVersion", payload, StringComparison.Ordinal);
   }
 
+  // ⚠⚠ `positionId` ADDED BY 271, AND WHY IT WAS MISSING IS THE FINDING RATHER THAN THE FIX.
+  //
+  // `AC-POS-0031` says `positionId` is not accepted on the ordinary profile update and that sending it is
+  // rejected as an unknown property. The update allowlist is exactly `fullName`, `nationalId`,
+  // `expectedRowVersion`, so the mechanism refuses it — and nothing asserted that until this line.
+  //
+  // ⚠⚠⚠ THIS THEORY'S OWN SELECTION PRINCIPLE ALREADY COVERED THE CASE. `employeeNumber` is here with the
+  // IDENTICAL shape: present in the CREATE allowlist, absent from the UPDATE one. Nobody decided to exclude
+  // `positionId` — **the list simply predates FP-008 and was never extended.**
+  //
+  // **THE OMISSION WAS INVISIBLE PRECISELY BECAUSE FOUR SIBLINGS WERE PRESENT.** A list that looks complete
+  // because it HAS members is harder to audit than an empty one: an empty list announces itself, a list of
+  // four reads as considered. ⚠ The next field added to a create allowlist has exactly this problem, and
+  // the check is the same one — *is it in create and not in update?* If so it belongs here.
   [Theory]
   [InlineData("tenantId")]
   [InlineData("companyId")]
   [InlineData("branchId")]
   [InlineData("employeeNumber")]
   [InlineData("status")]
+  [InlineData("positionId")]
   public async Task A22_Update_rejects_ownership_and_identity_fields(string field)
   {
     var body = $$"""
@@ -917,6 +1007,32 @@ public sealed class EmployeeEndpointTests : IClassFixture<EmployeeApiTestHost>
     Assert.Equal("Finance", department.GetProperty("name").GetString());
   }
 
+  // ================================================================================================
+  // ⚠ A BAD PAGE NUMBER AND A BAD PAGE SIZE ARE DISTINGUISHABLE ON THE WIRE (T-260).
+  // ================================================================================================
+  //
+  // Both used to answer `request.invalid` — the same code a malformed body, an unknown property and a
+  // stale row version get. **A paging client that fixed the wrong parameter retried and failed
+  // identically**, which is the argument that made a malformed identifier a 400 rather than a 404.
+  //
+  // ⚠ **AND THE DOMAIN SPLIT ALONE WOULD HAVE BEEN INVISIBLE HERE.** The problem document carries
+  // `code`, `correlationId` and `resourceKey` and **no message field**, so `Error.Message` never reaches
+  // a caller. The wire code is the entire channel — which is why this asserts the CODE and not the
+  // status: both are 400, and a test that checked only the status would pass against the old behaviour.
+  [Theory]
+  [InlineData("?pageNumber=0", "request.page_number_invalid")]
+  [InlineData("?pageSize=0", "request.page_size_invalid")]
+  [InlineData("?pageSize=99999", "request.page_size_invalid")]
+  public async Task An_out_of_range_page_names_the_parameter_at_fault(string query, string expected)
+  {
+    var response = await Send(HttpMethod.Get, Route + query, ViewToken);
+
+    Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+    using var document = JsonDocument.Parse(await EmployeeApiTestHost.BodyAsync(response));
+    Assert.Equal(expected, document.RootElement.GetProperty("code").GetString());
+  }
+
   // ---- AND SO DOES EVERY LIST ROW.
   [Fact]
   public async Task A47_A_search_result_row_carries_its_department()
@@ -1032,4 +1148,228 @@ public sealed class EmployeeEndpointTests : IClassFixture<EmployeeApiTestHost>
   // it is what makes "identical" mean identical in every part the caller could learn from.
   private static string Redact(string body) =>
     System.Text.RegularExpressions.Regex.Replace(body, "\"correlationId\":\"[^\"]*\"", "\"correlationId\":\"*\"");
+
+  // ================================================================================================
+  // A CROSS-COMPANY EMPLOYEE MUST BE INDISTINGUISHABLE FROM ONE THAT DOES NOT EXIST.
+  // ================================================================================================
+  //
+  // ---- WHAT THIS ASSERTS.
+  //
+  // For every content state a caller can steer these handlers into, a request naming an employee in
+  // ANOTHER COMPANY must answer byte-identically — status AND body, correlation id redacted — to the same
+  // request naming an employee that does not exist at all. Anything less is a disclosure: the difference IS
+  // the information. Note it asserts identity with the ABSENT answer, not merely "a 404", so the remedy
+  // cannot be satisfied by a differently-shaped 404.
+  //
+  // ---- POPULATION, STATED SO THE GAP IS VISIBLE RATHER THAN IMPLIED.
+  //
+  // SIX of the seven employee-write members — every one mounted on THIS host that loads by a caller-supplied
+  // id. The seventh, `/change-position`, is mounted only on `PositionApiTestHost` and is guarded by the twin
+  // of this test in `PositionChangeErrorWireContractTests`. THE POPULATION HERE IS SIX, NOT SEVEN; the two
+  // files together cover the class and neither covers it alone.
+  //
+  // ---- THE MEMBERS DIVIDE IN TWO, AND THE DIVISION IS THE POINT.
+  //
+  // `/change-department` and `/transfer` place a CONTENT-DEPENDENT check ABOVE the version check, so a
+  // caller holding no valid rowversion can still steer them — that is the equality oracle. The other four
+  // place every content-dependent outcome BELOW the version check, so on the reachable path they can only
+  // answer one way. THAT IS WHY THE STATE LISTS DIFFER PER MEMBER rather than being one shared list: a
+  // uniform list would invent states some members cannot express and hide the asymmetry that matters.
+  //
+  // ---- WHY THE STATES ARE ENUMERATED RATHER THAN SAMPLED.
+  //
+  // The checks are ORDERED, so each masks every later one — a terminated employee never reaches the
+  // `unchanged` comparison. Asserting one state per member would look complete and leave the rest open.
+  //
+  // ---- ANTI-VACUITY, AND WHAT THIS TEST CANNOT SEE.
+  //
+  // `absent` answers a real `404 employee.not_found` and the cross-company states do not, so this CAN fail
+  // and DOES: verified red against the unfixed tree of 2026-09-06, every cell, each naming the cross-company
+  // case and printing both answers.
+  //
+  // ⚠⚠⚠ AND VERIFIED AGAINST THE REGRESSION THAT WILL ACTUALLY HAPPEN, WHICH IS NOT DELETION.
+  //
+  // A red against a MISSING check only proves the guard notices absence, and nobody deletes a security
+  // check — they MOVE it. The whole finding here is that ORDERING decides the leak, so the regression this
+  // guard exists for is the company check relocated BELOW a content check. That was planted, on 2026-09-06,
+  // by moving `ChangeEmployeeDepartment`'s check below `Terminated` and `DepartmentUnchanged` while leaving
+  // it above the version check — the plausible wrong fix, "I put it before the version check".
+  //
+  // RESULT: RED, 2 of 26 cells, both on `change-department`, and exactly the two content states the move
+  // reopens. Every other member and every other cell stayed green. So the guard detects RE-ORDERING, not
+  // merely removal, and it fingers WHICH member and WHICH states rather than going uniformly red.
+  //
+  // REPEATED ON `transfer` the same day, relocating its check below `TransferAfterTermination` and
+  // `TransferDestinationUnchanged`: RED, 2 of 26, exactly `transfer [terminated]` and
+  // `transfer [destination-unchanged]`, with `change-department` green in that run. All three oracle members
+  // are therefore covered by measurement rather than by analogy — the third, `/change-position`, is planted
+  // and recorded in its own file.
+  //
+  // ---- WHY THE MITIGATION IN THE `correct-version` NOTE IS SAFE TO RELY ON, AND WHERE THAT WAS CHECKED.
+  //
+  // That note says the correct-version path needs a rowversion the API will not hand a foreign caller. The
+  // evidence is NOT the error mapper's comment — the mapper can only collapse a code the handler produces,
+  // and this whole class of defect is the mapper's collapse being defeated upstream. It is the READ QUERY
+  // ITSELF: `EmployeeReadService.Scoped` (`:372-377`) composes
+  // `.Where(employee => scope.Companies.CompanyIds.Contains(employee.CompanyId))` INTO the query, and
+  // `GetEmployeeAsync` (`:61-62`) applies `Scoped` BEFORE `.Where(employee => employee.Id == employeeId)`,
+  // then `SingleOrDefaultAsync` — so a foreign employee yields null, not a record. The detail projection
+  // does carry `RowVersion` (`:82`), so an in-scope read hands the token over; the scoping is the only thing
+  // standing between a foreign caller and it.
+  //
+  // ⚠ THAT IS STRUCTURAL EVIDENCE, ONE RUNG BELOW PLANT-BACKED, AND IT CANNOT BE RAISED FROM THIS LAYER:
+  // `StubEmployeeReads` records `LastScope` and returns whatever a test seeded, ignoring the scope entirely.
+  // So an API-layer read probe would measure the stub, not the product — scope-is-a-parameter is not
+  // the-query-composes-the-predicate. A plant would have to live where the real `EmployeeReadService` runs.
+  //
+  // ⚠ IT BOUNDS THE STALE-VERSION PATH ONLY. A caller holding the CORRECT rowversion runs on to
+  // `SaveChangesAsync`, where this harness's stub unit of work returns success; the real refusal there is the
+  // company WRITE FLOOR at `TenantDbContext:415-457`, which no API-layer test can observe. So a green here
+  // says nothing whatever about the correct-version path, and must not be read as saying it does.
+  [Fact]
+  [Trait("Tripwire", "CrossCompanyDisclosure")]
+  public async Task A46_A_cross_company_employee_is_indistinguishable_from_an_absent_one()
+  {
+    // `%V%` is replaced per state, so the SAME request can be sent with a stale token and with the seeded
+    // one. Without that the guard could only ever speak about callers who guessed the version wrong.
+    const string Stale = "AAAAAAAAB9A=";
+    var correct = Convert.ToBase64String(StubEmployeeRepository.CurrentRowVersion);
+
+    var update = UpdateToken;
+    var transfer = TransferToken;
+    var terminate = TerminateToken;
+
+    // Changed and Unchanged differ ONLY for the two members that compare a destination against the record.
+    // Where they are the same string the member has no `unchanged` state and none is fabricated for it.
+    (string Name, HttpMethod Method, string Path, string Token, string Changed, string Unchanged)[] members =
+    [
+      ("update", HttpMethod.Put, "", update,
+        "{\"fullName\":\"Layla Haddad-Nasr\",\"expectedRowVersion\":\"%V%\"}",
+        "{\"fullName\":\"Layla Haddad-Nasr\",\"expectedRowVersion\":\"%V%\"}"),
+      ("activate", HttpMethod.Post, "/activate", update,
+        "{\"reasonCode\":\"Administrative\",\"expectedRowVersion\":\"%V%\"}",
+        "{\"reasonCode\":\"Administrative\",\"expectedRowVersion\":\"%V%\"}"),
+      ("deactivate", HttpMethod.Post, "/deactivate", update,
+        "{\"reasonCode\":\"Administrative\",\"expectedRowVersion\":\"%V%\"}",
+        "{\"reasonCode\":\"Administrative\",\"expectedRowVersion\":\"%V%\"}"),
+      ("terminate", HttpMethod.Post, "/terminate", terminate,
+        "{\"terminationDate\":\"2027-01-31T00:00:00+00:00\",\"reasonCode\":\"Resignation\",\"expectedRowVersion\":\"%V%\"}",
+        "{\"terminationDate\":\"2027-01-31T00:00:00+00:00\",\"reasonCode\":\"Resignation\",\"expectedRowVersion\":\"%V%\"}"),
+      ("change-department", HttpMethod.Post, "/change-department", update,
+        "{\"departmentId\":\"" + EmployeeApiTestHost.DepartmentB + "\",\"expectedRowVersion\":\"%V%\"}",
+        "{\"departmentId\":\"" + EmployeeApiTestHost.DepartmentA + "\",\"expectedRowVersion\":\"%V%\"}"),
+      ("transfer", HttpMethod.Post, "/transfer", transfer,
+        "{\"destinationBranchId\":\"" + EmployeeApiTestHost.BranchB + "\",\"reasonCode\":\"Reorganisation\",\"expectedRowVersion\":\"%V%\"}",
+        "{\"destinationBranchId\":\"" + EmployeeApiTestHost.BranchA + "\",\"reasonCode\":\"Reorganisation\",\"expectedRowVersion\":\"%V%\"}")
+    ];
+
+    var failures = new List<string>();
+    var channelThree = new List<string>();
+    var cells = 0;
+
+    foreach (var member in members)
+    {
+      // The null check precedes every version check in all seven members, so the absent answer does not
+      // depend on which token is sent; one baseline serves every state.
+      var absent = await AnswerFor(member.Method, member.Path, member.Token,
+        member.Changed.Replace("%V%", Stale, StringComparison.Ordinal),
+        present: false, EmployeeApiTestHost.CompanyA, EmployeeStatus.Active);
+
+      var states = new List<(string Name, string Body, EmployeeStatus Status)>
+      {
+        ("active", member.Changed.Replace("%V%", Stale, StringComparison.Ordinal), EmployeeStatus.Active),
+        ("inactive", member.Changed.Replace("%V%", Stale, StringComparison.Ordinal), EmployeeStatus.Inactive),
+        ("terminated", member.Changed.Replace("%V%", Stale, StringComparison.Ordinal), EmployeeStatus.Terminated),
+
+        // ---- THE CORRECT-ROWVERSION STATE, AND WHY THE GUARD WOULD BE TOO NARROW WITHOUT IT.
+        //
+        // The remedy sits ABOVE the version check, so it covers this caller too — and a guard that only
+        // ever sent a stale token would assert a strictly smaller surface than the fix it protects, while
+        // reading as though it covered the whole thing. This is the state where an unfixed handler runs
+        // PAST the version check into the content-and-save path.
+        //
+        // ⚠ WHAT THIS CELL CANNOT SEE: the stub unit of work returns success, so on an unfixed tree the
+        // answer here reflects the HARNESS, not production. The real refusal on that path is the company
+        // write floor at `TenantDbContext:415-457`, invisible to every API-layer test. Read a failure here
+        // as "the handler let it through", never as "production would have written the row".
+        ("correct-version", member.Changed.Replace("%V%", correct, StringComparison.Ordinal),
+          EmployeeStatus.Active)
+      };
+
+      if (!string.Equals(member.Changed, member.Unchanged, StringComparison.Ordinal))
+      {
+        states.Add(("destination-unchanged",
+          member.Unchanged.Replace("%V%", Stale, StringComparison.Ordinal), EmployeeStatus.Active));
+      }
+
+      var distinct = new HashSet<string>(StringComparer.Ordinal);
+
+      foreach (var state in states)
+      {
+        cells++;
+
+        var crossCompany = await AnswerFor(member.Method, member.Path, member.Token, state.Body,
+          present: true, EmployeeApiTestHost.CompanyB, state.Status);
+
+        // Only the CONTENT states feed the channel-3 count. `correct-version` varies the token, not the
+        // record's content, so folding it in would inflate the count with a different axis and make a
+        // member look like an oracle because it answers a valid-token caller differently.
+        if (!string.Equals(state.Name, "correct-version", StringComparison.Ordinal))
+        {
+          distinct.Add(crossCompany);
+        }
+
+        if (!string.Equals(crossCompany, absent, StringComparison.Ordinal))
+        {
+          failures.Add(
+            $"{member.Name} [{state.Name}] DISCLOSES AN EMPLOYEE IN ANOTHER COMPANY.\n" +
+            $"    cross-company answer : {crossCompany}\n" +
+            $"    absent answer        : {absent}\n" +
+            "    The company check must sit immediately after the null check, ABOVE every\n" +
+            "    content-dependent check — not merely before the version check.");
+        }
+      }
+
+      // CHANNEL 3, MEASURED RATHER THAN INFERRED. More than one distinct answer across the content states
+      // means the content of a foreign record is readable through this member on the stale-version path.
+      channelThree.Add(
+        $"    {member.Name,-20} {distinct.Count} distinct answer(s) over {states.Count - 1} content states");
+    }
+
+    Assert.True(
+      failures.Count == 0,
+      $"{failures.Count} of {cells} cross-company states are distinguishable from absence.\n\n" +
+      string.Join("\n\n", failures) +
+      "\n\nCONTENT DISCRIMINATION PER MEMBER (channel 3), measured on the stale-version path:\n" +
+      string.Join("\n", channelThree));
+  }
+
+  private async Task<string> AnswerFor(
+    HttpMethod method, string path, string token, string body, bool present, Guid company,
+    EmployeeStatus status)
+  {
+    try
+    {
+      if (present)
+      {
+        var employee = StubEmployeeRepository.NewEmployee(status);
+        employee.CompanyId = company;
+        host.Repository.Employee = employee;
+      }
+      else
+      {
+        host.Repository.Employee = null;
+      }
+
+      using var response = await Send(
+        method, $"{Route}/{EmployeeApiTestHost.EmployeeId}{path}", token, body);
+
+      return ((int)response.StatusCode).ToString(System.Globalization.CultureInfo.InvariantCulture) +
+        " " + Redact(await EmployeeApiTestHost.BodyAsync(response));
+    }
+    finally
+    {
+      host.Repository.Reset();
+    }
+  }
 }

@@ -8,8 +8,6 @@ public interface ICurrentUser
 
   string? Email { get; }
 
-  Guid? CompanyId { get; }
-
   string? SessionId { get; }
 
   string? TokenId { get; }

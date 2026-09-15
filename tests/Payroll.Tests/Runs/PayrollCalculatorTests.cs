@@ -18,8 +18,22 @@ public sealed class PayrollCalculatorTests
 
   private static readonly Guid Employee = Guid.Parse("bbbbbbbb-0000-0000-0000-000000000001");
 
+  // The second person in the run. Every other test in this file calculates for ONE employee, which is
+  // exactly what `Two_employees_each_get_their_own_lines_numbered_from_zero` exists to break.
+  private static readonly Guid SecondEmployee = Guid.Parse("bbbbbbbb-0000-0000-0000-000000000002");
+
   [Fact]
   [Trait("Decision", "OD-PAY-0008")]
+  // ⚠ CITED BY B18 pass 15, body-confirmed: ⚠ PARTLY PINNED, and the clause names matter here.
+  //
+  // `AC-PAY-0026` is *"a payslip returns the stored lines FOR ONE EMPLOYEE IN ONE RUN, and the lines SUM
+  // EXACTLY to the stated total"*. **This asserts the SUM clause only** -- the lines add to
+  // `TotalEarnings + TotalDeductions` and the net is their difference.
+  //
+  // ⚠ The RETRIEVAL clause belongs to `PayrollReadService.GetPayslipAsync(scope, runId, employeeId)`, and
+  // **nothing constructs that class in any suite** -- so the filter that makes a payslip one employee's
+  // and one run's is pinned by nothing. Recorded rather than implied, and queued as its own item.
+  [Trait("Criterion", "AC-PAY-0026")]
   public void The_payslip_adds_up_because_the_total_is_the_sum_of_rounded_lines()
   {
     // ---- THE INVARIANT THE ROUNDING RULING EXISTS TO PROTECT.
@@ -43,6 +57,89 @@ public sealed class PayrollCalculatorTests
     var run = ApprovedRun(period, lines);
     Assert.Equal(run.Lines.Sum(line => line.Amount), run.TotalEarnings + run.TotalDeductions);
     Assert.Equal(run.TotalEarnings - run.TotalDeductions, run.NetPay);
+  }
+
+  // ---- ⚠⚠⚠ TWO EMPLOYEES, BECAUSE EVERY QUANTIFIER IN THESE TWO CRITERIA IS TRIVIAL AT N=1.
+  //
+  // `AC-PAY-0013` is *"Calculating produces one line per applicable element per included employee, and a net
+  // amount."* `AC-PAY-0010` is *"A run is created for one company and one period, and includes every
+  // employee employed for at least one day of it."* **Both quantify over the EMPLOYEE axis.**
+  //
+  // ⚠ AND THAT AXIS WAS PINNED AT ONE EVERYWHERE, WHICH WAS MEASURED RATHER THAN ASSUMED. Every
+  // `PayrollCalculator.Calculate` call site in this suite was parsed — balanced parens, third top-level
+  // argument, top-level commas inside the collection literal — and **the number passing more than one
+  // employee was ZERO across all 17.** The Integration chain seeds one employee too.
+  //
+  // ***"EVERY EMPLOYEE" OVER A POPULATION OF ONE IS TRUE OF THE SINGLETON FOR ANY IMPLEMENTATION, AND A
+  // CROSS PRODUCT WITH ONE AXIS PINNED AT ONE IS NOT A CROSS PRODUCT.*** The ELEMENT axis is exercised
+  // hard by the tests around this one — unassigned, inactive, the net-pay exclusion, evaluation order. The
+  // employee axis did no work at all. *A `NotEmpty` floor is specifically blind to this: N≥1 is satisfied
+  // by the singleton, and the singleton is exactly where a quantifier stops meaning anything.*
+  //
+  // ⚠⚠ THE TWO BASE SALARIES DIFFER, AND THAT IS LOAD-BEARING. With both employees on the same base, lines
+  // attributed to the wrong `EmployeeId` would be invisible — every assertion would still find the amount
+  // it expected. Here the amount is what ties a line to a person.
+  //
+  // ⚠⚠⚠ AND THE SEQUENCE RESTART IS THE ASSERTION NOBODY WOULD THINK TO WRITE. `var sequence = 0` sits
+  // INSIDE the per-employee loop, and the unique index `(PayrollRunId, EmployeeId, Sequence)` is keyed on
+  // it being per-employee. **Hoisting that one line out of the loop makes the sequence global — and at N=1
+  // a global sequence and a per-employee sequence are the same sequence.** This is the only test that can
+  // tell them apart.
+  [Fact]
+  [Trait("Criterion", "AC-PAY-0010")]
+  [Trait("Criterion", "AC-PAY-0013")]
+  public void Two_employees_each_get_their_own_lines_numbered_from_zero()
+  {
+    var basic = PayrollTestData.Element(
+      "BASIC", PayElementKind.Earning, PayElementBehaviour.BaseSalary, account: SalaryAccount);
+    var housing = PayrollTestData.Element(
+      "HOUSING", PayElementKind.Earning, PayElementBehaviour.PercentageOfBaseSalary, 10m, 1, AllowanceAccount);
+
+    var period = PayrollTestData.Period();
+    var hired = period.StartUtc.AddYears(-1);
+
+    var first = PayrollTestData.Employee(
+      Employee, hired, null, PayrollTestData.Compensation(Employee, hired, 1000m, (housing.Id, null)));
+    var second = PayrollTestData.Employee(
+      SecondEmployee, hired, null,
+      PayrollTestData.Compensation(SecondEmployee, hired, 2000m, (housing.Id, null)));
+
+    var result = PayrollCalculator.Calculate(Guid.NewGuid(), period, [first, second], [basic, housing]);
+    Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Message : string.Empty);
+
+    var lines = result.Value;
+
+    // ---- ONE LINE PER APPLICABLE ELEMENT PER INCLUDED EMPLOYEE, AS AN EXACT COUNT RATHER THAN A FLOOR.
+    // Two elements times two people. A floor would pass on three lines, which is the likelier failure.
+    Assert.Equal(4, lines.Count);
+
+    // ---- EVERY EMPLOYEE IS INCLUDED, AND NEITHER ABSORBED THE OTHER'S LINES.
+    Assert.Equal(2, lines.Count(line => line.EmployeeId == Employee));
+    Assert.Equal(2, lines.Count(line => line.EmployeeId == SecondEmployee));
+
+    // ---- AND THE MONEY FOLLOWED THE RIGHT PERSON.
+    Assert.Equal(
+      1000m, lines.Single(line => line.EmployeeId == Employee && line.PayElementId == basic.Id).Amount);
+    Assert.Equal(
+      2000m, lines.Single(line => line.EmployeeId == SecondEmployee && line.PayElementId == basic.Id).Amount);
+
+    // The derived element asserted RELATIONALLY — the second person's allowance is twice the first's,
+    // because their base is. Stated as a relation between the two rather than against a constant, so it
+    // remains an assertion about ATTRIBUTION rather than about the percentage arithmetic, which the tests
+    // above already own. The non-vacuity premise is that the first is positive.
+    var firstHousing =
+      lines.Single(line => line.EmployeeId == Employee && line.PayElementId == housing.Id).Amount;
+    var secondHousing =
+      lines.Single(line => line.EmployeeId == SecondEmployee && line.PayElementId == housing.Id).Amount;
+
+    Assert.True(firstHousing > 0m);
+    Assert.Equal(firstHousing * 2m, secondHousing);
+
+    // ---- THE SEQUENCE RESTARTS PER EMPLOYEE. A global counter would number these 0,1,2,3.
+    Assert.Equal(
+      [0, 1], lines.Where(line => line.EmployeeId == Employee).Select(line => line.Sequence).Order());
+    Assert.Equal(
+      [0, 1], lines.Where(line => line.EmployeeId == SecondEmployee).Select(line => line.Sequence).Order());
   }
 
   [Fact]
@@ -73,6 +170,15 @@ public sealed class PayrollCalculatorTests
 
   [Fact]
   [Trait("Decision", "OD-PAY-0007")]
+  // ⚠ CITED BY B18 pass 15, body-confirmed: BOTH CLAUSES of `AC-PAY-0009`.
+  //
+  // Clause 1 -- *elements are evaluated in ascending calculation order* -- is asserted where the order is
+  // LOAD-BEARING rather than decorative: `PercentageOfGrossToDate` reads the earnings accumulated so far,
+  // so the levy seeing basic + bonus = 5000 and producing 500 is only possible if it ran third.
+  //
+  // ⚠ Clause 2 -- *and a line records the order used* -- is the `Sequence` comparison on the last line.
+  // It is a separate claim from clause 1 and would be missed by a reader who stopped at the amount.
+  [Trait("Criterion", "AC-PAY-0009")]
   public void Elements_evaluate_in_ascending_order_and_a_later_one_sees_an_earlier_result()
   {
     // `PercentageOfGrossToDate` is the behaviour that makes ordering load-bearing rather than decorative:
@@ -178,6 +284,56 @@ public sealed class PayrollCalculatorTests
     var summary = typeof(AttendanceSummaryResult).GetProperties().Select(property => property.Name).ToArray();
     Assert.Contains(nameof(AttendanceSummaryResult.OvertimeQuantityByTier), summary);
     Assert.Contains(nameof(AttendanceSummaryResult.UnpaidAbsenceQuantity), summary);
+  }
+
+  // ---- ⚠⚠⚠ THE REPLACEMENT ITSELF, ASSERTED (AC-ATT-0044). A CRITERION WHOSE SUBJECT IS THIS SUITE.
+  //
+  // *"After the Payroll-side follow-up, `No_attendance_driven_behaviour_exists_because_attendance_is_unbuilt`
+  // **no longer exists under that name**, and the two replacement guards are present and green. **A run in
+  // which it was simply deleted fails this criterion**."*
+  //
+  // ***THE LAST SENTENCE IS THE CRITERION GUARDING AGAINST ITS OWN VACUOUS SATISFACTION*** — *"X no longer
+  // exists under that name"* is satisfied perfectly by deleting X and writing nothing. **Its author saw that
+  // and wrote the anti-deletion clause into the criterion**, which is the job we usually have to do to a
+  // test after the fact.
+  //
+  // ⚠⚠⚠ AND THE TWO `Contains` ASSERTIONS CANNOT FAIL AT RUNTIME, WHICH IS THE POINT AND NOT A DEFECT
+  // — BUT IT HAD TO BE MEASURED, BECAUSE MY FIRST DESCRIPTION OF THEM WAS WRONG.
+  //
+  // I wrote them as the anti-vacuity control. **They are not**: `nameof` cannot name a method that does not
+  // exist, so if either successor were deleted or renamed **THIS FILE WOULD NOT COMPILE.** *Planted a
+  // rename to check, and got `error CS0103` rather than a red test.*
+  //
+  // ***SO THE CRITERION'S ANTI-DELETION CLAUSE IS ENFORCED BY THE COMPILER, WHICH IS STRICTLY STRONGER THAN
+  // A TEST COULD BE*** — a deletion cannot reach a test run at all. **The runtime assertion that can
+  // actually fail is the third one: somebody RE-ADDING a method under the dead name**, which no compiler
+  // objects to and which would mean the superseded guard had come back alongside its replacements.
+  //
+  // ⚠⚠ AND COMPILE-TIME ENFORCEMENT IS STRONGER THAN A TEST WITHOUT BEING ABSOLUTE, WHICH IS THE SAME
+  // QUALIFICATION EVERY STRUCTURAL GUARD HERE CARRIES. **Somebody deleting a successor meets `CS0103` and
+  // can satisfy it by deleting the assertion line** — noticed, then repaired inside one edit, exactly as a
+  // new constructor parameter is. *Stronger than a test; not a fence.*
+  //
+  // ⚠ A bare string for the successors would have made the presence checks runtime-capable and WEAKER:
+  // deletion would then be caught at test time instead of build time. *The dead name is a literal because
+  // it must be; the live ones are symbols because that buys the stronger enforcement.*
+  //
+  // ⚠⚠⚠ AND *"AND GREEN"* IS CARRIED BY WHERE THIS SITS, NOT BY AN ASSERTION. These are `[Fact]`s in a
+  // gated suite: if either successor were red the gate would be red and this commit could not exist. **A
+  // test asserting that other tests pass would be asserting the gate's own result** — the bound worth
+  // stating is the other one: *this guard lives in the file it guards, so deleting the whole file takes the
+  // guard with it.* Nothing inside a suite can defend against that, and pretending otherwise would be the
+  // vacuity this criterion warns about, one level up.
+  [Fact]
+  [Trait("Criterion", "AC-ATT-0044")]
+  public void The_superseded_guard_was_replaced_rather_than_deleted()
+  {
+    var methods = typeof(PayrollCalculatorTests).GetMethods().Select(method => method.Name).ToArray();
+
+    Assert.Contains(nameof(The_attendance_driven_behaviours_exist_now_that_attendance_supplies_them), methods);
+    Assert.Contains(nameof(No_pay_element_behaviour_exists_without_an_input_this_product_has), methods);
+
+    Assert.DoesNotContain("No_attendance_driven_behaviour_exists_because_attendance_is_unbuilt", methods);
   }
 
   [Fact]

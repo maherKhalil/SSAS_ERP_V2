@@ -74,7 +74,45 @@ public sealed class HostEndpointTests(HostWebApplicationFactory factory)
       parameter => parameter.ParameterType == typeof(IRequestTenantEligibility));
   }
 
+  // Hoisted rather than written inline: CA1861 is enforced as an error by this gate, and an inline array
+  // argument in an assertion trips it. The list is the documented surface, in ordinal order.
+  private static readonly string[] ApprovedAuthenticationPaths =
+  [
+    "/api/platform/auth/login",
+    "/api/platform/auth/logout",
+    "/api/platform/auth/refresh",
+    "/api/platform/auth/select-tenant"
+  ];
+
   [Fact]
+  [Trait("Criterion", "AC-AUTH-0050")]
+  // ==================================================================================================
+  // `AC-AUTH-0050`, TO ITS TERMINAL FULL STOP — *"OpenAPI exposes all four routes with exact Bearer,
+  // anonymous, cookie, CSRF, schema, status, and Problem Details documentation and no sensitive or private
+  // example/value."*
+  // ==================================================================================================
+  //   all four routes    the four `TryGetProperty` assertions
+  //   Bearer             the `securitySchemes` type/scheme pair, and `logout`'s `security[0]`
+  //   anonymous          `login` carries no non-empty `security` — the ABSENCE is the documentation
+  //   CSRF               `X-XSRF-TOKEN` present AND `required` on refresh and logout
+  //   schema             `login`'s 200 is a two-member `oneOf`; `refresh` has no `requestBody`
+  //   status             400/401/403/429/503 asserted on every one of the four
+  //   Problem Details    ⚠ NOT ASSERTED. The statuses are checked to EXIST; nothing reads their schema, so
+  //                      a 400 documented as a bare string satisfies every line here.
+  //   cookie             ⚠ NOT ASSERTED.
+  //   no sensitive value ⚠ NOT ASSERTED — and this is the clause of a different kind: it quantifies over
+  //                      the WHOLE document, so it cannot be discharged by adding one more lookup. It needs
+  //                      a scan, which is a different test.
+  //
+  // ⚠⚠⚠ AND THIS TEST IS NOT A WITNESS FOR `AC-AUTH-0036`, THOUGH ITS NAME READS LIKE ONE. A swagger path
+  // is a DECLARATION; a mapped endpoint is the REALISATION. **Measured, not argued: with a fifth route
+  // mapped under `/api/platform/auth/`, this test PASSED.** The route-table witness is
+  // `PlatformAuthenticationRouteInventoryTests`, added alongside.
+  //
+  // ⚠⚠ ITS OWN `only` WAS ALSO A PRESENCE LIST. Four `TryGetProperty` calls plus one `DoesNotContain` over
+  // a DIFFERENT prefix (`/api/auth/`) — **a fifth documented path under `/api/platform/auth/` passed every
+  // line.** *ONLY* is a claim about the complement and a presence list cannot carry one; the arity pin
+  // below is the whole content of the word.
   public async Task OpenApi_exposes_only_the_approved_platform_authentication_routes()
   {
     var response = await factory.CreateClient().GetAsync("/swagger/v1/swagger.json");
@@ -87,6 +125,18 @@ public sealed class HostEndpointTests(HostWebApplicationFactory factory)
     Assert.True(paths.TryGetProperty("/api/platform/auth/refresh", out _));
     Assert.True(paths.TryGetProperty("/api/platform/auth/logout", out _));
     Assert.DoesNotContain(paths.EnumerateObject(), path => path.Name.StartsWith("/api/auth/", StringComparison.Ordinal));
+
+    // ---- THE ARITY PIN, WHICH IS WHAT MAKES THE `only` IN THIS TEST'S NAME TRUE.
+    //
+    // The four assertions above are satisfied by five documented paths. Enumerating the prefix and
+    // comparing the SET is the only form of the claim that a fifth path cannot pass.
+    Assert.Equal(
+      ApprovedAuthenticationPaths,
+      paths.EnumerateObject()
+        .Select(path => path.Name)
+        .Where(name => name.StartsWith("/api/platform/auth/", StringComparison.Ordinal))
+        .OrderBy(name => name, StringComparer.Ordinal)
+        .ToArray());
 
     var bearer = document.RootElement.GetProperty("components").GetProperty("securitySchemes").GetProperty("Bearer");
     Assert.Equal("http", bearer.GetProperty("type").GetString());

@@ -1,0 +1,623 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
+using SSAS.BuildingBlocks.Domain;
+using SSAS.HR.Domain.Employees;
+using SSAS.HR.Domain.Departments;
+using SSAS.HR.Domain.Positions;
+using SSAS.HR.Domain.ImportExport;
+using SSAS.Platform.Infrastructure.TenantStorage;
+using SSAS.Platform.Domain.Branches;
+using SSAS.Platform.Domain.Companies;
+using SSAS.TestSupport.CutoverModel;
+
+namespace SSAS.Architecture.Tests;
+
+// ==================================================================================================
+// THE CUTOVER MANIFEST AND COPY ORDER, CHECKED AGAINST THE MODEL RATHER THAN A DATABASE (T-253).
+// ==================================================================================================
+//
+// ---- WHY THESE ARE HERE AND NOT IN THE INTEGRATION SUITE.
+//
+// Six checks that read an EF model composed IN MEMORY and assert nothing about a server: the manifest
+// covers every contributed tenant-owned entity, principals are copied before dependents, rowversion is
+// excluded from the projection, the branch assignment has no branch foreign key, and a contributor-free
+// plan omits the HR tables.
+//
+// They lived in `TenantCutoverCopySqlServerTests` and were found by a duration sweep -- all six report
+// under 10 ms, with **nothing at all between 10 ms and 2.4 seconds** in that suite. **`GATE_SCOPE=TASK`
+// never runs Integration**, so these invariants were not checked during ordinary development at all,
+// which is the same shape as the 145 Integration failures that went unread for eight days.
+//
+// ---- WHAT UNBLOCKED THE MOVE.
+//
+// They read `CutoverTenantModel`, which was defined inside the Integration project and consumed by five
+// other files there. Moving it here would have inverted the dependency; copying it would have created the
+// second list its own header warns about. **It now lives in `tests/TestSupport/SSAS.TestSupport.CutoverModel`
+// and both suites reference the one definition.**
+//
+// ---- PLANT RECORD.
+//
+// Each was broken deliberately in its new home and observed to fail. `always green in a suite nobody
+// reads` is the weakest evidence there is, and it was the only evidence these had.
+public sealed class CutoverManifestArchitectureTests
+{
+
+  // ================================================================================================
+  // C6 — SHARED → DEDICATED CARRIES THE MODULE-CONTRIBUTED ENTITIES (FP-006C6, ADR-020, ADR-017).
+  // ================================================================================================
+  //
+  // ---- WHAT WAS ACTUALLY BROKEN, AND WHY NOTHING CAUGHT IT.
+  //
+  // The copy manifest is derived from the tenant model, which is the right design — a hand-written table
+  // list is wrong the moment someone adds an entity, and wrong silently. But the model it derived from was
+  // built with NO contributors, so it could not contain Employee no matter what HR registered.
+  //
+  // A promotion therefore copied Companies and Branches, validated every row it copied, reported success,
+  // and left every employee and every branch-assignment record behind. There was no error to notice: the
+  // copy was faithful to the model it was given, and the model was the wrong one.
+  //
+  // These proofs run the REAL copy service against real SQL Server with the contributor set the Host
+  // registers.
+
+  // ---- C6-1 / C6-2. THE MODEL THE CUTOVER PLANS FROM IS THE ONE THE APPLICATION PERSISTS THROUGH.
+  [Fact]
+  [Trait("Decision", "ADR-020")]
+  // ⚠ CITED BY B18, body-confirmed: the EXACT expected list names both `Employee` and `EmployeeBranchAssignment`, and it is asserted
+  // against the derived plan -- which is what "appears in the declared tenant-owned inventory" means.
+  [Trait("Criterion", "AC-EMP-0037")]
+  [Trait("Criterion", "AC-EMP-0038")]
+  // ⚠ CITED BY 269: `AC-POS-0052` — *every new table is present in the derived E3 copy manifest WITHOUT ANY
+  // HAND-MAINTAINED REGISTRATION, and the exact-list assertion names all of them.* Both clauses are here
+  // and they pull in opposite directions, which is the point: the first half of this test DERIVES the set
+  // from the composed model (no registration), and the second asserts the derived set equals a literal list
+  // (a human sees a new one). `Position`, `JobGrade`, `SalaryGrade` and `EmployeePositionAssignment` are
+  // all named in it.
+  [Trait("Criterion", "AC-POS-0052")]
+  // ⚠ ALSO CITES `AC-ATT-0035` — *"Every Attendance tenant entity appears in the E3 cutover manifest,
+  // **derived by reflection over `ITenantOwnedEntity`** rather than compared against a list someone typed."*
+  // All seven are named in the expected list below — `AttendanceRecord`, `AttendancePeriod`,
+  // `WorkingCalendar`, `CalendarHoliday`, `LeaveType`, `LeaveRequest`, `LeaveBalance` — and the set they are
+  // compared against is derived from the composed model.
+  //
+  // ⚠⚠ AND THE CRITERION'S LAST CLAUSE IS IN TENSION WITH THIS TEST, WHICH IS WHY IT IS WRITTEN OUT RATHER
+  // THAN GLOSSED: *"rather than compared against a list someone typed"* — **and the second half of this test
+  // is exactly such a comparison.** The tension is deliberate and already argued above: the DERIVATION is
+  // what makes a new entity appear with no registration, and the literal list is what makes a human see it
+  // arrive. **The criterion's clause is satisfied by the first half; the second half is an addition the
+  // criterion did not ask for, not a substitute for what it did.**
+  [Trait("Criterion", "AC-ATT-0035")]
+  // ⚠ CITES THE FIRST CLAUSE OF `AC-GL-0021` — *"Every GL entity implementing `ITenantOwnedEntity` appears
+  // in the E3 cutover manifest, AND THE SITE INVENTORY IN `DEC-POS-0022` IS UPDATED IN THE SAME CHANGE THAT
+  // ADDS IT."* **GL's SEVEN — `Account`, `FiscalPeriod`, `FiscalYear`, `JournalDraft`, `JournalDraftLine`,
+  // `JournalEntry`, `JournalLine` — are in the derived set and in the exact list below, so both directions
+  // hold: the engine cannot MISS one, and a human must SEE a new one.**
+  //
+  // ⚠ *The first version of this line said "GL's five" and named a `Journal` entity that does not exist —
+  // typed from memory rather than read off the list twelve lines below it. **The draft/entry split is the
+  // whole shape of this module's posting model, and I had flattened it into one name.** Corrected in place,
+  // because the correction is the more useful record: an identifier invented while citing a list is exactly
+  // what a reader cannot distinguish from one that was checked.*
+  //
+  // ⚠⚠ ***THE SECOND CLAUSE IS CITED BY NOTHING AND MUST NOT BE READ AS COVERED. `DEC-POS-0022`'s NINE-SITE
+  // MAP IS ENFORCED BY NO TEST IN THIS REPOSITORY — its only trace in `tests/` is a COMMENT, at
+  // `EmployeeHostCompositionTests.cs:240`.*** *Part of it is unwitnessable by construction — "in the same
+  // CHANGE" is a claim about a commit, and no fixture can read git history — but the OUTCOME half is not:
+  // nothing asserts that the manifest list and that document's list agree at all, which a test could do.*
+  //
+  // ⚠ So this criterion is discharged one clause by a fixture, one clause by nobody — recorded here rather
+  // than left for a reader to infer from the citation's presence.
+  [Trait("Criterion", "AC-GL-0021")]
+  public void C6_1_C6_2_The_cutover_manifest_covers_every_contributed_tenant_owned_entity()
+  {
+    var composed = CutoverTenantModel.Source.Model;
+
+    // ⚠ THE COUNT BELOW SAID "ALL TWENTY" ABOVE A LIST OF THIRTY-FIVE, AND WAS STALE BY FIFTEEN (269).
+    // The LIST is the assertion and the list was right, so nothing was ever wrong — but a reader deriving
+    // the number from the prose got it wrong, which is the same stale-count class as a task brief shipped
+    // tonight with a four-short figure. The count is now stated as what the list actually holds.
+    //
+    // ⚠⚠⚠ AND IT WENT STALE AGAIN. THIS SAID *THIRTY-FIVE* ABOVE A LIST OF TWENTY-SIX (T-095).
+    //
+    // The paragraph above announces that the count "is now stated as what the list actually holds", and by
+    // the time anyone checked, it did not. **The comment documenting the stale-count defect acquired the
+    // stale-count defect.** Naming a failure mode confers no immunity on the paragraph that names it.
+    //
+    // ⚠ AND IT PROPAGATED: this number was transcribed into `.claude/handoff/ANTI-VACUITY-FORMS.md` as
+    // "35 entity names", where it read as measured. A false figure in a comment is not inert — it is the
+    // source a later document cites.
+    //
+    // TWENTY-SIX, derived 2026-09-07 by counting the string literals in the assertion below and confirmed
+    // by the test passing, which makes `derived.Length` equal to the expected list's. ⚠ Do not re-state
+    // this from the prose; the list is the assertion and the list is the only thing that has ever been
+    // right. If you need the number, count the literals.
+    var derived = composed.GetEntityTypes()
+      .Where(entity => !entity.IsOwned())
+      .Where(entity => typeof(ITenantOwnedEntity).IsAssignableFrom(entity.ClrType))
+      .Where(entity => entity.GetTableName() is not null)
+      .Select(entity => entity.ClrType.Name)
+      .OrderBy(name => name, StringComparer.Ordinal)
+      .ToArray();
+
+    // AN EXACT LIST, DELIBERATELY. The derivation guarantees the engine cannot MISS a table; this
+    // guarantees a human SEES a new one, because a new tenant-owned entity may need ordering, identity or
+    // column decisions that "it compiles" does not settle. FP-007 Phase 1 added three, FP-008 Phase 1 added
+    // four, FP-009 Phase 1 adds two, and this is one of the three places that has to say so.
+    //
+    // ---- SalaryGrade IS HERE AND ITS BAND IS NOT, WHICH IS THE OWNED-TYPE FILTER DOING ITS JOB.
+    //
+    // `SalaryGrade.Band` is an optional OWNED type (`DEC-POS-0027`), so its three money columns live in the
+    // `SalaryGrades` table and it is not a separate entity to copy. The `!entity.IsOwned()` filter above is
+    // what keeps it out of this list; without it the manifest would name a table that does not exist.
+    Assert.Equal(
+      [
+        "Account",
+        "AttendancePeriod",
+        "AttendanceRecord",
+        "Branch",
+        "CalendarHoliday",
+        "Company",
+        nameof(Department),
+        nameof(DepartmentManager),
+        "Employee",
+        "EmployeeBranchAssignment",
+        "EmployeeCompensation",
+        nameof(EmployeeDepartmentAssignment),
+        nameof(SSAS.HR.Domain.EmployeeDocuments.EmployeeDocument),
+        nameof(EmployeeExportRun),
+        nameof(EmployeeImportRun),
+        nameof(EmployeePositionAssignment),
+        "FiscalPeriod",
+        "FiscalYear",
+        nameof(JobGrade),
+        "JournalDraft",
+        "JournalDraftLine",
+        "JournalEntry",
+        "JournalLine",
+        "LeaveBalance",
+        "LeaveRequest",
+        "LeaveType",
+        "OneOffPayment",
+        "PayElement",
+        "PayElementAssignment",
+        "PayrollPeriod",
+        "PayrollRun",
+        "PayrollRunDraftLine",
+        "PayrollRunLine",
+        nameof(Position),
+        nameof(SalaryGrade),
+        "WorkingCalendar"
+      ],
+      derived);
+
+    // ...and the plan derived for the copy covers exactly that set, with nothing declared by hand.
+    var plan = TenantCutoverCopyPlan.Build(composed);
+    Assert.True(plan.IsSuccess);
+    Assert.Equal(
+      derived,
+      plan.Value.Select(table => table.EntityName).OrderBy(name => name, StringComparer.Ordinal));
+  }
+
+
+  // ---- C6-6 / C6-11. DEPENDENCY ORDER, DERIVED FROM FOREIGN KEYS.
+  //
+  // Employee references Company and Branch; the assignment references Employee. Inserting a dependent
+  // before its principal would violate referential integrity with constraints ON, which the engine keeps on
+  // throughout — so the order is a correctness requirement, not a preference.
+  [Fact]
+  [Trait("Decision", "ADR-020")]
+  // ⚠ CITED BY B18, body-confirmed: Employee after Company AND after Branch, history after Employee -- the criterion verbatim.
+  [Trait("Criterion", "AC-EMP-0039")]
+  public void C6_6_Employee_is_ordered_after_company_and_branch_and_history_after_employee()
+  {
+    var plan = TenantCutoverCopyPlan.Build(CutoverTenantModel.Source.Model);
+    Assert.True(plan.IsSuccess);
+
+    var order = plan.Value.Select(table => table.EntityName).ToArray();
+
+    var company = Array.IndexOf(order, nameof(Company));
+    var branch = Array.IndexOf(order, nameof(Branch));
+    var employee = Array.IndexOf(order, nameof(Employee));
+    var history = Array.IndexOf(order, nameof(EmployeeBranchAssignment));
+
+    Assert.True(employee > company, $"Employee must follow Company. Order: {string.Join(", ", order)}");
+    Assert.True(employee > branch, $"Employee must follow Branch. Order: {string.Join(", ", order)}");
+    Assert.True(history > employee, $"History must follow Employee. Order: {string.Join(", ", order)}");
+
+    // ---- AND THE ORDER IS PRODUCED BY THE FK GRAPH, NOT BY THE NAMES.
+    //
+    // "EmployeeBranchAssignments" sorts BEFORE "Employees" alphabetically, so an alphabetical ordering would
+    // place the dependent first. That it does not is the proof the topological sort is doing the work.
+    Assert.True(
+      string.CompareOrdinal("EmployeeBranchAssignments", "Employees") < 0,
+      "The premise of this assertion no longer holds.");
+  }
+
+
+  // ---- C6-7. ROWVERSION IS NOT CARRIED ACROSS.
+  //
+  // It is the TARGET's concurrency state, generated by the target on insert. Copying the source's bytes
+  // would hand the new database a token describing a different database's history.
+  [Fact]
+  [Trait("Decision", "ADR-020")]
+  public void C6_7_The_employee_rowversion_is_excluded_from_the_copy_projection()
+  {
+    var plan = TenantCutoverCopyPlan.Build(CutoverTenantModel.Source.Model);
+    var employees = Assert.Single(plan.Value, table => table.EntityName == nameof(Employee));
+
+    // A live exclusion: Employee genuinely carries a rowversion, so this is not vacuous.
+    var model = CutoverTenantModel.Source.Model.FindEntityType(typeof(Employee));
+    Assert.Contains(
+      model!.GetProperties(),
+      property => property.IsConcurrencyToken && property.ValueGenerated == ValueGenerated.OnAddOrUpdate);
+
+    Assert.DoesNotContain(nameof(Employee.RowVersion), employees.Columns);
+
+    // The assignment carries none at all — it is append-only and never updated — so there is nothing to
+    // exclude and nothing to transport.
+    var assignments = Assert.Single(
+      plan.Value, table => table.EntityName == nameof(EmployeeBranchAssignment));
+
+    Assert.DoesNotContain("RowVersion", assignments.Columns);
+  }
+
+  // ---- C6-7 FOR THE DEPARTMENT, AND IT IS A SEPARATE TEST ON PURPOSE (`AC-DEP-0050`, 265).
+  //
+  // ⚠⚠ THE TEST ABOVE IS NAMED *the employee rowversion is excluded from the copy projection* AND IS ABOUT
+  // `Employee`. It also covers `EmployeeBranchAssignment`, which carries no rowversion at all. IT NEVER
+  // MENTIONS `Department` — and `Department` DOES declare one (`Department.cs:113`), so the exclusion is a
+  // real claim about a real column that nothing asserted. A criterion whose nearest test is about a
+  // different entity is the shape `D14` had for `AC-DEP-0026`, found twice in one feature.
+  //
+  // ⚠ SEPARATE RATHER THAN AN EXTRA LINE ABOVE, SO ATTRIBUTION SURVIVES A FAILURE. Folded into `C6_7`, a
+  // regression in either entity would redden one test and the name would say "employee" either way.
+  [Fact]
+  [Trait("Decision", "ADR-020")]
+  [Trait("Criterion", "AC-DEP-0050")]
+  public void C6_7b_The_department_rowversion_is_excluded_from_the_copy_projection()
+  {
+    var plan = TenantCutoverCopyPlan.Build(CutoverTenantModel.Source.Model);
+
+    Assert.True(plan.IsSuccess, plan.IsFailure ? plan.Error.Code : null);
+
+    var departments = Assert.Single(plan.Value, table => table.EntityName == nameof(Department));
+
+    // ANTI-VACUITY, AND IT IS THE HALF THAT MATTERS. If `Department` carried no rowversion, the exclusion
+    // below would hold for the wrong reason — nothing to exclude rather than something excluded — and this
+    // guard would pass over a model that had quietly dropped the concurrency token.
+    var model = CutoverTenantModel.Source.Model.FindEntityType(typeof(Department));
+
+    Assert.NotNull(model);
+    Assert.Contains(
+      model!.GetProperties(),
+      property => property.IsConcurrencyToken && property.ValueGenerated == ValueGenerated.OnAddOrUpdate);
+
+    // It is the TARGET's concurrency state. Copying the source's bytes would hand the new database a token
+    // describing a different database's history.
+    Assert.DoesNotContain(nameof(Department.RowVersion), departments.Columns);
+
+    // And the columns really were enumerated — an empty projection excludes everything trivially.
+    Assert.NotEmpty(departments.Columns);
+  }
+
+  // ---- C6-12. THE HISTORY STILL CARRIES NO BRANCH FOREIGN KEY.
+  //
+  // ADR-024 classifies the assignment as company-owned but NOT branch-owned: it names a source and a
+  // destination and belongs to neither. Adding a branch FK would have made the copy ordering marginally
+  // easier to reason about and would have broken that classification, so it was not done — and this records
+  // that the convenience was declined.
+  [Fact]
+  [Trait("Decision", "ADR-024")]
+  public void C6_12_The_assignment_has_no_branch_foreign_key()
+  {
+    var assignment = CutoverTenantModel.Source.Model.FindEntityType(typeof(EmployeeBranchAssignment));
+    Assert.NotNull(assignment);
+
+    var principals = assignment!.GetForeignKeys()
+      .Select(foreignKey => foreignKey.PrincipalEntityType.ClrType.Name)
+      .ToArray();
+
+    Assert.DoesNotContain(nameof(Branch), principals);
+    Assert.Contains(nameof(Employee), principals);
+  }
+
+
+  // ---- C6-14. AND THE OLD, CONTRIBUTOR-FREE MODEL DEMONSTRABLY DOES NOT.
+  //
+  // The regression detector. It proves the fix is load-bearing rather than incidental: without the
+  // contributor set the manifest silently loses every HR table, which is exactly what shipped before this
+  // slice. If these two ever agreed, the composition would have collapsed back and every proof below would
+  // still pass while production quietly lost data again.
+  //
+  // FP-007 Phase 1 made the gap wider rather than different, FP-008 Phase 1 wider again and FP-009 Phase 1
+  // wider once more — eleven HR tables now, not two — which is the point: each new contributed entity
+  // increases what a contributor-free
+  // manifest would silently leave behind.
+  [Fact]
+  [Trait("Decision", "ADR-020")]
+  public void C6_14_A_contributor_free_plan_silently_omits_both_hr_tables()
+  {
+    var composed = TenantCutoverCopyPlan.Build(CutoverTenantModel.Source.Model);
+    var contributorFree = TenantCutoverCopyPlan.Build(CutoverTenantModel.ContributorFreeSource.Model);
+
+    Assert.True(composed.IsSuccess);
+
+    // It SUCCEEDS. That is the danger: an incomplete manifest is not an error, it is a shorter list.
+    Assert.True(contributorFree.IsSuccess);
+
+    Assert.DoesNotContain(contributorFree.Value, table => table.EntityName == nameof(Employee));
+    Assert.DoesNotContain(
+      contributorFree.Value, table => table.EntityName == nameof(EmployeeBranchAssignment));
+    Assert.DoesNotContain(contributorFree.Value, table => table.EntityName == nameof(Department));
+    Assert.DoesNotContain(contributorFree.Value, table => table.EntityName == nameof(DepartmentManager));
+    Assert.DoesNotContain(
+      contributorFree.Value, table => table.EntityName == nameof(EmployeeDepartmentAssignment));
+    Assert.DoesNotContain(contributorFree.Value, table => table.EntityName == nameof(SalaryGrade));
+    Assert.DoesNotContain(contributorFree.Value, table => table.EntityName == nameof(JobGrade));
+    Assert.DoesNotContain(contributorFree.Value, table => table.EntityName == nameof(Position));
+    Assert.DoesNotContain(
+      contributorFree.Value, table => table.EntityName == nameof(EmployeePositionAssignment));
+    Assert.DoesNotContain(contributorFree.Value, table => table.EntityName == nameof(EmployeeImportRun));
+    Assert.DoesNotContain(contributorFree.Value, table => table.EntityName == nameof(EmployeeExportRun));
+
+    // ---- EIGHTEEN MODULE TABLES MISSING, AND ONLY PLATFORM'S COMPANY AND BRANCH LEFT.
+    //
+    // Eleven from HR, SEVEN from GL (FP-011), SEVEN from Payroll (FP-012) and SEVEN from Attendance
+    // (FP-013). The subtraction is written against the composed count
+    // rather than as a literal so the two halves cannot drift: if a module adds a table and forgets this
+    // test, the count on the left moves and the assertion fails, which is the whole point of the guard.
+    Assert.Equal(
+      composed.Value.Count - 34,
+      contributorFree.Value.Count);
+    Assert.Equal(2, contributorFree.Value.Count);
+  }
+
+  // ================================================================================================
+  // C6-15. THE COPY ORDER PUTS DEPARTMENTS BEFORE EMPLOYEES (FP-007 Phase 3).
+  // ================================================================================================
+  //
+  // Employee gained a REQUIRED foreign key to Department, so a copy that inserted employees first would
+  // fail on that constraint against a target where the departments did not exist yet. The plan is a
+  // topological sort over the model's foreign keys, so the ordering is derived rather than declared — and
+  // derived means nobody wrote it down, which is exactly why it is worth asserting.
+  //
+  // ---- AND WHY THIS IS NOT MERELY THE SQL TESTS RESTATED.
+  //
+  // The real-SQL copies below would fail if the order were wrong, but only for the tables the fixture
+  // happens to populate, and only after twenty minutes. This reads the order directly out of the plan, in
+  // milliseconds, for every pair that matters — including DepartmentManagers and
+  // EmployeeDepartmentAssignments, which point at BOTH principals.
+  //
+  // It is also the guard for the ADR-026 decision 7 split. If DepartmentManager were ever folded back onto
+  // Department as a ManagerEmployeeId column, Department would depend on Employee while Employee depends on
+  // Department, the sort would find a cycle, and Build would fail with CutoverCopyOrderUndecidable rather
+  // than producing a wrong order.
+  [Fact]
+  [Trait("Decision", "ADR-020")]
+  // CITED BY B18 pass 21 for `AC-DEP-0034`, BOUNDED TO THE CLAUSES IT ACTUALLY CARRIES.
+  //
+  // The criterion has two halves. This test carries the first entirely: the plan BUILDS with
+  // Department and DepartmentManagers present (`Assert.True(plan.IsSuccess)`), and every ordering
+  // the criterion names is asserted here -- Company before Department, Department before Employee,
+  // and DepartmentManager after both.
+  //
+  // THE SECOND HALF IS ASSERTED BY NOTHING. The criterion also says *a model in which Department
+  // holds a direct manager foreign key is asserted to make the plan fail with
+  // `CutoverCopyOrderUndecidable`* -- a NEGATIVE model, built deliberately and shown to fail.
+  // `DepartmentArchitectureTests.Department_holds_no_foreign_key_to_employee` is the nearest thing
+  // and its own comment says what it cannot do: it asserts the foreign key's ABSENCE, not that its
+  // presence would break the plan. Absence of the cause is not a demonstration of the effect, and
+  // the reason for `DEC-DEP-0022` therefore rests on an argument rather than on a test.
+  //
+  // ---- AND A CORRECTION TO WHAT THIS COMMENT SAID WHEN IT WAS WRITTEN.
+  //
+  // It claimed the string literals here would "silently assert about entities that no longer exist".
+  // THAT WAS WRONG ABOUT THIS TEST. `PositionOf` ends in `Assert.True(index >= 0, "... is absent from
+  // the copy manifest entirely.")`, so a renamed entity REDDENS THIS TEST with a message naming it.
+  //
+  // The literals were replaced with `nameof` anyway, across all nine entity types in this file, and the
+  // reason is elsewhere -- the sites where a rename really is silent are the NEGATIVE assertions:
+  // `Assert.DoesNotContain(..., table => table.EntityName == "X")` and the `Assert.Null(... ShortName()
+  // == "X")` at the foot of this file. A renamed entity makes those predicates match nothing, and a
+  // `DoesNotContain` that matches nothing PASSES. Green, asserting nothing.
+  //
+  // So the change is a correctness fix at four sites and diagnosability everywhere else, and the file is
+  // uniform because a mixed convention is what let the distinction go unexamined for as long as it did.
+  [Trait("Criterion", "AC-DEP-0034")]
+  // ⚠ CITED BY 269: `AC-POS-0053` — *the derived copy order places EVERY GRADE before Position, Position
+  // before Employee, and Employee before every assignment table.* All of it is here: SalaryGrade < JobGrade
+  // < Position < Employee, and both Position and Employee before `EmployeePositionAssignment`.
+  //
+  // The comment below is the reason this ordering needs asserting at all rather than being left to a
+  // fixture: every link in the grade chain is a NULLABLE foreign key, so a wrong order fails only for the
+  // rows that happen to use the reference. A populated-fixture test would pass or fail on what it seeded;
+  // this asserts the ORDER itself.
+  [Trait("Criterion", "AC-POS-0053")]
+  public void C6_15_The_copy_order_places_every_principal_before_its_dependents()
+  {
+    var plan = TenantCutoverCopyPlan.Build(CutoverTenantModel.Source.Model);
+
+    Assert.True(plan.IsSuccess, plan.IsFailure ? plan.Error.Code : null);
+
+    var order = plan.Value.Select(table => table.EntityName).ToArray();
+
+    int PositionOf(string entity)
+    {
+      var index = Array.IndexOf(order, entity);
+
+      Assert.True(index >= 0, $"{entity} is absent from the copy manifest entirely.");
+
+      return index;
+    }
+
+    // Company and Branch are Platform's, and everything HR-owned depends on one or both.
+    Assert.True(PositionOf(nameof(Company)) < PositionOf(nameof(Department)));
+    Assert.True(PositionOf(nameof(Company)) < PositionOf(nameof(Employee)));
+    Assert.True(PositionOf(nameof(Branch)) < PositionOf(nameof(Employee)));
+
+    // ---- THE FP-007 PHASE 3 EDGE. This is the one the new foreign key created.
+    Assert.True(
+      PositionOf(nameof(Department)) < PositionOf(nameof(Employee)),
+      "Departments must be copied before Employees: Employee.DepartmentId is a required foreign key.");
+
+    // The two tables that depend on BOTH must come after both.
+    Assert.True(PositionOf(nameof(Department)) < PositionOf(nameof(DepartmentManager)));
+    Assert.True(PositionOf(nameof(Employee)) < PositionOf(nameof(DepartmentManager)));
+    Assert.True(PositionOf(nameof(Department)) < PositionOf(nameof(EmployeeDepartmentAssignment)));
+    Assert.True(PositionOf(nameof(Employee)) < PositionOf(nameof(EmployeeDepartmentAssignment)));
+
+    Assert.True(PositionOf(nameof(Employee)) < PositionOf(nameof(EmployeeBranchAssignment)));
+
+    // ================================================================================================
+    // THE FP-008 PHASE 1 EDGES. A THREE-LINK CHAIN, AND A HISTORY THAT DEPENDS ON BOTH ENDS.
+    // ================================================================================================
+    //
+    // SalaryGrade -> JobGrade -> Position is the longest dependency chain in the tenant model, and every
+    // link is a nullable foreign key — so a copy that got the order wrong would fail only for the rows that
+    // happened to use the reference. Asserting the ORDER catches it regardless of what the fixture
+    // populates.
+    Assert.True(
+      PositionOf(nameof(SalaryGrade)) < PositionOf(nameof(JobGrade)),
+      "Salary grades must be copied before job grades: JobGrade.SalaryGradeId is a foreign key.");
+    Assert.True(
+      PositionOf(nameof(JobGrade)) < PositionOf(nameof(Position)),
+      "Job grades must be copied before positions: Position.JobGradeId is a foreign key.");
+
+    // The history depends on BOTH Employee and Position, so it must come after both.
+    Assert.True(PositionOf(nameof(Position)) < PositionOf(nameof(EmployeePositionAssignment)));
+    Assert.True(PositionOf(nameof(Employee)) < PositionOf(nameof(EmployeePositionAssignment)));
+
+    Assert.True(PositionOf(nameof(Company)) < PositionOf(nameof(Position)));
+    Assert.True(PositionOf(nameof(Company)) < PositionOf(nameof(JobGrade)));
+    Assert.True(PositionOf(nameof(Company)) < PositionOf(nameof(SalaryGrade)));
+
+    // ---- THE FP-008 PHASE 3 EDGE. This is the one the new foreign key created.
+    //
+    // Phase 1 recorded this assertion as a FORWARD OBLIGATION and refused to write it early: at that point
+    // nothing linked the two, so the assertion would have passed or failed on the sort's tie-breaking
+    // rather than on a constraint — green for the wrong reason. `Employee.PositionId` is now a required
+    // foreign key, so the edge exists and the claim is finally provable.
+    //
+    // The obligation's other half moved in the same commit: `data-model.md`'s "not ordered against
+    // Employee" caveat is gone, because the assertion and the claim became true together.
+    Assert.True(
+      PositionOf(nameof(Position)) < PositionOf(nameof(Employee)),
+      "Positions must be copied before Employees: Employee.PositionId is a required foreign key.");
+
+    // ================================================================================================
+    // THE FP-009 PHASE 1 EDGES. TWO TABLES THAT DEPEND ON COMPANY AND ON NOTHING ELSE.
+    // ================================================================================================
+    //
+    // A run record names WHO RAN WHAT, never WHICH EMPLOYEES RESULTED, so neither points at Employee and
+    // neither lengthens the dependency chain. Both carry a company foreign key, which is the only edge
+    // they have and the only ordering claim provable about them.
+    Assert.True(
+      PositionOf(nameof(Company)) < PositionOf(nameof(EmployeeImportRun)),
+      "Companies must be copied before import runs: EmployeeImportRun.CompanyId is a foreign key.");
+    Assert.True(
+      PositionOf(nameof(Company)) < PositionOf(nameof(EmployeeExportRun)),
+      "Companies must be copied before export runs: EmployeeExportRun.CompanyId is a foreign key.");
+
+    // ---- AND NEITHER RUN RECORD IS ORDERED AGAINST Employee, DELIBERATELY AND PERMANENTLY.
+    //
+    // `data-model.md` predicts they "sort ahead of Employees", and they do — but on the SORT'S TIE-BREAK,
+    // not on a constraint, because there is no path between them. Asserting that order would be green for
+    // the wrong reason, exactly as FP-008 Phase 1 refused to assert Position before Employee before the
+    // foreign key existed. What IS assertable is that no such edge exists in either direction.
+    foreach (var runRecord in new[] { typeof(EmployeeImportRun), typeof(EmployeeExportRun) })
+    {
+      var principals = CutoverTenantModel.Source.Model.FindEntityType(runRecord)!
+        .GetForeignKeys()
+        .Select(key => key.PrincipalEntityType.ShortName())
+        .ToArray();
+
+      Assert.Equal([nameof(Company)], principals);
+    }
+
+    // ---- AND POSITION IS UNORDERED WITH RESPECT TO DEPARTMENT, PERMANENTLY (OD-POS-003).
+    //
+    // Position is independent of Department: no `Position.DepartmentId` exists, so neither can precede the
+    // other for any reason a constraint would enforce. If this ever becomes assertable, something has grown
+    // the second source of truth for an employee's department that `OD-POS-003` refused.
+    Assert.Null(
+      CutoverTenantModel.Source.Model.FindEntityType(typeof(SSAS.HR.Domain.Positions.Position))!
+        .GetForeignKeys()
+        .FirstOrDefault(key => key.PrincipalEntityType.ShortName() == nameof(Department)));
+  }
+
+  // ---- `AC-POS-0017`'s SECOND CLAUSE, IN THE COMPOSED MODEL (269).
+  //
+  // ⚠ THE DOMAIN HALF IS `GradeDomainTests.A_salary_grade_holds_no_reference_to_a_job_grade`, which asserts
+  // the CLR TYPE carries no `JobGradeId`. THAT IS A STATEMENT ABOUT A CLASS AND THIS IS A STATEMENT ABOUT
+  // THE MAPPED MODEL — different claims, because a foreign key can be configured in a `ModelBuilder`
+  // with no navigation and no scalar property on the type at all. Neither citation is honest alone.
+  //
+  // ⚠⚠ WRITTEN BECAUSE THE PROTECTION THAT EXISTED WAS INCIDENTAL. A `SalaryGrade → JobGrade` key would
+  // close a cycle with the existing `JobGrade → SalaryGrade`, make `TenantCutoverCopyPlan.Build` return
+  // `CutoverCopyOrderUndecidable`, and redden `C6_1_C6_2` — which asserts `plan.IsSuccess`. But that test
+  // reddens for any of thirty-five unrelated reasons, so its failure attributes to nothing.
+  // INCIDENTAL PROTECTION IS PROTECTION; IT IS NOT AN ASSERTION OF THE CRITERION.
+  // ---- `AC-POS-0056`, AND THE CRITERION NAMES ITS OWN INSTRUMENT (269).
+  //
+  // *`Position` does not implement `IBranchOwnedEntity`, and THE COMPOSED EF MODEL contains no `BranchId`
+  // column on any table this package introduces. THE ASSERTION READS THE COMPOSED MODEL, NOT MIGRATION
+  // FILES.*
+  //
+  // ⚠ THREE THINGS CAN DISAGREE AND ONLY ONE OF THEM IS THE CRITERION'S SUBJECT. `PositionDomainTests`
+  // asserts the CLR TYPE has no branch member; `PositionSchemaSqlServerTests` asserts the DATABASE has no
+  // branch column. Neither is the MODEL — and a SHADOW PROPERTY configured in a `ModelBuilder` appears in
+  // the model with no C# property to reveal it, which is exactly the gap between those two checks.
+  //
+  // Written after finding `DepartmentArchitectureTests.No_department_table_has_a_branch_column`, which
+  // carries `AC-DEP-0052` — the same criterion with the noun swapped — and whose comment makes the same
+  // point: the class-level sibling is *the half the criterion explicitly does not ask for*.
+  //
+  // `TenantId` and `CompanyId` are the anti-vacuity control, copied from that test: a model that stopped
+  // building, or an entity that vanished from it, fails here rather than satisfying the ban with an empty
+  // column list.
+  [Theory]
+  [InlineData(typeof(SSAS.HR.Domain.Positions.Position))]
+  [InlineData(typeof(JobGrade))]
+  [InlineData(typeof(SalaryGrade))]
+  [InlineData(typeof(SSAS.HR.Domain.Positions.EmployeePositionAssignment))]
+  [Trait("Decision", "DEC-POS-0020")]
+  [Trait("Criterion", "AC-POS-0056")]
+  public void No_position_table_has_a_branch_column_in_the_composed_model(Type clrType)
+  {
+    var entity = CutoverTenantModel.Source.Model.FindEntityType(clrType);
+
+    Assert.NotNull(entity);
+
+    var columns = entity!.GetProperties().Select(property => property.Name).ToArray();
+
+    // COMPILE-CHECKED against the type that legitimately HAS it: as a bare string this would assert
+    // nothing the day `BranchId` was renamed, because a position would not carry the old name either.
+    Assert.DoesNotContain(nameof(SSAS.HR.Domain.Employees.Employee.BranchId), columns);
+
+    Assert.Contains("TenantId", columns);
+    Assert.Contains("CompanyId", columns);
+  }
+
+  [Fact]
+  [Trait("Decision", "DEC-POS-0002")]
+  [Trait("Criterion", "AC-POS-0017")]
+  public void The_grade_reference_runs_one_way_in_the_composed_model()
+  {
+    var salaryGrade = CutoverTenantModel.Source.Model.FindEntityType(typeof(SalaryGrade));
+    var jobGrade = CutoverTenantModel.Source.Model.FindEntityType(typeof(JobGrade));
+
+    Assert.NotNull(salaryGrade);
+    Assert.NotNull(jobGrade);
+
+    // THE POSITIVE CONTROL, AND IT CARRIES THE WHOLE ATTRIBUTION. `DoesNotContain` over `GetForeignKeys()`
+    // passes identically against a model where the grades are unmapped, where the enumeration came back
+    // empty, or where the predicate matches nothing — so the forward edge is asserted to EXIST first.
+    Assert.Contains(
+      jobGrade!.GetForeignKeys(),
+      key => key.PrincipalEntityType.ClrType == typeof(SalaryGrade));
+
+    // THE CLAIM: the reference runs one way and never back.
+    Assert.DoesNotContain(
+      salaryGrade!.GetForeignKeys(),
+      key => key.PrincipalEntityType.ClrType == typeof(JobGrade));
+  }
+}

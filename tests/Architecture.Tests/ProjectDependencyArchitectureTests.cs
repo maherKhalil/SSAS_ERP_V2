@@ -1,4 +1,4 @@
-﻿using System.Xml.Linq;
+using System.Xml.Linq;
 
 namespace SSAS.Architecture.Tests;
 
@@ -99,15 +99,17 @@ public sealed class ProjectDependencyArchitectureTests
       // appearing here without a human noticing is a module wired into the product by accident. Adding
       // Payroll to the Host failed this guard on the first run, exactly as intended.
       "SSAS.Payroll.API",
-      "SSAS.Payroll.Infrastructure"
+      "SSAS.Payroll.Infrastructure",
 
       // ---- AND ATTENDANCE, BY THE SAME ACKNOWLEDGEMENT (FP-013).
       //
       // This guard failed on the first run after wiring Attendance into the Host, exactly as it did for
       // Payroll and exactly as intended. The list is an INVENTORY OF WHAT IS DELIBERATELY REACHABLE, so
       // extending it is the acknowledgement — not a formality to be done reflexively when the test goes red.
-      ,"SSAS.Attendance.API",
-      "SSAS.Attendance.Infrastructure"
+      "SSAS.Attendance.API",
+      "SSAS.Attendance.Infrastructure",
+      "SSAS.HIS.API",
+      "SSAS.HIS.Infrastructure"
     };
 
     Assert.All(host.References, reference => Assert.Contains(reference, allowedReferences));
@@ -353,11 +355,24 @@ public sealed class ProjectDependencyArchitectureTests
   {
     var sharedApiTypes = typeof(SSAS.BuildingBlocks.Api.Transport.ApiError).Assembly.GetTypes();
 
-    Assert.DoesNotContain(sharedApiTypes, type =>
-      type.Name.EndsWith("EndpointRouteBuilderExtensions", StringComparison.Ordinal) ||
-      type.Name.EndsWith("Request", StringComparison.Ordinal) ||
-      type.Name.EndsWith("Response", StringComparison.Ordinal) ||
-      type.Name.EndsWith("ApiErrorMapper", StringComparison.Ordinal));
+    // ⚠⚠ GROUNDED (T-118), AND THIS ONE IS WHY THE CENSUS WAS REBUILT. It is a `DoesNotContain` — squarely
+    // inside the T-082 sweep's own predicate — and the sweep still missed it, because it classifies by the
+    // COLLECTION EXPRESSION at the call site and the walk is one line above, bound to `sharedApiTypes`.
+    // ***A WALK ASSIGNED TO A VARIABLE IS INVISIBLE TO A CALL-SITE REGEX.***
+    string[] moduleShapes = ["EndpointRouteBuilderExtensions", "Request", "Response", "ApiErrorMapper"];
+
+    var leaked = sharedApiTypes
+      .SelectMany(type => moduleShapes
+        .Where(shape => type.Name.EndsWith(shape, StringComparison.Ordinal))
+        .Select(shape => $"{type.Name} (ends with `{shape}`)"))
+      .OrderBy(value => value, StringComparer.Ordinal)
+      .ToArray();
+
+    Assert.True(leaked.Length == 0,
+      $"the shared API project holds module-shaped types: {string.Join("; ", leaked)}. It is the TRANSPORT " +
+      "primitive project — every module references it, so a request, response, mapper or endpoint " +
+      "extension living here is reachable by every other module and the boundary this test exists for is " +
+      "gone. Move the type into the owning module's API project.");
   }
 
   private static string RepositoryRoot()

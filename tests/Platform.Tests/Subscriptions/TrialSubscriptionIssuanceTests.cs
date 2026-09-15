@@ -37,6 +37,20 @@ public sealed class TrialSubscriptionIssuanceTests
   // not the claim — **the claim is that it is the SAME plan and the SAME term the cutover seed writes**,
   // which is what `DEC-L-034` means by one rule for existing and new tenants.
   [Fact]
+  [Trait("Acceptance", "AC-SUB-0053")]
+  // `AC-SUB-0053`, pasted — *"Tenant creation issues **the same plan and the same term**, in the tenant's
+  // **own transaction**. One rule for existing and new tenants (`DEC-L-034`), so there is one thing to
+  // explain to a customer — and a single transaction makes *"tenant exists, trial does not"*
+  // unrepresentable rather than merely unlikely"*
+  //
+  // All three clauses are here, and the third is the one a reader would skip: **`SaveCount == 1` is not a
+  // performance assertion.** *Two saves would mean a window in which the tenant exists and is entitled to
+  // nothing, and a failure inside that window leaves it there permanently* — which is what the criterion
+  // means by UNREPRESENTABLE rather than unlikely.
+  //
+  // ⚠ SAME PLAN AND SAME TERM are asserted against `TrialSubscription`'s constants rather than against
+  // literals, so **this test and the cutover seed read the same definition.** A test carrying its own
+  // `14` would pass while the two paths diverged, which is precisely the divergence `DEC-L-034` forbids.
   public async Task Creating_a_tenant_issues_the_trial_plan_with_a_fourteen_day_term_and_commits_once()
   {
     var subscriptions = new FakeSubscriptionRepository();
@@ -94,6 +108,25 @@ public sealed class TrialSubscriptionIssuanceTests
   // the second append is now perfectly legal and is refused because **the tenant already holds a
   // record**, which is the rule being tested.
   [Fact]
+  [Trait("Acceptance", "AC-SUB-0054")]
+  // ==================================================================================================
+  // `AC-SUB-0054`, pasted — *"**Re-running the seed issues nothing further.** A tenant already holding
+  // **any** subscription record is left untouched, plan and effective instant unchanged. The failure this
+  // prevents is not a duplicate row: the record in force is the one with the greatest `EffectiveFromUtc`,
+  // so a trial appended after a purchased plan **silently becomes the plan that tenant is on**"*
+  // ==================================================================================================
+  //
+  // ⚠⚠ THE CRITERION TELLS YOU WHICH TEST IS THE IMPORTANT ONE, AND IT IS NOT THIS ONE.
+  // *"The failure this prevents is not a duplicate row"* — so counting to one is the cheap half.
+  // **`A_tenant_already_on_a_purchased_plan_is_left_alone` is the criterion's actual subject**: a trial
+  // appended after a purchase does not sit harmlessly beside it, it BECOMES the record in force, because
+  // in-force is decided by the greatest `EffectiveFromUtc`. *A downgrade that reads as a duplicate.*
+  //
+  // ⚠ The word is ANY: the guard is "already holds a subscription record", not "already holds a trial".
+  // A check for an existing TRIAL would pass this test and cause the exact failure the criterion names.
+  //
+  // ⚠⚠ AND `Another_tenant_is_still_issued_one` IS THE ANTI-VACUITY CONTROL FOR BOTH. Without it,
+  // "issuing twice adds nothing the second time" is equally satisfied by an issuer that adds nothing ever.
   public async Task Issuing_twice_leaves_the_tenant_with_exactly_one_subscription()
   {
     var subscriptions = new FakeSubscriptionRepository();
@@ -118,6 +151,7 @@ public sealed class TrialSubscriptionIssuanceTests
   // with the greatest `EffectiveFromUtc` — so it would silently become the plan they are on. That is a
   // paying customer downgraded to a 14-day trial with no error anywhere.
   [Fact]
+  [Trait("Acceptance", "AC-SUB-0054")]
   public async Task A_tenant_already_on_a_purchased_plan_is_left_alone()
   {
     var purchasedPlanId = Guid.NewGuid();
@@ -138,6 +172,7 @@ public sealed class TrialSubscriptionIssuanceTests
 
   // Two tenants are two subscriptions: the guard is per tenant, not a global "has anyone been seeded".
   [Fact]
+  [Trait("Acceptance", "AC-SUB-0054")]
   public async Task Another_tenant_is_still_issued_one()
   {
     var subscriptions = new FakeSubscriptionRepository();
@@ -187,6 +222,32 @@ public sealed class TrialSubscriptionIssuanceTests
   // mistake — the convenience column added because a query was awkward — which is how a second way to be
   // entitled arrives in practice.
   [Fact]
+  [Trait("Acceptance", "AC-SUB-0033")]
+  // `AC-SUB-0033`, pasted — *"**No trial state, flag, column or enum member exists anywhere in the
+  // package.** A trial is a plan with a short term and nothing else. The criterion is the absence"*
+  //
+  // ⚠ THIS TEST CARRIES PART OF IT. The criterion says ANYWHERE IN THE PACKAGE and this names two types
+  // and two enums — **`SubscriptionBillingPeriod` and `SubscriptionTermKind` are not among them**, so a
+  // `Trial` member added to either passes here. `PlatformInfrastructureRegistrationTests.No_trial_state_
+  // flag_column_or_enum_member_exists_in_the_subscription_package` walks the whole package and the model.
+  //
+  // ⚠⚠⚠ TWO TESTS COVER THIS CRITERION AND THEY FAIL IN OPPOSITE DIRECTIONS. MEASURED, NOT REASONED:
+  //
+  //   plant                                        named-list test   walk test
+  //   `IsTrial` on a NAMED type                    RED               RED
+  //   `SubscriptionTermKind.Trial` (un-named enum) **green**         RED
+  //   unmapped `TrialAppearsHere` on a named type  RED               RED
+  //   a named type RENAMED or REMOVED              **fails to        walks whatever
+  //                                                COMPILE**         is left, silently
+  //
+  // ***A NAMED LIST CATCHES REMOVAL AND RENAME; A WALK CATCHES ADDITION. NEITHER CATCHES THE OTHER'S
+  // CASE.*** The list is coupled to its types at COMPILE time, so losing one is loud; the walk is coupled
+  // to a namespace, so gaining one is automatic and losing one is silent.
+  //
+  // ⚠ So this is not duplication and neither should be deleted. **The criterion is an ABSENCE over a
+  // package** — *no trial state, flag, column or enum member ANYWHERE* — which needs the walk; the file
+  // holding the named list states its own philosophy for naming (*"a scan could pass vacuously"*) and is
+  // right about the failure it is guarding.
   public void No_type_in_the_subscription_model_carries_a_trial_flag()
   {
     var members = typeof(TenantSubscription).GetProperties()
@@ -265,7 +326,6 @@ public sealed class TrialSubscriptionIssuanceTests
     public string? UserId => userId;
     public string? UserName => null;
     public string? Email => null;
-    public Guid? CompanyId => null;
     public string? SessionId => null;
     public string? TokenId => null;
     public IReadOnlyCollection<string> Roles => [];

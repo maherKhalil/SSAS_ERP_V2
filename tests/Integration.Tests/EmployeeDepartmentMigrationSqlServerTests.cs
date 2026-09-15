@@ -30,6 +30,31 @@ namespace SSAS.Integration.Tests;
 // The only HR class that was ever in the chain. It arrived five days after the collection was defined,
 // from a different feature stream, with no comment above the attribute and nothing in its commit message
 // about serialization. One Guid-named catalog; nothing shared.
+// ================================================================================================
+// ⚠ THIS FILE CARRIES `AC-DEP-0039`, AND UNTIL 265 IT CARRIED NO CITATION AT ALL.
+// ================================================================================================
+//
+// `AC-DEP-0039`'s note read *the column's NOT NULL is asserted by nothing* and *neither the back-fill nor
+// the collision rule is asserted at all*. All three claims were false when written, and the mechanism was
+// printed inside the sentence: *the only SCHEMA-SUITE mention*. THE SEARCH WAS SCOPED TO THE SCHEMA SUITE
+// AND THESE TESTS LIVE IN A DIFFERENTLY-NAMED FILE — a bounded search reported as an absence. Retracted in
+// `b782298`.
+//
+// ⚠⚠ A FALSE ABSENCE IN A CRITERION IS MORE DANGEROUS THAN A FALSE PRESENCE, because the remedy it invites
+// is WRITING TESTS THAT ALREADY EXIST — and the duplicates would have passed, and looked like progress.
+// The inverted case has no natural discoverer: nobody re-checks a gap they are about to fill.
+//
+// ---- THE CITATION IS BY PREDICATE, NOT BY COUNT: a test is cited iff it ASSERTS A CLAUSE of `AC-DEP-0039`
+// or is the CONTROL that makes such an assertion non-vacuous. Ten of the twelve qualify.
+//
+// ⚠ AND THE TWO EXCLUSIONS ARE NAMED, because enumerating the exceptions is what makes this a census
+// rather than a list:
+//
+//   * `The_approved_department_index_exists` — asserts an index's column ORDER. `AC-DEP-0039` has no
+//     clause about indexes or query shape; it touches none of strategy, terminal state or collision.
+//   * `An_employee_cannot_reference_a_department_that_does_not_exist` — asserts the foreign key is real.
+//     ⚠ ADJACENT BUT NOT THE SAME CLAIM: *no employee has a NULL department* and *no employee references a
+//     NONEXISTENT department* are different propositions, and only the first is this criterion's.
 public sealed class EmployeeDepartmentMigrationSqlServerTests
 {
   // The migration immediately before the one under test: Departments exist, Employee has no DepartmentId.
@@ -44,6 +69,9 @@ public sealed class EmployeeDepartmentMigrationSqlServerTests
   // The migration is proportionate to the actual problem. Creating an empty UNASSIGNED department in every
   // company would leave a permanent artefact of a one-time migration in tenants that never needed it.
   [Fact]
+  // CONTROL, not decoration: without it *every affected company gets an UNASSIGNED department* is
+  // satisfied by a migration that gives one to EVERY company.
+  [Trait("Criterion", "AC-DEP-0039")]
   public async Task A_company_with_no_legacy_employees_gets_no_unassigned_department()
   {
     await using var fixture = await MigrationFixture.CreateAsync();
@@ -57,6 +85,8 @@ public sealed class EmployeeDepartmentMigrationSqlServerTests
   // §23 B — ONE LEGACY EMPLOYEE.
   // ================================================================================================
   [Fact]
+  // THE CORE OF STRATEGY A, and the terminal state on real data: the employee ends up IN a department.
+  [Trait("Criterion", "AC-DEP-0039")]
   public async Task One_legacy_employee_is_mapped_to_one_new_department_with_one_history_row()
   {
     await using var fixture = await MigrationFixture.CreateAsync();
@@ -96,6 +126,10 @@ public sealed class EmployeeDepartmentMigrationSqlServerTests
   // The failure this guards against is one UNASSIGNED per EMPLOYEE, which a per-row insert would produce
   // and which no assertion about a single employee would catch.
   [Fact]
+  // ONE per COMPANY, not one per EMPLOYEE — the amendment closing `OD-DEP-001` says *one `UNASSIGNED`
+  // department per company holding legacy Employees*, and a per-row insert satisfies the terminal state
+  // while violating the strategy.
+  [Trait("Criterion", "AC-DEP-0039")]
   public async Task Many_legacy_employees_in_one_company_share_exactly_one_new_department()
   {
     await using var fixture = await MigrationFixture.CreateAsync();
@@ -125,6 +159,8 @@ public sealed class EmployeeDepartmentMigrationSqlServerTests
   // A department belongs to exactly one company, so a shared UNASSIGNED across companies would be a
   // cross-company reference — the boundary violation this whole model exists to prevent.
   [Fact]
+  // The *per company* half of the same clause, from the other side.
+  [Trait("Criterion", "AC-DEP-0039")]
   public async Task Each_affected_company_gets_its_own_unassigned_department()
   {
     await using var fixture = await MigrationFixture.CreateAsync();
@@ -157,6 +193,8 @@ public sealed class EmployeeDepartmentMigrationSqlServerTests
   // A company with employees is affected; a company without them is not — proven together so the
   // distinction is the one being tested rather than a coincidence of the fixture.
   [Fact]
+  // The sharper form of the same control — *affected* and *unaffected* proven together.
+  [Trait("Criterion", "AC-DEP-0039")]
   public async Task Only_companies_with_legacy_employees_are_affected()
   {
     await using var fixture = await MigrationFixture.CreateAsync();
@@ -174,6 +212,16 @@ public sealed class EmployeeDepartmentMigrationSqlServerTests
   // §23 E — EXISTING NORMAL DEPARTMENTS ARE UNTOUCHED.
   // ================================================================================================
   [Fact]
+  // ⚠ CITED, AND NOT FOR THE REASON ITS NAME GIVES. *Disturbs nothing that was already there* would be a
+  // weak basis for attaching this criterion. The load-bearing part is the LAST assertion:
+  // `DepartmentCountAsync(CompanyA) == 2` plus the employee landing in the NEW department.
+  //
+  // A migration that assigned legacy employees to an EXISTING department instead of creating `UNASSIGNED`
+  // satisfies the terminal state perfectly — no employee has a null department — while implementing a
+  // DIFFERENT STRATEGY. Back-fill by CREATION and back-fill by ADOPTION are distinguished here and
+  // nowhere else in this file, so this is the control that stops *strategy A is implemented* being
+  // satisfied by strategy-not-A.
+  [Trait("Criterion", "AC-DEP-0039")]
   public async Task Departments_that_already_exist_are_left_exactly_as_they_were()
   {
     await using var fixture = await MigrationFixture.CreateAsync();
@@ -202,6 +250,10 @@ public sealed class EmployeeDepartmentMigrationSqlServerTests
 
   // NOT NULL, with no runtime nullable grace period. The nullable window exists only inside the migration.
   [Fact]
+  // ⚠ THE TERMINAL-STATE CLAUSE, AND THE ONE THE CRITERION'S RETRACTED NOTE SAID WAS ASSERTED BY NOTHING.
+  // It reads `INFORMATION_SCHEMA` after the real migration, which is the STRONGEST form of *no employee has
+  // a null department*: not absent, IMPOSSIBLE.
+  [Trait("Criterion", "AC-DEP-0039")]
   public async Task The_department_column_is_not_nullable_after_the_migration()
   {
     await using var fixture = await MigrationFixture.CreateAsync();
@@ -264,6 +316,9 @@ public sealed class EmployeeDepartmentMigrationSqlServerTests
   // OD-DEP-001 as approved: do not reuse, rename, delete, modify, suffix, or choose another code. Fail
   // loudly and transactionally, and tell the operator what to do.
   [Fact]
+  // THE FAIL-LOUD CLAUSE. ⚠ It is NOT option D arriving by the back door: it fires only on a company that
+  // ALREADY holds a department coded `UNASSIGNED`, which is a different condition from *a null remains*.
+  [Trait("Criterion", "AC-DEP-0039")]
   public async Task An_existing_unassigned_department_stops_the_migration_and_changes_nothing()
   {
     await using var fixture = await MigrationFixture.CreateAsync();
@@ -319,6 +374,8 @@ public sealed class EmployeeDepartmentMigrationSqlServerTests
   // created CompanyB's department and only then hit CompanyA's collision would be relying on the rollback
   // to undo real work; checking everything first means the common failure never writes at all.
   [Fact]
+  // The TRANSACTIONAL half of fail-loud — *and changes nothing* extended across companies.
+  [Trait("Criterion", "AC-DEP-0039")]
   public async Task A_collision_in_one_company_leaves_every_other_company_untouched()
   {
     await using var fixture = await MigrationFixture.CreateAsync();
@@ -340,6 +397,9 @@ public sealed class EmployeeDepartmentMigrationSqlServerTests
   // UNASSIGNED in a company with no legacy employees has nothing to collide with, and blocking their
   // migration over it would be a refusal with no cause.
   [Fact]
+  // CONTROL ON THE COLLISION RULE ITSELF: without it, *a collision stops the migration* is satisfied by a
+  // check that refuses on ANY existing `UNASSIGNED` anywhere — a refusal with no cause.
+  [Trait("Criterion", "AC-DEP-0039")]
   public async Task An_unassigned_department_in_an_unaffected_company_does_not_block_the_migration()
   {
     await using var fixture = await MigrationFixture.CreateAsync();
@@ -712,8 +772,7 @@ public sealed class EmployeeDepartmentMigrationSqlServerTests
       new SqlConnectionStringBuilder(
         IntegrationSqlEnvironment.BaseConnectionString)
       {
-        InitialCatalog = catalog,
-        Pooling = false
+        InitialCatalog = catalog
       }.ConnectionString;
 
     private sealed class FixtureUser : ICurrentUser
@@ -724,7 +783,6 @@ public sealed class EmployeeDepartmentMigrationSqlServerTests
 
       public string? Email => null;
 
-      public Guid? CompanyId => null;
 
       public string? SessionId => null;
 

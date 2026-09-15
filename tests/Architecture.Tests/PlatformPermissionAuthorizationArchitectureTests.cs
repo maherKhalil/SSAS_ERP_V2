@@ -10,6 +10,16 @@ namespace SSAS.Architecture.Tests;
 public sealed class PlatformPermissionAuthorizationArchitectureTests
 {
   [Fact]
+  [Trait("Criterion", "AC-TEN-0091")]
+  // `AC-TEN-0091`'s SECOND half — *"`PlatformPermissionAuthorizationHandler` and the plane-authenticated
+  // policies perform NO LIVE PRINCIPAL-STATUS / PER-REQUEST DB [authorization]."* Carried by an ABSENT
+  // DEPENDENCY, which is the strongest available form: **a handler cannot query a database it has no way to
+  // reach.** The no-new-claim half is on `PlatformSupportAuthenticationEndToEndTests.Platform_login_...`,
+  // same trait.
+  //
+  // ⚠ AND THE BAN INCLUDES `Principal` AND `Session` AS WELL AS THE THREE PERSISTENCE SPELLINGS, which is
+  // what makes it *no live PRINCIPAL-STATUS* rather than merely *no database*: **a read service is not the
+  // only way to reach live status, and a `PlatformSupportPrincipal` parameter would have been one.**
   public void Platform_permission_handler_depends_only_on_the_permission_catalog_and_no_persistence()
   {
     var parameters = typeof(PlatformPermissionAuthorizationHandler).GetConstructors().Single().GetParameters();
@@ -54,12 +64,29 @@ public sealed class PlatformPermissionAuthorizationArchitectureTests
   }
 
   [Fact]
+  [Trait("Criterion", "AC-TEN-0068")]
+  // ⚠ THE TRAIT IS NEW; THE CITATION WAS ALREADY HERE IN PROSE. The comment below has named `AC-TEN-0068`
+  // since it was written, and the assertions are the criterion verbatim — *"No `SecurityVersion` is added to
+  // `PlatformSupportPrincipal`"*. **A trait census reported this criterion uncited for as long as it has
+  // existed, and a text census reported it covered; the assertions were right the whole time.** Found by
+  // auditing my OWN identical slip on `AC-TEN-0042` two commits ago, which is the only reason anyone looked.
+  //
+  // ⚠⚠ AND THE EXISTING ANTI-VACUITY NOTE (258) IS THE SHARPEST IN THIS FILE: the assertions are bound to
+  // `nameof(AuthenticationAccount.SecurityVersion)` — the tenant-plane account that DOES carry the version —
+  // because `GetProperty`/`GetField` return null for a member that is ABSENT **and** for one that is
+  // MISSPELT. **A bare string would have asserted nothing a typo could not satisfy**, which is the same
+  // failure as a matcher that matches nothing, arriving in an absence assertion instead of a ban.
   public void Platform_support_principal_has_no_security_version_member()
   {
     // L4: principal status is a separate platform-plane state; the principal carries no SecurityVersion, so a
     // platform-only Disable can never bump a version (that would kill tenant access). AC-TEN-0068.
     var principal = typeof(PlatformSupportPrincipal);
-    Assert.Null(principal.GetProperty("SecurityVersion"));
-    Assert.Null(principal.GetField("SecurityVersion", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance));
+    // ⚠ Bound to `AuthenticationAccount.SecurityVersion` (258): the tenant-plane account that DOES carry
+    // the version, same context, same kind. `GetProperty`/`GetField` return null for a member that is
+    // absent AND for one that is misspelt, so the bare strings asserted nothing a typo could not satisfy.
+    Assert.Null(principal.GetProperty(nameof(SSAS.Platform.Domain.Authentication.AuthenticationAccount.SecurityVersion)));
+    Assert.Null(principal.GetField(
+      nameof(SSAS.Platform.Domain.Authentication.AuthenticationAccount.SecurityVersion),
+      BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance));
   }
 }

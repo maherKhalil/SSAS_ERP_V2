@@ -230,9 +230,24 @@ public sealed class AttendanceScopeResolver(
     // administrator whose tenant has no branches yet, and instructs callers to fail closed rather than fall
     // back to "all" — this does exactly that, and the refusal is distinguishable from the company one so an
     // operator can tell which grant is missing.
+    // ---- ⚠ AND THE REFUSAL NAMES THE GRANT CLASS THAT IS ACTUALLY MISSING (item 229).
+    //
+    // `Create` returns null when EITHER set is empty, so labelling every null `BranchScopeDenied` sent an
+    // operator to grant a BRANCH when the missing grant was a COMPANY — and the promise two paragraphs
+    // above is precisely that the two refusals are distinguishable. **Constructible: a tenant
+    // administrator with branch access and no company assignment.**
+    //
+    // The empty checks stay in the factory, which is where the GUARANTEE lives; this only decides the
+    // LABEL. `AuthorizedCompanySet.Create` returns null for a null-or-empty list and nothing else, so an
+    // empty `companyIds` is an exact discriminator rather than a guess at which check fired.
+    //
+    // ⚠ **NO DISCLOSURE CHANGE.** An operator learns which grant CLASS is missing, never which grant —
+    // neither refusal names a company, a branch, a tenant or any topology, exactly as before.
     var scope = AttendanceReadScope.Create(tenantId, companyIds, branchIds);
     return scope is null
-      ? Result.Failure<AttendanceReadScope>(AttendanceScopeErrors.BranchScopeDenied)
+      ? Result.Failure<AttendanceReadScope>(companyIds.Length == 0
+        ? AttendanceScopeErrors.CompanyScopeDenied
+        : AttendanceScopeErrors.BranchScopeDenied)
       : Result.Success(scope);
   }
 }

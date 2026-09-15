@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+﻿using SSAS.BuildingBlocks.Domain;
+using System.Diagnostics;
 using System.Globalization;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
@@ -19,6 +20,8 @@ using SSAS.Platform.Infrastructure.Persistence.TenantErp;
 using SSAS.Platform.Infrastructure.TenantStorage;
 using Xunit.Abstractions;
 
+using SSAS.TestSupport.CutoverModel;
+
 namespace SSAS.Integration.Tests;
 
 // THE WHOLE CUTOVER, AGAINST REAL SQL (ADR-020, TS-Storage Phase E5).
@@ -34,14 +37,35 @@ namespace SSAS.Integration.Tests;
 // stated reason for serialization went with it, and nothing replaced it.
 //
 // It was also ~68% of the remaining chain — the whole round-2 prize was this one class.
-public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper output)
+//
+// ---- ⚠ EACH TEST'S THREE CATALOGS ARE RESTORED FROM A TEMPLATE, NOT MIGRATED. WHY, AND WHAT THAT COSTS.
+//
+// Every test here builds three private catalogs, and until 2026-08-29 each one ran the migrations: 18 tenant
+// migrations twice and 26 platform migrations once, **62 migration applications per test to produce a schema
+// identical every time.** Measured alone on an idle instance that is 75.5 s of a 131.8 s test — and measured
+// again under full-suite load it is the SAME 75.5 s, so the cost is intrinsic and not contention.
+//
+// The migrations now run ONCE per class into a template, which is backed up and restored per test. Restoring
+// three catalogs costs 5.6 s against 75.5 s, and ten concurrent restores from one device measured 2.4 s with
+// no failures, so the shared device does not serialize.
+//
+// **THE ISOLATION IS UNCHANGED, WHICH IS THE POINT.** Every test still gets three private catalogs with a
+// unique token and still drops them in teardown. Nothing is shared between tests but a read-only `.bak` file.
+// The alternative considered and rejected was resetting one shared platform catalogue between tests: it saves
+// less, and it trades away the property that makes these tests trustworthy.
+//
+// The template is rebuilt from the migrations in the tree ON EVERY RUN and never cached across runs — a
+// stale `.bak` would be a schema that disagrees with the code and nothing would redden.
+public sealed class TenantCutoverOrchestrationSqlServerTests(
+  ITestOutputHelper output, TenantCutoverOrchestrationSqlServerTests.CatalogTemplate template)
+  : IClassFixture<TenantCutoverOrchestrationSqlServerTests.CatalogTemplate>
 {
   // ---- A + B. The happy path, and the co-tenant that must not notice.
   [Fact]
   [Trait("Decision", "ADR-020")]
   public async Task A_full_cutover_moves_one_tenant_and_leaves_its_co_tenant_serving()
   {
-    await using var fixture = await OrchestrationFixture.CreateAsync();
+    await using var fixture = await OrchestrationFixture.CreateAsync(template);
     await fixture.SeedCompaniesAsync(fixture.TenantA, 4, "ORCH");
     await fixture.SeedCompaniesAsync(fixture.TenantB, 3, "COTEN");
 
@@ -89,7 +113,7 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
   [Trait("Decision", "ADR-022")]
   public async Task A_target_that_fails_the_recovery_gate_is_refused_before_the_tenant_is_frozen()
   {
-    await using var fixture = await OrchestrationFixture.CreateAsync(protectTarget: false);
+    await using var fixture = await OrchestrationFixture.CreateAsync(template, protectTarget: false);
     await fixture.SeedCompaniesAsync(fixture.TenantA, 2, "GATE");
 
     var started = await fixture.Orchestrator().StartAsync(fixture.StartRequest());
@@ -109,7 +133,7 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
   [Trait("Decision", "ADR-022")]
   public async Task A_gate_that_degrades_while_frozen_stops_the_flip_and_leaves_the_tenant_frozen()
   {
-    await using var fixture = await OrchestrationFixture.CreateAsync();
+    await using var fixture = await OrchestrationFixture.CreateAsync(template);
     await fixture.SeedCompaniesAsync(fixture.TenantA, 3, "DEGR");
 
     // Reach Frozen through the real services, then degrade recoverability before resuming.
@@ -131,7 +155,7 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
   [Trait("Decision", "ADR-020")]
   public async Task A_tampered_target_stops_the_cutover_and_leaves_the_tenant_frozen()
   {
-    await using var fixture = await OrchestrationFixture.CreateAsync();
+    await using var fixture = await OrchestrationFixture.CreateAsync(template);
     await fixture.SeedCompaniesAsync(fixture.TenantA, 4, "TAMP");
 
     var operationId = await fixture.BeginFreezeAndCopyAsync();
@@ -154,7 +178,7 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
   [InlineData("flipped")]
   public async Task Resume_continues_from_whatever_a_lost_process_left_behind(string checkpoint)
   {
-    await using var fixture = await OrchestrationFixture.CreateAsync();
+    await using var fixture = await OrchestrationFixture.CreateAsync(template);
     await fixture.SeedCompaniesAsync(fixture.TenantA, 3, "LOSS");
 
     // Each checkpoint is reached through the real services and then abandoned — exactly the durable state a
@@ -198,7 +222,7 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
   [Trait("Decision", "ADR-020")]
   public async Task Two_concurrent_starts_produce_exactly_one_cutover()
   {
-    await using var fixture = await OrchestrationFixture.CreateAsync();
+    await using var fixture = await OrchestrationFixture.CreateAsync(template);
     await fixture.SeedCompaniesAsync(fixture.TenantA, 3, "TWOST");
 
     var attempts = await Task.WhenAll(
@@ -226,7 +250,7 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
   [Trait("Decision", "ADR-020")]
   public async Task Nothing_can_interleave_while_an_orchestration_owns_the_cutover()
   {
-    await using var fixture = await OrchestrationFixture.CreateAsync();
+    await using var fixture = await OrchestrationFixture.CreateAsync(template);
     await fixture.SeedCompaniesAsync(fixture.TenantA, 3, "OWN");
     await fixture.SeedCompaniesAsync(fixture.TenantB, 2, "OTHER");
     var operationId = await fixture.BeginAndFreezeAsync();
@@ -295,7 +319,7 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
   [Trait("Decision", "ADR-020")]
   public async Task An_old_shared_context_stays_refused_after_completion_and_a_fresh_one_writes()
   {
-    await using var fixture = await OrchestrationFixture.CreateAsync();
+    await using var fixture = await OrchestrationFixture.CreateAsync(template);
     await fixture.SeedCompaniesAsync(fixture.TenantA, 2, "CTX");
 
     // Created BEFORE the cutover and never re-resolved.
@@ -311,9 +335,13 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
     Assert.Null((await fixture.ReadOperationAsync(started.Value.CutoverOperationId)).PostCutoverWriteObservedUtc);
 
     // ---- P. The stale context is still refused AFTER Completed, not merely while RoutingFlipped.
+    //
+    // ⚠ AND IT IS REFUSED AS MISROUTED, NOT AS FROZEN (T-213). Nothing is frozen here — the cutover has
+    // COMPLETED and the tenant is writable on its new database. This test's own name says a fresh context
+    // writes, which is the remedy; the code asserted below is what tells a caller to do that.
     var refused = await Assert.ThrowsAsync<TenantStorageUnavailableException>(
       () => stale.SaveChangesAsync());
-    Assert.Equal(TenantStorageErrors.TenantWritesFrozen.Code, refused.Error.Code);
+    Assert.Equal(TenantStorageErrors.TenantWriteRouteStale.Code, refused.Error.Code);
     await stale.DisposeAsync();
     Assert.Equal(2, await OrchestrationFixture.CompanyCountAsync(fixture.SourceCatalog, fixture.TenantA));
 
@@ -347,7 +375,7 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
   [Trait("Decision", "ADR-020")]
   public async Task Two_concurrent_first_target_writes_both_succeed_and_record_one_timestamp()
   {
-    await using var fixture = await OrchestrationFixture.CreateAsync();
+    await using var fixture = await OrchestrationFixture.CreateAsync(template);
     await fixture.SeedCompaniesAsync(fixture.TenantA, 2, "RACE");
     var started = await fixture.Orchestrator().StartAsync(fixture.StartRequest());
     Assert.True(started.IsSuccess, started.IsFailure ? started.Error.Code : null);
@@ -378,7 +406,7 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
   [Trait("Decision", "ADR-020")]
   public async Task A_failing_invalidator_leaves_routing_authoritative_and_other_instances_converge()
   {
-    await using var fixture = await OrchestrationFixture.CreateAsync();
+    await using var fixture = await OrchestrationFixture.CreateAsync(template);
     await fixture.SeedCompaniesAsync(fixture.TenantA, 3, "CONV");
 
     // An instance that caches Shared/1 and is never told anything.
@@ -411,7 +439,7 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
   [Trait("Decision", "ADR-020")]
   public async Task Routing_history_cannot_be_deleted_by_direct_sql()
   {
-    await using var fixture = await OrchestrationFixture.CreateAsync();
+    await using var fixture = await OrchestrationFixture.CreateAsync(template);
     await fixture.SeedCompaniesAsync(fixture.TenantA, 2, "DEL");
     Assert.True((await fixture.Orchestrator().StartAsync(fixture.StartRequest())).IsSuccess);
 
@@ -454,7 +482,7 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
   [Trait("Decision", "ADR-020")]
   public async Task The_write_gate_uses_the_newest_cutover_not_an_older_completed_one()
   {
-    await using var fixture = await OrchestrationFixture.CreateAsync();
+    await using var fixture = await OrchestrationFixture.CreateAsync(template);
     await fixture.SeedCompaniesAsync(fixture.TenantA, 2, "NEWEST");
 
     var completed = await fixture.Orchestrator().StartAsync(fixture.StartRequest());
@@ -496,7 +524,7 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
   [Trait("Decision", "ADR-020")]
   public async Task The_write_gate_lookup_seeks_its_index_at_realistic_cardinality()
   {
-    await using var fixture = await OrchestrationFixture.CreateAsync();
+    await using var fixture = await OrchestrationFixture.CreateAsync(template);
     await fixture.SeedCompaniesAsync(fixture.TenantA, 2, "PLAN");
     Assert.True((await fixture.Orchestrator().StartAsync(fixture.StartRequest())).IsSuccess);
 
@@ -539,6 +567,189 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
     await using var command = connection.CreateCommand();
     command.CommandText = "SELECT DB_NAME()";
     return Convert.ToString(await command.ExecuteScalarAsync(), CultureInfo.InvariantCulture);
+  }
+
+  // ================================================================================================
+  // FOUR PROPERTIES OF THE POST-CUTOVER OBSERVATION, TAKEN FROM `codex/post-phase-e-hardening-h1` (T-137).
+  // ================================================================================================
+  //
+  // **All four of that branch's tests are now here.** Two landed in T-137 against current behaviour;
+  // the two below were taken, run, removed when they failed, and brought back in T-139 with the change
+  // they test. **`..._complete_wins_the_row` failed with `TenantStorage.CutoverConcurrencyConflict`,
+  // which is precisely the answer the retry absorbs** — a red test that goes green, which is the
+  // cleanest justification a change can arrive with.
+  //
+  // **The first of these supersedes a test written in T-135.** That one called the fence directly and proved it
+  // REFUSES; this one performs a real `SaveChangesAsync` and proves the refusal is EFFECTIVE — the row never
+  // lands, and the observation is genuinely absent rather than incidentally so. **The T-135 test was removed
+  // rather than kept beside it.**
+
+  // ---- H1. AN UNRECORDABLE OBSERVATION REFUSES THE WRITE, and the business row does not land. This is the
+  // half the fence previously threw away: the store says the observation is known NOT to be recorded, and
+  // the only safe answer is to refuse rather than commit onto a database the platform believes is untouched.
+  [Fact]
+  [Trait("Decision", "ADR-020")]
+  public async Task A_write_whose_observation_cannot_be_recorded_is_refused_and_commits_nothing()
+  {
+    await using var fixture = await OrchestrationFixture.CreateAsync(template);
+    await fixture.SeedCompaniesAsync(fixture.TenantA, 2, "H1FAIL");
+    var started = await fixture.Orchestrator().StartAsync(fixture.StartRequest());
+    Assert.True(started.IsSuccess, started.IsFailure ? started.Error.Code : null);
+
+    var before = await OrchestrationFixture.CompanyCountAsync(fixture.TargetCatalog, fixture.TenantA);
+
+    await using var context = await fixture.CreateRoutedContextAsync(
+      fixture.TenantA, new ObservationRefusingStore(fixture.Store()));
+    context.Companies.Add(OrchestrationFixture.NewCompany(fixture.TenantA, "H1FAILW"));
+
+    await Assert.ThrowsAsync<TenantStorageUnavailableException>(() => context.SaveChangesAsync());
+
+    // NOT COMMITTED. The fence refuses inside the transaction it opened, so the row never reaches the table.
+    Assert.Equal(before, await OrchestrationFixture.CompanyCountAsync(fixture.TargetCatalog, fixture.TenantA));
+    Assert.Null((await fixture.ReadOperationAsync(started.Value.CutoverOperationId))
+      .PostCutoverWriteObservedUtc);
+  }
+
+  // ---- H1. WRITE-ONCE STILL HOLDS: later target writes do not move the recorded moment forward.
+  [Fact]
+  [Trait("Decision", "ADR-020")]
+  public async Task The_first_write_observation_is_not_moved_by_later_writes()
+  {
+    await using var fixture = await OrchestrationFixture.CreateAsync(template);
+    await fixture.SeedCompaniesAsync(fixture.TenantA, 2, "H1ONCE");
+    var started = await fixture.Orchestrator().StartAsync(fixture.StartRequest());
+    Assert.True(started.IsSuccess, started.IsFailure ? started.Error.Code : null);
+
+    await using (var first = await fixture.CreateRoutedContextAsync(fixture.TenantA))
+    {
+      first.Companies.Add(OrchestrationFixture.NewCompany(fixture.TenantA, "H1ONCE1"));
+      Assert.Equal(1, await first.SaveChangesAsync());
+    }
+
+    var recorded = (await fixture.ReadOperationAsync(started.Value.CutoverOperationId))
+      .PostCutoverWriteObservedUtc;
+    Assert.NotNull(recorded);
+
+    await using (var second = await fixture.CreateRoutedContextAsync(fixture.TenantA))
+    {
+      second.Companies.Add(OrchestrationFixture.NewCompany(fixture.TenantA, "H1ONCE2"));
+      Assert.Equal(1, await second.SaveChangesAsync());
+    }
+
+    Assert.Equal(
+      recorded,
+      (await fixture.ReadOperationAsync(started.Value.CutoverOperationId)).PostCutoverWriteObservedUtc);
+  }
+
+  // ---- H1. THE OBSERVATION SURVIVES LOSING THE ROW TO Complete() (Phase E final review LOW-1).
+  //
+  // The previously uncovered case, and the one that made the finding real: the operation row has a second
+  // writer that is not recording an observation at all. Complete() can win the RowVersion race and leave
+  // the timestamp untouched, so the re-read finds NULL — and before H1 the failure that produced was
+  // discarded by the fence, letting a genuine target write commit while the platform recorded that none had.
+  //
+  // Reproduced deterministically rather than by racing tasks: the writer's store reads the operation first,
+  // Complete() then advances the row, and the writer's save is therefore guaranteed to be displaced.
+  [Fact]
+  [Trait("Decision", "ADR-020")]
+  public async Task A_first_target_write_records_its_observation_even_when_complete_wins_the_row()
+  {
+    await using var fixture = await OrchestrationFixture.CreateAsync(template);
+    await fixture.SeedCompaniesAsync(fixture.TenantA, 2, "H1RACE");
+
+    // Flipped but NOT finalised: routing is authoritative and no observation exists yet.
+    var operationId = await fixture.BeginFreezeCopyAndFlipAsync();
+
+    var (racing, platform) = fixture.StoreWithContext();
+    await using var tracked = platform;
+    await tracked.TenantCutoverOperations.FirstAsync(operation => operation.Id == operationId);
+
+    // Complete() advances RowVersion WITHOUT recording the observation — the displacing writer.
+    var completed = await fixture.Store().CompleteAsync(operationId, "orchestrator");
+    Assert.True(completed.IsSuccess, completed.IsFailure ? completed.Error.Code : null);
+
+    var observed = await racing.RecordPostCutoverWriteAsync(
+      operationId, fixture.TargetDatabaseId, "tenant-cutover-post-write");
+
+    Assert.True(observed.IsSuccess, observed.IsFailure ? observed.Error.Code : null);
+
+    var operation = await fixture.ReadOperationAsync(operationId);
+    Assert.Equal(TenantCutoverOperationStatus.Completed, operation.Status);
+    Assert.NotNull(operation.PostCutoverWriteObservedUtc);
+  }
+
+  // ---- H1. THE RETRY IS NOT DECIDED BY THE TIMESTAMP ALONE. After the displacement the store re-reads and
+  // revalidates the write it is fencing; a writer bound to the database the tenant was moved OFF is refused
+  // rather than having an observation recorded on its behalf.
+  [Fact]
+  [Trait("Decision", "ADR-020")]
+  public async Task A_displaced_observation_is_refused_when_the_route_no_longer_permits_that_write()
+  {
+    await using var fixture = await OrchestrationFixture.CreateAsync(template);
+    await fixture.SeedCompaniesAsync(fixture.TenantA, 2, "H1ROUTE");
+    var operationId = await fixture.BeginFreezeCopyAndFlipAsync();
+
+    var (racing, platform) = fixture.StoreWithContext();
+    await using var tracked = platform;
+    await tracked.TenantCutoverOperations.FirstAsync(operation => operation.Id == operationId);
+    Assert.True((await fixture.Store().CompleteAsync(operationId, "orchestrator")).IsSuccess);
+
+    // The SOURCE database — the one the tenant was moved off — must never earn an observation.
+    var observed = await racing.RecordPostCutoverWriteAsync(
+      operationId, fixture.SourceDatabaseId, "tenant-cutover-post-write");
+
+    // ⚠ MISROUTED, NOT FROZEN (T-213). This is the STORE's route check — the second site of the same
+    // condition the fence refuses at admission — and it refuses a write aimed at the database the tenant was
+    // moved off. Splitting only the fence would have left this one saying "frozen" for the same condition.
+    Assert.True(observed.IsFailure);
+    Assert.Equal(TenantStorageErrors.TenantWriteRouteStale.Code, observed.Error.Code);
+    Assert.Null((await fixture.ReadOperationAsync(operationId)).PostCutoverWriteObservedUtc);
+  }
+
+  private sealed class ObservationRefusingStore(ITenantCutoverOperationStore inner)
+    : ITenantCutoverOperationStore
+  {
+    public Task<Result> RecordPostCutoverWriteAsync(
+      long cutoverOperationId, long tenantDatabaseId, string actor, CancellationToken cancellationToken = default) =>
+      Task.FromResult(Result.Failure(TenantStorageErrors.CutoverConcurrencyConflict));
+
+    public Task<Result<long>> BeginAsync(
+      TenantCutoverBeginRequest request, CancellationToken cancellationToken = default) =>
+      inner.BeginAsync(request, cancellationToken);
+
+    public Task<TenantCutoverOperationRecord?> FindAsync(
+      long cutoverOperationId, CancellationToken cancellationToken = default) =>
+      inner.FindAsync(cutoverOperationId, cancellationToken);
+
+    public Task<TenantCutoverWriteGate?> FindActiveWriteGateAsync(
+      Guid tenantId, CancellationToken cancellationToken = default) =>
+      inner.FindActiveWriteGateAsync(tenantId, cancellationToken);
+
+    public Task<Result> CompleteAsync(
+      long cutoverOperationId, string actor, CancellationToken cancellationToken = default) =>
+      inner.CompleteAsync(cutoverOperationId, actor, cancellationToken);
+
+    public Task<TenantCutoverOperationRecord?> FindActiveForTenantAsync(
+      Guid tenantId, CancellationToken cancellationToken = default) =>
+      inner.FindActiveForTenantAsync(tenantId, cancellationToken);
+
+    public Task<Result> RequestFreezeAsync(
+      long cutoverOperationId, string actor, CancellationToken cancellationToken = default) =>
+      inner.RequestFreezeAsync(cutoverOperationId, actor, cancellationToken);
+
+    public Task<Result> FreezeAsync(
+      long cutoverOperationId, string actor, CancellationToken cancellationToken = default) =>
+      inner.FreezeAsync(cutoverOperationId, actor, cancellationToken);
+
+    public Task<Result> FailFreezeAsync(
+      long cutoverOperationId, string? failureSummary, string actor,
+      CancellationToken cancellationToken = default) =>
+      inner.FailFreezeAsync(cutoverOperationId, failureSummary, actor, cancellationToken);
+
+    public Task<Result> ReleaseFreezeAsync(
+      long cutoverOperationId, string? failureSummary, string actor,
+      CancellationToken cancellationToken = default) =>
+      inner.ReleaseFreezeAsync(cutoverOperationId, failureSummary, actor, cancellationToken);
   }
 
   private sealed class ThrowingInvalidator : ITenantRoutingCacheInvalidator
@@ -591,6 +802,289 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
     DateTimeOffset? RoutingFlippedUtc,
     DateTimeOffset? PostCutoverWriteObservedUtc);
 
+  // ---- ⚠ THE TEMPLATE CARRIES WHAT THE MIGRATIONS PRODUCE AND NOT ONE ROW MORE.
+  //
+  // Every test's three catalogs are byte-for-byte copies of these two, so a row in the template is a row in
+  // all sixty. **The failure that makes this worth a test is not that the tests would break — it is that they
+  // would NOT.** A seeding step added to the template gives every test rows it never created, counts that are
+  // silently one too high, and a suite that passes differently rather than failing.
+  //
+  // ---- ⚠ THIS ASSERTION WAS FIRST WRITTEN AS "NO ROWS AT ALL" AND WAS WRONG ON ITS FIRST RUN.
+  //
+  // The platform catalog is NOT empty after migrating, and never has been. `AddTrialSubscriptionSeed`
+  // (T-041, `DEC-L-034`) deliberately writes an all-module trial plan so that an existing estate is not
+  // locked out when the entitlement resolver goes live, and `AddLocalizationCore` writes a catalogue state.
+  // **The template is built by `MigrateAsync` and nothing else, so its rows ARE what the migrations produce —
+  // by construction, not by inference — and the per-test `MigrateAsync` this replaced produced the identical
+  // eleven rows.** Nothing changed; the first version of this test asserted something that was never true.
+  //
+  // **THE WRONG ASSERTION IS WHY THESE ELEVEN ROWS ARE WRITTEN DOWN AT ALL.** Every test in this class has
+  // always inherited them and no test said so. They are now pinned by name and count.
+  //
+  // EXACT COUNTS RATHER THAN A FLOOR, because a new seeding migration is a DECISION — somebody authoring rows
+  // that every test in this class inherits — and it should redden here and be ratified deliberately rather
+  // than absorbed. That is the opposite of the table count below, which moves as a SIDE EFFECT of unrelated
+  // migrations and therefore takes a floor.
+  private static readonly (string Table, int Rows)[] MigrationSeeded =
+  [
+    ("platform.LocalizationCatalogStates", 1),
+    ("platform.ModuleDefinitions", 4),
+    ("platform.SubscriptionPlanModules", 4),
+    ("platform.SubscriptionPlanPrices", 1),
+    ("platform.SubscriptionPlans", 1),
+  ];
+
+  [Fact]
+  public async Task The_template_every_test_restores_from_carries_only_what_the_migrations_wrote()
+  {
+    var platformSeeds = new Dictionary<string, int>(StringComparer.Ordinal);
+    foreach (var (table, rows) in MigrationSeeded)
+    {
+      platformSeeds[table] = rows;
+    }
+
+    // ⚠ THE SEEDS ARE PLATFORM-ONLY, SO THE TENANT TEMPLATE EXPECTS AN EMPTY SET, NOT THIS ONE. Applying the
+    // platform expectations to the tenant catalog would report all five as missing and make the tenant half
+    // of this guard permanently, meaninglessly red.
+    var expectations = new[]
+    {
+      (Catalog: template.TenantTemplateCatalog, Expected: new Dictionary<string, int>(StringComparer.Ordinal)),
+      (Catalog: template.PlatformTemplateCatalog, Expected: platformSeeds),
+    };
+
+    foreach (var (catalog, expected) in expectations)
+    {
+      var counts = await CatalogTemplate.RowCountsAsync(catalog);
+
+      // ⚠ ANTI-VACUITY. A catalog with no tables at all satisfies "nothing unexpected has rows" perfectly, so
+      // the check below is worthless without evidence the schema is really there. A FLOOR rather than an
+      // exact count deliberately: the table count legitimately grows every time a migration is added, and a
+      // number that must be edited during unrelated work is a number that gets edited without being read.
+      Assert.True(counts.Count >= 30,
+        $"{catalog} reports only {counts.Count} tables, so this guard is inspecting an empty or " +
+        "half-restored catalog rather than the migrated schema.");
+
+      var populated = counts
+        .Where(entry => entry.Value > 0
+          && !entry.Key.EndsWith("__EFMigrationsHistory", StringComparison.Ordinal))
+        .ToDictionary(entry => entry.Key, entry => entry.Value, StringComparer.Ordinal);
+
+      // Anything populated that the migrations are not known to write — the fixture-seeding leak this exists
+      // to catch. The tenant template is expected to match NOTHING here, and does.
+      var unexpected = populated
+        .Where(entry => !expected.ContainsKey(entry.Key))
+        .OrderBy(entry => entry.Key, StringComparer.Ordinal)
+        .ToArray();
+
+      Assert.True(unexpected.Length == 0,
+        $"the {catalog} template carries rows every test would inherit and no migration wrote: " +
+        string.Join(", ", unexpected.Select(entry => $"{entry.Key}={entry.Value}")) +
+        ". The template must carry only migration output — move the seeding into the fixture that needs it.");
+
+      // And a KNOWN seeded table whose count has moved is equally a change every test inherits.
+      //
+      // ⚠ THIS ITERATES `expected`, NOT `populated`, AND THAT IS THE WHOLE POINT. Written the other way it
+      // reads only tables that still have rows — so a seed falling to ZERO drops out of the collection being
+      // examined and fires nothing. **The case the guard most needs to catch is the one where a table it is
+      // watching becomes empty**, and inspecting only non-empty tables is exactly how it would miss it. A
+      // table absent from the catalog entirely counts as zero here for the same reason.
+      var drifted = expected
+        .Where(entry => counts.GetValueOrDefault(entry.Key, 0) != entry.Value)
+        .Select(entry => new { entry.Key, Found = counts.GetValueOrDefault(entry.Key, 0) })
+        .OrderBy(entry => entry.Key, StringComparer.Ordinal)
+        .ToArray();
+
+      Assert.True(drifted.Length == 0,
+        $"a migration-seeded table in {catalog} changed row count: " +
+        string.Join(", ", drifted.Select(entry =>
+          $"{entry.Key} expected {expected[entry.Key]} but found {entry.Found}")) +
+        ". Ratify the new seed by updating MigrationSeeded, having checked what every test now inherits.");
+    }
+  }
+
+  // ================================================================================================
+  // THE MIGRATED SCHEMA, BUILT ONCE PER CLASS AND HANDED OUT AS TWO BACKUP DEVICES.
+  // ================================================================================================
+  //
+  // xUnit creates this once before the first test and disposes it after the last, so the migrations run one
+  // time rather than twenty. It holds NO tenant state and nothing a test can mutate — the devices are read
+  // from, never written to, after `InitializeAsync` returns.
+  public sealed class CatalogTemplate : IAsyncLifetime
+  {
+    private readonly string token = Guid.NewGuid().ToString("N")[..12];
+    private readonly List<string> catalogs = [];
+
+    public string TenantDevice { get; private set; } = string.Empty;
+
+    public string PlatformDevice { get; private set; } = string.Empty;
+
+    // Kept alive for the life of the class so the emptiness guard can read the schema the tests restore.
+    public string TenantTemplateCatalog { get; private set; } = string.Empty;
+
+    public string PlatformTemplateCatalog { get; private set; } = string.Empty;
+
+    public string DataPath { get; private set; } = string.Empty;
+
+    public string LogPath { get; private set; } = string.Empty;
+
+    public async Task InitializeAsync()
+    {
+      // The location must be reachable by BOTH the test process (which creates the folder) and the SQL
+      // Server service identity (which writes the backup into it) — the asymmetry ADR-022 §11 describes.
+      var backupRoot = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "SSAS_BackupTests");
+      Directory.CreateDirectory(backupRoot);
+
+      TenantTemplateCatalog = $"SSAS_E5_TplTenant_{token}";
+      PlatformTemplateCatalog = $"SSAS_E5_TplPlatform_{token}";
+      TenantDevice = Path.Combine(backupRoot, $"SSAS_E5_Tpl_{token}_tenant.bak");
+      PlatformDevice = Path.Combine(backupRoot, $"SSAS_E5_Tpl_{token}_platform.bak");
+
+      DataPath = await ScalarAsync(
+        "SELECT CAST(SERVERPROPERTY('InstanceDefaultDataPath') AS nvarchar(400))") ?? string.Empty;
+      LogPath = await ScalarAsync(
+        "SELECT CAST(SERVERPROPERTY('InstanceDefaultLogPath') AS nvarchar(400))") ?? string.Empty;
+
+      foreach (var catalog in new[] { TenantTemplateCatalog, PlatformTemplateCatalog })
+      {
+        await ExecuteAsync("master", $"CREATE DATABASE [{catalog}]");
+        catalogs.Add(catalog);
+      }
+
+      await using (var tenant = TenantContext(TenantTemplateCatalog))
+      {
+        await tenant.Database.MigrateAsync();
+      }
+
+      await using (var platform = TemplatePlatformContext(PlatformTemplateCatalog))
+      {
+        await platform.Database.MigrateAsync();
+      }
+
+      await ExecuteAsync("master",
+        $"BACKUP DATABASE [{TenantTemplateCatalog}] TO DISK = N'{TenantDevice}' " +
+        "WITH INIT, COPY_ONLY, CHECKSUM");
+      await ExecuteAsync("master",
+        $"BACKUP DATABASE [{PlatformTemplateCatalog}] TO DISK = N'{PlatformDevice}' " +
+        "WITH INIT, COPY_ONLY, CHECKSUM");
+    }
+
+    public async Task DisposeAsync()
+    {
+      foreach (var catalog in catalogs)
+      {
+        try
+        {
+          await ExecuteAsync("master",
+            $"IF DB_ID(N'{catalog}') IS NOT NULL BEGIN " +
+            $"ALTER DATABASE [{catalog}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; " +
+            $"DROP DATABASE [{catalog}]; END");
+        }
+        catch (SqlException error)
+        {
+          TestCatalogJanitor.RecordLeak(catalog, error);
+        }
+      }
+
+      foreach (var device in new[] { TenantDevice, PlatformDevice })
+      {
+        try
+        {
+          if (!string.IsNullOrWhiteSpace(device) && File.Exists(device))
+          {
+            File.Delete(device);
+          }
+        }
+        catch (IOException)
+        {
+          // A left-behind backup file is not a leaked catalog and must not fail a passing run.
+        }
+      }
+    }
+
+    // Every table in a catalog, with its exact row count. `sys.partitions.rows` would be cheaper and is
+    // approximate; this is the number an assertion depends on, so it is counted rather than estimated.
+    // ⚠ ONE CONNECTION FOR ALL ~37 COUNTS, AND THAT IS NOT A MICRO-OPTIMISATION.
+    //
+    // Fixtures here resolve their connection string with `Pooling = false`, deliberately — a pooled
+    // connection outlives the test that opened it and can hold a catalog open against `DROP DATABASE`. The
+    // cost is that EVERY open is a real handshake, so a helper that opens one per table pays ~37 of them.
+    // The first version of this method did exactly that and cost **63 seconds**; this one costs about one.
+    public static async Task<Dictionary<string, int>> RowCountsAsync(string catalog)
+    {
+      await using var connection = new SqlConnection(ConnectionFor(catalog));
+      await connection.OpenAsync();
+
+      var tables = new List<(string Schema, string Name)>();
+      await using (var command = connection.CreateCommand())
+      {
+        command.CommandText =
+          "SELECT SCHEMA_NAME([schema_id]), [name] FROM sys.tables ORDER BY [name]";
+        command.CommandTimeout = 600;
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+          tables.Add((reader.GetString(0), reader.GetString(1)));
+        }
+      }
+
+      var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+      foreach (var (schema, name) in tables)
+      {
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"SELECT COUNT(*) FROM [{schema}].[{name}]";
+        command.CommandTimeout = 600;
+        counts[$"{schema}.{name}"] =
+          Convert.ToInt32(await command.ExecuteScalarAsync(), CultureInfo.InvariantCulture);
+      }
+
+      return counts;
+    }
+
+    private static TenantDbContext TenantContext(string catalog)
+    {
+      var options = new DbContextOptionsBuilder<TenantDbContext>()
+        .UseSqlServer(ConnectionFor(catalog), sql => sql.MigrationsHistoryTable(
+          TenantPersistenceConstants.MigrationHistoryTable,
+          TenantPersistenceConstants.MigrationHistorySchema))
+        .Options;
+      return new TenantDbContext(options, new TestUser(), new TestTenant(null), new TestClock());
+    }
+
+    private static PlatformDbContext TemplatePlatformContext(string catalog)
+    {
+      var options = new DbContextOptionsBuilder<PlatformDbContext>()
+        .UseSqlServer(ConnectionFor(catalog),
+          sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "platform"))
+        .Options;
+      return new PlatformDbContext(options, new TestUser(), new TestTenant(null), new TestClock());
+    }
+
+    private static string ConnectionFor(string catalog) =>
+      new SqlConnectionStringBuilder(IntegrationSqlEnvironment.BaseConnectionString)
+      { InitialCatalog = catalog, Pooling = false }.ConnectionString;
+
+    private static async Task ExecuteAsync(string catalog, string sql)
+    {
+      await using var connection = new SqlConnection(ConnectionFor(catalog));
+      await connection.OpenAsync();
+      await using var command = connection.CreateCommand();
+      command.CommandText = sql;
+      command.CommandTimeout = 600;
+      await command.ExecuteNonQueryAsync();
+    }
+
+    private static async Task<string?> ScalarAsync(string sql, string catalog = "master")
+    {
+      await using var connection = new SqlConnection(ConnectionFor(catalog));
+      await connection.OpenAsync();
+      await using var command = connection.CreateCommand();
+      command.CommandText = sql;
+      command.CommandTimeout = 600;
+      return (await command.ExecuteScalarAsync())?.ToString();
+    }
+  }
+
   private sealed class OrchestrationFixture : IAsyncDisposable
   {
     private const string ServerKey = "PrimarySqlServer";
@@ -621,12 +1115,13 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
 
     public string PlatformConnectionString => ConnectionFor(platformCatalog);
 
-    public static async Task<OrchestrationFixture> CreateAsync(bool protectTarget = true)
+    public static async Task<OrchestrationFixture> CreateAsync(
+      CatalogTemplate template, bool protectTarget = true)
     {
       var fixture = new OrchestrationFixture();
       try
       {
-        await fixture.InitialiseAsync(protectTarget);
+        await fixture.InitialiseAsync(template, protectTarget);
         return fixture;
       }
       catch
@@ -636,35 +1131,22 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
       }
     }
 
-    private async Task InitialiseAsync(bool protectTarget)
+    private async Task InitialiseAsync(CatalogTemplate template, bool protectTarget)
     {
       platformCatalog = $"SSAS_E5_Platform_{token}";
       SourceCatalog = $"SSAS_E5_Shared_{token}";
       TargetCatalog = $"SSAS_E5_Dedicated_{token}";
       freeze.WriteAdmissionTimeout = TimeSpan.FromSeconds(2);
 
-      foreach (var catalog in new[] { platformCatalog, SourceCatalog, TargetCatalog })
-      {
-        await ExecuteAsync("master", $"CREATE DATABASE [{catalog}]");
-      }
-
-      foreach (var catalog in new[] { SourceCatalog, TargetCatalog })
-      {
-        await using var connection = new SqlConnection(ConnectionFor(catalog));
-        var options = new DbContextOptionsBuilder<TenantDbContext>()
-          .UseSqlServer(connection, sql => sql.MigrationsHistoryTable(
-            TenantPersistenceConstants.MigrationHistoryTable,
-            TenantPersistenceConstants.MigrationHistorySchema))
-          .Options;
-        await using var context = new TenantDbContext(
-          options, new TestUser(), new TestTenant(null), new TestClock());
-        await context.Database.MigrateAsync();
-      }
+      // Three private catalogs exactly as before — the schema arrives by RESTORE rather than by 62
+      // migrations. See the class comment for the measurement that motivated it.
+      await RestoreAsync(template.TenantDevice, SourceCatalog, template);
+      await RestoreAsync(template.TenantDevice, TargetCatalog, template);
+      await RestoreAsync(template.PlatformDevice, platformCatalog, template);
 
       storage.Servers[ServerKey] = new TenantStorageServerOptions { ConnectionString = Configured() };
 
       await using var platform = PlatformContext();
-      await platform.Database.MigrateAsync();
 
       SourceDatabaseId = await RegisterAsync(platform, TenantDatabaseStorageMode.Shared, SourceCatalog);
       TargetDatabaseId = await RegisterAsync(platform, TenantDatabaseStorageMode.Dedicated, TargetCatalog);
@@ -861,7 +1343,19 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
         new TenantRoutingCacheOptions { Lifetime = TimeSpan.FromMinutes(10) }, new TestClock()));
     }
 
-    public async Task<TenantDbContext> CreateRoutedContextAsync(Guid tenantId)
+    // A store bound to a SECOND platform context, so a racing operation can advance the row underneath a
+    // writer that has already read it — which is how the Complete-versus-observation race is made
+    // deterministic rather than timing-dependent (T-139).
+    public (TenantCutoverOperationStore Store, PlatformDbContext Platform) StoreWithContext()
+    {
+      var platform = PlatformContext();
+      return (new TenantCutoverOperationStore(platform, new TestClock(), copy.ReleaseOwnershipTimeout),
+        platform);
+    }
+
+    public async Task<TenantDbContext> CreateRoutedContextAsync(
+      Guid tenantId,
+      ITenantCutoverOperationStore? store = null)
     {
       var platform = PlatformContext();
       var factory = new TenantDbContextFactory(
@@ -869,7 +1363,7 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
         ConnectionFactory(),
         new TenantDatabaseTrafficGate(TenantDatabaseHealthFreshness.Default),
         new TestUser(), new TestTenant(tenantId), new TestClock(),
-        new TenantCutoverWriteFence(Store(), Options.Create(freeze)));
+        new TenantCutoverWriteFence(store ?? Store(), Options.Create(freeze)));
 
       var created = await factory.CreateAsync(tenantId);
       Assert.True(created.IsSuccess, created.IsFailure ? created.Error.Code : null);
@@ -1117,6 +1611,37 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
       new SqlConnectionStringBuilder(Configured()) { InitialCatalog = catalog, Pooling = false }
         .ConnectionString;
 
+    // One catalog restored from a template device. The backup carries the template's LOGICAL file names, so
+    // every copy must MOVE them to physical paths of its own or the second restore collides with the first.
+    private static async Task RestoreAsync(string device, string catalog, CatalogTemplate template)
+    {
+      var files = new List<(string Logical, string Type)>();
+      await using (var connection = new SqlConnection(ConnectionFor("master")))
+      {
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"RESTORE FILELISTONLY FROM DISK = N'{device}'";
+        command.CommandTimeout = 600;
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+          files.Add((reader.GetString(reader.GetOrdinal("LogicalName")),
+            reader.GetString(reader.GetOrdinal("Type"))));
+        }
+      }
+
+      var moves = files.Select((file, index) =>
+      {
+        var isLog = file.Type.Equals("L", StringComparison.OrdinalIgnoreCase);
+        var root = isLog ? template.LogPath : template.DataPath;
+        var extension = isLog ? ".ldf" : ".mdf";
+        return $"MOVE N'{file.Logical}' TO N'{Path.Combine(root, $"{catalog}_{index}{extension}")}'";
+      });
+
+      await ExecuteAsync("master",
+        $"RESTORE DATABASE [{catalog}] FROM DISK = N'{device}' WITH {string.Join(", ", moves)}, RECOVERY");
+    }
+
     private static async Task ExecuteAsync(string catalog, string sql)
     {
       await using var connection = new SqlConnection(ConnectionFor(catalog));
@@ -1164,7 +1689,6 @@ public sealed class TenantCutoverOrchestrationSqlServerTests(ITestOutputHelper o
     public string? UserId => "cutover-orchestration-tests";
     public string? UserName => null;
     public string? Email => null;
-    public Guid? CompanyId => null;
     public string? SessionId => null;
     public string? TokenId => null;
     public IReadOnlyCollection<string> Roles => [];

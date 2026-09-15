@@ -529,3 +529,5 @@ It is recorded in [`traceability-matrix.md`](traceability-matrix.md) as **OPEN**
 **It does not claim salary-range enforcement.** `OD-POS-004` chose informational bands, and FP-008 stores no
 value for them to constrain. The obligation transfers to Payroll and is recorded as transferred, not as
 realized.
+
+status: UNSTARTED

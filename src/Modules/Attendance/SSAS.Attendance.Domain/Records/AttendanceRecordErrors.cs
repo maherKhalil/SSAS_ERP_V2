@@ -6,7 +6,8 @@ public static class AttendanceRecordErrors
 {
   public static readonly Error CompanyRequired = new(
     "Attendance.RecordCompanyRequired",
-    "An attendance record must belong to a company.");
+    "An attendance record must belong to a company.",
+    Field: "companyId");
 
   public static readonly Error PeriodRequired = new(
     "Attendance.RecordPeriodRequired",
@@ -14,7 +15,8 @@ public static class AttendanceRecordErrors
 
   public static readonly Error EmployeeRequired = new(
     "Attendance.RecordEmployeeRequired",
-    "An attendance record must name an employee.");
+    "An attendance record must name an employee.",
+    Field: "employeeId");
 
   public static readonly Error NotFound = new(
     "Attendance.RecordNotFound",
@@ -26,7 +28,8 @@ public static class AttendanceRecordErrors
 
   public static readonly Error InvalidOvertimeTier = new(
     "Attendance.OvertimeTierInvalid",
-    "An overtime tier must be at most 32 characters and cannot contain control characters.");
+    "An overtime tier must be at most 32 characters and cannot contain control characters.",
+    Field: "overtimeTier");
 
   // Overtime without a tier is a quantity Payroll cannot price: the tier is what a pay element's rate is
   // configured against (`OD-ATT-0008`). Recording it untiered would produce hours nobody could pay.
@@ -36,7 +39,8 @@ public static class AttendanceRecordErrors
 
   public static readonly Error InvalidNote = new(
     "Attendance.RecordNoteInvalid",
-    "An attendance note must be at most 1000 characters and cannot contain control characters.");
+    "An attendance note must be at most 1000 characters and cannot contain control characters.",
+    Field: "note");
 
   public static readonly Error AdjustedRecordRequired = new(
     "Attendance.AdjustedRecordRequired",
@@ -44,7 +48,8 @@ public static class AttendanceRecordErrors
 
   public static readonly Error AdjustmentNoteRequired = new(
     "Attendance.AdjustmentNoteRequired",
-    "An adjustment must carry a note explaining the correction.");
+    "An adjustment must carry a note explaining the correction.",
+    Field: "note");
 
   public static readonly Error AdjustmentChangesNothing = new(
     "Attendance.AdjustmentChangesNothing",
@@ -71,7 +76,4 @@ public static class AttendanceRecordErrors
     "Attendance.RecordEmployeeNotInCompany",
     "The employee does not belong to this company.");
 
-  public static readonly Error DateOutsidePeriod = new(
-    "Attendance.RecordDateOutsidePeriod",
-    "The attendance date does not fall inside the attendance period.");
 }

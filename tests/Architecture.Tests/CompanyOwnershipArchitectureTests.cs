@@ -177,11 +177,27 @@ public sealed class CompanyOwnershipArchitectureTests
       typeof(ICurrentCompany).Assembly
     ];
 
+    // ⚠ DECLARED AND EMITTED, BECAUSE THEY FAIL ON DIFFERENT DAYS (272). `GetReferencedAssemblies()` reads
+    // emitted metadata and the compiler omits a reference no type is taken from, so any of these could
+    // declare an HR reference and pass here until somebody first used a type. Declared catches the
+    // capability at merge time; emitted catches consumption, including transitively.
+    //
+    // ⚠⚠ ONE CONTROL COVERS EVERY ASSEMBLY IN THE LOOP, AND ITS SUFFICIENCY IS STATED BECAUSE THAT IS NOT
+    // OBVIOUS: a control proves the PREDICATE can fire, not that a particular call site can, and all five
+    // conversions below use the identical predicate through the identical helper.
+    Assert.Contains(
+      DeclaredDependencies.Of("SSAS.Host.API"),
+      name => name.Contains("SSAS.HR", StringComparison.OrdinalIgnoreCase));
+
     foreach (var assembly in mustNotReferenceHr.Distinct())
     {
       Assert.DoesNotContain(
         assembly.GetReferencedAssemblies(),
         reference => reference.Name?.Contains("SSAS.HR", StringComparison.OrdinalIgnoreCase) == true);
+
+      Assert.DoesNotContain(
+        DeclaredDependencies.Of(assembly),
+        name => name.Contains("SSAS.HR", StringComparison.OrdinalIgnoreCase));
     }
   }
 
@@ -240,7 +256,6 @@ public sealed class CompanyOwnershipArchitectureTests
 
     public string? Email => null;
 
-    public Guid? CompanyId => null;
 
     public string? SessionId => null;
 

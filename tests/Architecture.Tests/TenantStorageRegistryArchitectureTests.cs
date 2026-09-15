@@ -157,13 +157,79 @@ public sealed class TenantStorageRegistryArchitectureTests
   {
     // Two models built for different tenants must be identical in shape. EF caches the model per options,
     // so any tenant-conditional configuration would let one tenant's model serve another (ADR-017 rule 3).
-    static string[] Describe(Guid tenantId) =>
-      [.. BuildTenantContext(tenantId).Model.GetEntityTypes()
+    //
+    // ⚠⚠⚠ THIS WAS A BARE `Assert.Equal(Describe(a), Describe(b))` AND TWO EMPTY MODELS ARE EQUAL (T-086).
+    //
+    // **An invariance comparison is satisfied by two copies of the same breakage.** If the model failed to
+    // build, if `GetEntityTypes()` came back empty, or if `Describe` stopped producing rows for any reason,
+    // both sides would be `[]`, the equality would hold, and this test would report that the tenant model is
+    // tenant-invariant having compared nothing to nothing.
+    //
+    // ⚠ IT IS THE HARDEST VACUITY IN THIS SUITE TO SEE, because it does not LOOK like a bare absence
+    // assertion. Two operands, both derived, neither hard-coded — the shape that reads as self-checking. It
+    // is the one member of that shape which is not.
+    //
+    // ---- ⚠⚠⚠ WHICH MODEL THIS WALKS, AND WHY THE SMALL POPULATION IS CORRECT HERE.
+    //
+    // `BuildTenantContext` registers NO model contributors, so both descriptions come from the
+    // contributor-free tenant model: **TWO entity types, 27 property rows.** That is the same two-entity
+    // walk which, in `BranchTransferArchitectureTests`, was a DEFECT — and the difference is not visible in
+    // the code, only in what each test claims.
+    //
+    //   `BranchTransfer` asked *does a transfer entity exist* — a question about entities the
+    //     contributor-free model CANNOT CONTAIN, so a two-entity walk made the ban unanswerable.
+    //   THIS asks *is the model shape independent of the tenant id* — a question about how the context is
+    //     CONFIGURED PER TENANT, which the contributor-free model exercises honestly and completely,
+    //     because tenant-conditional configuration would appear in Platform's own registrations.
+    //
+    // ⚠ SO THIS TEST CLAIMS NOTHING ABOUT THE COMPOSED MODEL, and that is deliberate rather than an
+    // oversight. **Do not "fix" it by widening the walk to `CutoverTenantModel.Source.Model`.** It would
+    // still pass, and it would trade a precise claim about per-tenant configuration for a vaguer one about
+    // a model whose shape is governed by module contributors this test has no business asserting over.
+    // The population is small because the question is narrow; the two are matched, and the widening that
+    // was right next door is wrong here.
+    //
+    // ---- WHY A FLOOR ON `Describe` WOULD NOT HAVE BEEN ENOUGH.
+    //
+    // A count floor proves the walk was non-empty. It says nothing about whether `Describe` can DISTINGUISH
+    // two models at all — and a `Describe` that returned a constant would clear any floor and satisfy the
+    // equality forever. **An invariance test needs to prove the comparison has discriminating power, not
+    // merely that its inputs exist.** So the control is a THIRD model of a different shape: the platform
+    // model, described by the same function, which must NOT compare equal.
+    //
+    // ⚠⚠ PLANTED, AND THE FIRST PLANT IS THE WHOLE ARGUMENT FOR THE CHANGE. Making `Describe` a constant
+    // function — returning rows from an empty entity list — leaves the equality above GREEN, because two
+    // empty descriptions are equal. **That plant is the defect, and the old single-assertion test passed
+    // under it.** The companion reddens: `Assert.NotEqual() Failure: Collections are equal`.
+    //
+    // ⚠ THE THIRD ARM WAS PLANTED SEPARATELY, because ordered checks hide all but the first and a control
+    // that only ever runs behind a passing assertion is not known to run at all. Degrading the row format
+    // to entity names only — non-empty, and different between the two models, so both assertions above
+    // still pass — reddens it: *"the tenant description has 27 rows but none describes Company.TenantId."*
+    static string[] Describe(IModel model) =>
+      [.. model.GetEntityTypes()
         .SelectMany(entity => entity.GetProperties()
           .Select(property => $"{entity.ClrType.Name}.{property.Name}:{property.GetColumnName()}"))
         .OrderBy(value => value, StringComparer.Ordinal)];
 
-    Assert.Equal(Describe(Guid.NewGuid()), Describe(Guid.NewGuid()));
+    var first = Describe(BuildTenantContext(Guid.NewGuid()).Model);
+    var second = Describe(BuildTenantContext(Guid.NewGuid()).Model);
+
+    // THE INVARIANCE ITSELF.
+    Assert.Equal(first, second);
+
+    // THE DISCRIMINATING COMPANION. `Describe` is applied to a genuinely different model through the same
+    // code path; if this ever passes by being equal, `Describe` has become a constant function and the
+    // equality above is worthless.
+    Assert.NotEqual(first, Describe(PlatformModel()));
+
+    // AND THAT THE TENANT DESCRIPTION IS FAITHFUL RATHER THAN MERELY NON-EMPTY: a named member, so a
+    // description that degraded to entity names or to a single row cannot pass.
+    Assert.True(
+      first.Any(row => row.StartsWith("Company.TenantId:", StringComparison.Ordinal)),
+      $"tenant description row count: {first.Length}, and none describes Company.TenantId, which every " +
+      "tenant-owned entity in this model carries. `Describe` has stopped reading properties or columns, " +
+      "and the invariance above is comparing two degraded descriptions rather than two models.");
   }
 
   [Fact]
@@ -305,6 +371,11 @@ public sealed class TenantStorageRegistryArchitectureTests
         typeof(TenantDatabaseSchemaHealthResult), typeof(TenantDatabaseHealthSweepSummary)
       })
     {
+      // ⚠ THE TYPE IS NAMED BUT ITS PROPERTY WALK IS NOT GUARANTEED. `Assert.DoesNotContain` over an
+      // empty property list passes, so a type that stopped exposing public properties -- or a change to
+      // what `GetProperties()` returns -- would leave this green having read nothing.
+      Assert.NotEmpty(type.GetProperties());
+
       Assert.DoesNotContain(type.GetProperties(), property =>
         property.Name.Contains("Backup", StringComparison.OrdinalIgnoreCase) ||
         property.Name.Contains("Recovery", StringComparison.OrdinalIgnoreCase) ||
@@ -467,6 +538,16 @@ public sealed class TenantStorageRegistryArchitectureTests
     Assert.Contains(nameof(ITenantDatabaseHealthWriter.RecordConnectivityAsync), methods);
     Assert.Contains(nameof(ITenantDatabaseHealthWriter.RecordSchemaAsync), methods);
 
+    // ---- ⚠⚠⚠ THE LINE ABOVE USES `nameof` AND THE LINE BELOW USES A STRING. BOTH ARE CORRECT (252).
+    //
+    // DO NOT "NORMALISE" THESE. THE POSITIVE NAMES SOMETHING THAT EXISTS, so a symbol is available and a
+    // rename should break the build. THE NEGATIVE NAMES AN ABSENCE, AND AN ABSENCE HAS NO SYMBOL —
+    // `RecordHealthAsync` is precisely the method that must never come back, so there is nothing to
+    // `nameof`. Converting it would require inventing the member this test exists to forbid.
+    //
+    // Going the other way is no better: dropping the positive to a bare string would let a rename of
+    // `RecordSchemaAsync` leave it searching for a dead word, green, asserting nothing.
+    //
     // No general-purpose "write whatever you like" entry point remains.
     Assert.DoesNotContain("RecordHealthAsync", methods);
   }
@@ -539,13 +620,21 @@ public sealed class TenantStorageRegistryArchitectureTests
   private static Type[] TenantModelEntities() =>
     [.. TenantModel().GetEntityTypes().Select(entity => entity.ClrType)];
 
-  private static Type[] PlatformModelEntities()
+  private static Type[] PlatformModelEntities() =>
+    [.. PlatformModel().GetEntityTypes().Select(entity => entity.ClrType)];
+
+  // Model construction only — no connection is ever opened, and the context is not disposed for the same
+  // reason `BuildTenantContext` does not dispose: the returned `IModel` outlives the call and EF checks
+  // disposal on the property. Extracted in T-086 so the invariance test's discriminating companion reads
+  // the platform model through the SAME construction the entity checks use, rather than a second copy of
+  // it that could drift into agreeing for the wrong reason.
+  private static IModel PlatformModel()
   {
     var options = new DbContextOptionsBuilder<PlatformDbContext>()
       .UseSqlServer("Server=architecture-test;Database=model-only;Integrated Security=True")
       .Options;
-    using var context = new PlatformDbContext(options, new ModelUser(), new ModelTenant(null), new ModelClock());
-    return [.. context.Model.GetEntityTypes().Select(entity => entity.ClrType)];
+
+    return new PlatformDbContext(options, new ModelUser(), new ModelTenant(null), new ModelClock()).Model;
   }
 
   // Model construction only — no connection is ever opened.
@@ -565,7 +654,6 @@ public sealed class TenantStorageRegistryArchitectureTests
 
     public string? Email => null;
 
-    public Guid? CompanyId => null;
 
     public string? SessionId => null;
 
@@ -674,6 +762,34 @@ public sealed class TenantStorageRegistryArchitectureTests
         type.Name.Contains("TenantDatabase", StringComparison.Ordinal) ||
         type.Name.Contains("TenantStorage", StringComparison.Ordinal))
       .ToArray();
+
+    // ==============================================================================================
+    // ⚠⚠⚠ THE ALLOWLIST IS USED ONLY TO SUBTRACT, AND A LIST THAT ONLY SUBTRACTS PROVES NOTHING ABOUT
+    // WHAT WAS INCLUDED. THIS BINDS IT TO THE WALK.
+    // ==============================================================================================
+    //
+    // **Both bans below are `Assert.Empty`, which is TRUE OF THE EMPTY SET.** The ROOT is compiler-bound —
+    // `typeof(ITenantDatabaseResolver).Assembly` cannot go missing without breaking the build — ***BUT THE
+    // FILTER IS A NAMESPACE STRING. Rename `TenantStorage` and `storageTypes` is empty, both bans pass, and
+    // the guard reports success having examined nothing.***
+    //
+    // ⚠ MEASURED, NOT ARGUED: replacing the three filter strings with names that match nothing left the gate
+    // **GREEN**. With this assertion in place the same edit reddens here, naming which declared types went
+    // missing.
+    //
+    // ⚠⚠ AND THIS IS A BIND RATHER THAN A FLOOR, WHICH MATTERS FOR WHAT IT CATCHES. A floor
+    // (`Assert.NotEmpty(storageTypes)`) would survive a filter that still matched SOMETHING while dropping
+    // the caches — *a partial narrowing, which is the likelier accident than a total one.* **Asserting the
+    // five DECLARED names were each FOUND ties the ban's population to the list the ban is written against,
+    // so the two verify each other.**
+    //
+    // *The five names were already here as data. Nothing said they had to exist.*
+    Assert.Equal(
+      declaredCacheTypes.OrderBy(name => name, StringComparer.Ordinal),
+      storageTypes
+        .Select(type => type.FullName ?? type.Name)
+        .Where(name => declaredCacheTypes.Contains(name, StringComparer.Ordinal))
+        .OrderBy(name => name, StringComparer.Ordinal));
 
     Assert.Empty(storageTypes
       .Where(type => type.Name.Contains("Cache", StringComparison.OrdinalIgnoreCase))

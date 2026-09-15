@@ -1,3 +1,4 @@
+using SSAS.BuildingBlocks.Domain;
 using SSAS.GL.Domain.Accounts;
 using SSAS.GL.Domain.Calendar;
 using SSAS.GL.Domain.Journals;
@@ -35,7 +36,17 @@ public interface IFiscalCalendarRepository
 
   // Loaded WITH its periods, because the period is what a posting resolves and a year without them cannot
   // answer `ResolveOpenPeriodFor`.
-  Task<FiscalYear?> GetCoveringAsync(
+  //
+  // ---- ⚠ THREE ANSWERS, NOT TWO (T-187).
+  //
+  // `Success(null)` is *no year covers this date*. `Success(year)` is the ordinary answer. **`Failure` is
+  // *more than one covers it*, which is a different condition with a different remedy** and must not
+  // collapse into the first.
+  //
+  // **This returns a `Result` so the ambiguity is expressible at all.** A nullable year can only say
+  // "one or none", so the previous signature forced the implementation to pick — and it picked with
+  // `FirstOrDefaultAsync` and no ordering, which could differ between two calls in one request.
+  Task<Result<FiscalYear?>> GetCoveringAsync(
     Guid companyId, DateTimeOffset instantUtc, CancellationToken cancellationToken = default);
 
   Task<FiscalPeriod?> GetPeriodAsync(Guid fiscalPeriodId, CancellationToken cancellationToken = default);
@@ -61,6 +72,25 @@ public interface IJournalDraftRepository
   // `OD-GL-0007` chose two aggregates precisely so discarding one could be an ordinary delete rather than a
   // hole in the append-only guarantee.
   void Remove(JournalDraft draft);
+
+  // ================================================================================================
+  // REPLACING A DRAFT'S LINES DELETES THE OLD ONES EXPLICITLY (FP-013 follow-up).
+  // ================================================================================================
+  //
+  // The same defect FP-013's chain test found in Payroll, in the same shape here. `JournalDraft.ReplaceLines`
+  // does `lines.Clear()`, and `JournalDraftConfiguration` asks for `DeleteBehavior.Cascade` and does not get
+  // it: `PersistenceDbContext.OnModelCreating` sets EVERY foreign key in the composed model to `Restrict`
+  // AFTER the module contributors run. Deliberate platform policy — no silent cascades in a multi-tenant
+  // model — and `TenantDbContext` names it where the contributors are applied.
+  //
+  // So updating a draft that already HAS lines orphans rows nothing deletes, against a non-nullable foreign
+  // key EF cannot null, and the save fails.
+  //
+  // **This was never observed because GL's update path has never been driven against real SQL through its
+  // real handler** — the same blind spot that hid Payroll's, found by looking rather than by failing.
+  // `GlJournalPoster` is unaffected: the draft it builds is transient and never tracked, so it has no old
+  // lines to orphan.
+  Task RemoveLinesAsync(JournalDraft draft, CancellationToken cancellationToken = default);
 }
 
 public interface IJournalEntryRepository

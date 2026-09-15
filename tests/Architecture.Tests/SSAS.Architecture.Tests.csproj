@@ -52,6 +52,9 @@
     <ProjectReference Include="..\..\src\Modules\Attendance\SSAS.Attendance.Application\SSAS.Attendance.Application.csproj" />
     <ProjectReference Include="..\..\src\Modules\Attendance\SSAS.Attendance.Domain\SSAS.Attendance.Domain.csproj" />
     <ProjectReference Include="..\..\src\Modules\Attendance\SSAS.Attendance.Infrastructure\SSAS.Attendance.Infrastructure.csproj" />
+    <ProjectReference Include="..\TestSupport\SSAS.TestSupport.CutoverModel\SSAS.TestSupport.CutoverModel.csproj" />
+    <ProjectReference Include="..\..\src\Modules\HIS\SSAS.HIS.Domain.Tests\SSAS.HIS.Domain.Tests.csproj" />
+    <ProjectReference Include="..\..\src\Modules\HIS\SSAS.HIS.Infrastructure\SSAS.HIS.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

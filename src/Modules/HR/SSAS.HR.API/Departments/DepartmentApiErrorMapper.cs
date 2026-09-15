@@ -1,6 +1,7 @@
 using SSAS.BuildingBlocks.Api.Transport;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.HR.Domain.Departments;
+using SSAS.HR.API.Employees;
 
 namespace SSAS.HR.API.Departments;
 
@@ -36,7 +37,35 @@ public static class DepartmentApiErrorMapper
   public static readonly ApiError ManagerInvalid = new(409, "department.manager_invalid");
   public static readonly ApiError CompanyScopeDenied = new(403, "company.scope_denied");
 
-  public static ApiError Map(Error error)
+  // ⚠ A PRECONDITION, NOT A CORRECTION (T-268).
+  //
+  // 129 domain codes collapse into `request.invalid` and 128 of them say **fix your input**. This one
+  // says *an active company must be selected before company-scoped operations* -- **you are not in a
+  // state where this input means anything.** The remedy is a different call followed by the same request
+  // unchanged, and a client that cannot tell it from a bad field name cannot offer the company picker.
+  //
+  // The status stays 400: it IS a client error. **The status is the category; the code is the
+  // instruction**, and only the instruction differs.
+  //
+  // Declared here rather than in the shared `ApiErrors`, for the same reason `CompanyScopeDenied` above
+  // is: `The_shared_api_project_names_no_business_concept` refuses a business noun in BuildingBlocks.
+  // **The repetition across mappers is that rule being obeyed, not duplication** -- the gate refused the
+  // shared version of this very constant.
+  public static readonly ApiError CompanySelectionRequired = new(400, "company.selection_required");
+
+  // ⚠ THE DOMAIN MESSAGE IS ATTACHED HERE BECAUSE THIS IS THE LAST PLACE IT EXISTS (T-261).
+  //
+  // Ninety-six call sites hand an already-mapped `ApiError` straight to `ApiProblems.Problem` and never
+  // see the original `Error`. Attaching the message to the result is one edit per mapper; passing it
+  // alongside would have been ninety-six.
+  //
+  // `ApiError.ShowsDetail` decides whether it reaches the caller: an authorization refusal (401/403)
+  // drops it unless that code opted in, because `branch.scope_denied` has nine different messages behind
+  // it and showing them would separate a branch that does not exist from one that is forbidden.
+  public static ApiError Map(Error error) =>
+    MapCore(error).Explaining(error.Message, error.Field);
+
+  private static ApiError MapCore(Error error)
   {
     ArgumentNullException.ThrowIfNull(error);
 
@@ -45,7 +74,8 @@ public static class DepartmentApiErrorMapper
       // ---- CALLER INPUT. Value objects and arguments the caller got wrong.
       "Department.InvalidCode" => ApiErrors.RequestInvalid,
       "Department.InvalidName" => ApiErrors.RequestInvalid,
-      "Department.InvalidPagination" => ApiErrors.RequestInvalid,
+      "Department.InvalidPageNumber" => ApiErrors.PageNumberInvalid,
+      "Department.InvalidPageSize" => ApiErrors.PageSizeInvalid,
       "Department.InvalidActor" => ApiErrors.RequestInvalid,
 
       // ---- ABSENCE, AND EVERYTHING THAT COLLAPSES INTO IT.
@@ -64,9 +94,36 @@ public static class DepartmentApiErrorMapper
       "Department.PermissionDenied" => ApiErrors.Forbidden,
       "Department.CompanyScopeDenied" => CompanyScopeDenied,
       "Company.InvalidSelection" => CompanyScopeDenied,
-      "Company.SelectionRequired" => ApiErrors.RequestInvalid,
+      "Company.SelectionRequired" => CompanySelectionRequired,
       "Company.InvalidSelectionFormat" => ApiErrors.RequestInvalid,
       "Company.ContextRequired" => ApiErrors.Forbidden,
+
+      // ================================================================================================
+      // TEN `Employee.*` CODES THIS SITE CAN RECEIVE (T-095, `DEC-L-079`).
+      // ================================================================================================
+      //
+      // T-094's derived register found them: this site's routes invoke `ChangeEmployeeDepartmentCommandHandler`, which returns
+      // `Employee.*` refusals directly. **Until now every one of them answered `500 request.failed`.**
+      //
+      // ---- THE STATUSES ARE COPIED FROM `EmployeeApiErrorMapper`, NOT CHOSEN HERE.
+      //
+      // `DEC-L-079`: a status is a property of the CODE, not of the SITE. **`Employee.NotFound` answering
+      // 404 on an employee route and 500 here is a disclosure and an inconsistency at once** — a caller
+      // could learn which surface refused them from the status alone.
+      //
+      // The CODE STRINGS are reused too, and deliberately: `employee.not_found` on a department route is
+      // accurate, because what was not found is the employee. `The_same_code_answers_the_same_status_at_every_site_that_maps_it` asserts the statuses.
+      "Employee.NotFound" => EmployeeApiErrorMapper.NotFound,
+      "Employee.InvalidTransition" => EmployeeApiErrorMapper.TransitionInvalid,
+      "Employee.CompanyScopeDenied" => EmployeeApiErrorMapper.CompanyScopeDenied,
+      "Employee.BranchScopeDenied" => EmployeeApiErrorMapper.BranchScopeDenied,
+      "Employee.ConcurrencyConflict" => ApiErrors.ConcurrencyConflict,
+      "Employee.InvalidActor" => ApiErrors.Forbidden,
+      "Employee.ReadPermissionDenied" => ApiErrors.Forbidden,
+      "Employee.WritePermissionDenied" => ApiErrors.Forbidden,
+      "Employee.InvalidReadScope" => ApiErrors.RequestInvalid,
+      "Employee.DepartmentUnchanged" => ApiErrors.RequestInvalid,
+
 
       // ---- UNIQUENESS. The database had the last word, and it agrees with the pre-check.
       //
@@ -101,6 +158,10 @@ public static class DepartmentApiErrorMapper
       "Department.ManagerEmployeeNotFound" => ManagerInvalid,
       "Department.ManagerInDifferentCompany" => ManagerInvalid,
       "Department.ManagerTerminated" => ManagerInvalid,
+      // `OD-DEP-003` reading (i). Collapsed with its siblings for the SAME reason stated above and not a new
+      // one: "this employee belongs to that department" is a fact about the employee, and a distinct code
+      // would hand a department caller a membership oracle over people they may hold no permission to read.
+      "Department.ManagerInOwnDepartment" => ManagerInvalid,
       "Department.InvalidManagerAssignment" => ManagerInvalid,
       "Department.ManagerNotAssigned" => ManagerInvalid,
 

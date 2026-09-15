@@ -30,6 +30,11 @@ public sealed class DepartmentArchitectureTests
 
   [Fact]
   [Trait("Decision", "ADR-026")]
+  // ⚠ CITED BY B18 pass 16, body-confirmed: `AC-DEP-0051` verbatim -- the two interfaces PRESENT and
+  // `IBranchOwnedEntity` ABSENT, "asserted by an architecture guard so the absence reads as a decision".
+  // The positive `Contains` assertions are its own anti-vacuity control: reflection returning nothing
+  // fails here rather than passing the ban silently.
+  [Trait("Criterion", "AC-DEP-0051")]
   public void Department_is_tenant_and_company_owned_but_never_branch_owned()
   {
     var interfaces = typeof(Department).GetInterfaces();
@@ -84,7 +89,10 @@ public sealed class DepartmentArchitectureTests
       .Select(property => property.Name)
       .ToArray();
 
-    Assert.DoesNotContain("BranchId", properties);
+    // ⚠ COMPILE-CHECKED AGAINST THE TYPE THAT LEGITIMATELY HAS IT (252). `Employee` is branch-owned and
+    // Department is not; as a bare string this asserted nothing the day `BranchId` was renamed, because the
+    // department would not carry the OLD name either and the test would pass having checked a dead word.
+    Assert.DoesNotContain(nameof(SSAS.HR.Domain.Employees.Employee.BranchId), properties);
   }
 
   // ---- AND NO BranchId COLUMN REACHES THE COMPOSED MODEL.
@@ -97,6 +105,14 @@ public sealed class DepartmentArchitectureTests
   [InlineData(typeof(DepartmentManager))]
   [InlineData(typeof(EmployeeDepartmentAssignment))]
   [Trait("Decision", "ADR-026")]
+  // ⚠ CITED BY B18 pass 16, body-confirmed: `AC-DEP-0052` verbatim, INCLUDING ITS INSTRUMENT --
+  // "asserted from the composed EF model rather than from a migration file", and this reads
+  // `ComposedTenantModel().FindEntityType(...)`. The sibling `No_department_type_has_a_property_named_
+  // branch_id` asserts the CLASS, which is the half the criterion explicitly does not ask for.
+  //
+  // `Assert.Contains("TenantId")` and `("CompanyId")` are the anti-vacuity control: a model that stopped
+  // building would fail here rather than satisfy the ban with an empty column list.
+  [Trait("Criterion", "AC-DEP-0052")]
   public void No_department_table_has_a_branch_column(Type clrType)
   {
     var entity = ComposedTenantModel().FindEntityType(clrType);
@@ -105,7 +121,7 @@ public sealed class DepartmentArchitectureTests
 
     var columns = entity!.GetProperties().Select(property => property.Name).ToArray();
 
-    Assert.DoesNotContain("BranchId", columns);
+    Assert.DoesNotContain(nameof(SSAS.HR.Domain.Employees.Employee.BranchId), columns);
     Assert.Contains("TenantId", columns);
     Assert.Contains("CompanyId", columns);
   }
@@ -177,7 +193,11 @@ public sealed class DepartmentArchitectureTests
 
     var columns = department.GetProperties().Select(property => property.Name).ToArray();
 
-    Assert.DoesNotContain("ManagerEmployeeId", columns);
+    // ⚠ THE WITNESS IS THE READ MODEL, AND THE CONTRAST IS THE POINT (252). `DepartmentDetail` exposes
+    // `ManagerEmployeeId` legitimately — the association is projected into it — while the DEPARTMENT TABLE
+    // must never carry that column, because that is the ADR-026 decision 7 split. Compile-checking against
+    // the read model makes the two halves of that rule move together.
+    Assert.DoesNotContain(nameof(SSAS.HR.Application.Departments.Reads.DepartmentDetail.ManagerEmployeeId), columns);
   }
 
   // The association table is a dependent of BOTH and a principal of NEITHER, which is what keeps the graph
@@ -241,6 +261,15 @@ public sealed class DepartmentArchitectureTests
   // pattern-matching loosely, so a future `DeleteDepartmentAsync` could not hide behind the exemption.
   [Fact]
   [Trait("Decision", "ADR-026")]
+  // ⚠ CITED BY B18 pass 16, body-confirmed: `AC-DEP-0032`'s REPOSITORY-METHOD clause. The criterion
+  // bans a physical delete by "API route, command, handler or repository method", and this is the only
+  // one of the four asserted over MEMBERS rather than type names.
+  //
+  // ⚠ Two sibling tests carry the other three: `No_department_delete_command_or_handler_exists`
+  // (commands and handlers) and `HrRouteInventoryTests.The_hr_surface_exposes_no_delete_verb` (the
+  // route). **Three tests in three files for one criterion** -- and enumerating only the two files
+  // named `Department*ArchitectureTests` would have recorded this as PARTLY PINNED.
+  [Trait("Criterion", "AC-DEP-0032")]
   public void The_department_repository_offers_no_delete()
   {
     var methods = typeof(IDepartmentRepository)
@@ -272,12 +301,32 @@ public sealed class DepartmentArchitectureTests
   [Trait("Decision", "ADR-012")]
   public void Hr_still_references_no_platform_assembly()
   {
+    // ⚠ DECLARED AND EMITTED, BECAUSE THEY FAIL ON DIFFERENT DAYS (272). `GetReferencedAssemblies()` reads
+    // emitted metadata and the compiler omits a reference no type is taken from — so a `.csproj` could
+    // declare Platform, build, and pass here until the first use. Declared catches the capability at merge
+    // time, which is when the friction disappears; emitted catches consumption, including transitively.
+    // ⚠⚠ ONE CONTROL COVERS BOTH CONVERSIONS BELOW, AND ITS SUFFICIENCY IS STATED BECAUSE IT IS NOT
+    // OBVIOUS. This method converts TWO assemblies — the contributor and the domain — and both use the
+    // IDENTICAL predicate (`StartsWith("SSAS.Platform")`) through the IDENTICAL helper. A control proves the
+    // PREDICATE can fire, not that a particular call site can, so one exercise of it covers both.
+    //
+    // Without this note the control reads as belonging to the first conversion only and the second looks
+    // unguarded — which is the reading that makes a later auditor "fix" it by adding a duplicate assertion
+    // that carries no information. The sweep's own check counts distinct (predicate, method) pairs for
+    // exactly this reason.
+    Assert.Contains(
+      DeclaredDependencies.Of("SSAS.Host.API"),
+      name => name.StartsWith("SSAS.Platform", StringComparison.Ordinal));
+
     var referenced = typeof(HrTenantModelContributor).Assembly
       .GetReferencedAssemblies()
       .Select(assembly => assembly.Name ?? string.Empty)
       .ToArray();
 
     Assert.DoesNotContain(referenced, name => name.StartsWith("SSAS.Platform", StringComparison.Ordinal));
+    Assert.DoesNotContain(
+      DeclaredDependencies.Of(typeof(HrTenantModelContributor).Assembly),
+      name => name.StartsWith("SSAS.Platform", StringComparison.Ordinal));
 
     var domainReferences = typeof(Department).Assembly
       .GetReferencedAssemblies()
@@ -286,6 +335,9 @@ public sealed class DepartmentArchitectureTests
 
     Assert.DoesNotContain(
       domainReferences, name => name.StartsWith("SSAS.Platform", StringComparison.Ordinal));
+    Assert.DoesNotContain(
+      DeclaredDependencies.Of(typeof(Department).Assembly),
+      name => name.StartsWith("SSAS.Platform", StringComparison.Ordinal));
   }
 
   // The composed tenant model — Platform's own entities plus HR's contribution, exactly as the Host builds
@@ -315,7 +367,6 @@ public sealed class DepartmentArchitectureTests
 
     public string? Email => null;
 
-    public Guid? CompanyId => null;
 
     public string? SessionId => null;
 

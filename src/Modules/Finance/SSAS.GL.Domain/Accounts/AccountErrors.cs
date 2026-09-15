@@ -10,11 +10,13 @@ public static class AccountErrors
 {
   public static readonly Error InvalidCode = new(
     "Gl.AccountCodeInvalid",
-    "An account code is required, must be at most 64 characters, and cannot contain control characters.");
+    "An account code is required, must be at most 64 characters, and cannot contain control characters.",
+    Field: "code");
 
   public static readonly Error InvalidName = new(
     "Gl.AccountNameInvalid",
-    "An account name is required and must be at most 256 characters.");
+    "An account name is required and must be at most 256 characters.",
+    Field: "name");
 
   public static readonly Error DuplicateCode = new(
     "Gl.AccountCodeConflict",

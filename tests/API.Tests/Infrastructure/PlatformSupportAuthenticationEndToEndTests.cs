@@ -5,6 +5,8 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
@@ -47,6 +49,25 @@ public sealed class PlatformSupportAuthenticationEndToEndTests(PlatformSupportAu
   // ---- M1 : positive HTTP login (+ M5 issued-JWT validation) ----
 
   [Fact]
+  [Trait("Criterion", "AC-TEN-0078")]
+  [Trait("Criterion", "AC-TEN-0091")]
+  [Trait("Criterion", "AC-TEN-0074")]
+  // `AC-TEN-0078` — *"A verified identity obtains a platform session ONLY THROUGH a dedicated, SERVER-OWNED
+  // platform login route."* This is that route, exercised end to end from credentials to issued token.
+  //
+  // `AC-TEN-0091`'s NO-NEW-CLAIM half — *"the Phase-3C token profile is unchanged (NO `PlatformSupport
+  // PrincipalId`/`principal_id` claim)."* `AssertPlatformTokenProfile` bans `principal_id` by name. **Its
+  // other half — no per-request DB authorization — is structural and lives on
+  // `PlatformPermissionAuthorizationArchitectureTests`, same trait.**
+  //
+  // ⚠⚠ `AC-TEN-0074` IS CITED HERE AS A **THIRD** SITE AND IT IS THE BROADEST, NOT THE STRONGEST. The
+  // hierarchy, written out because no census can express it:
+  //   LOAD-BEARING  `JwtInfrastructureTests.Platform_token_issuer_emits_the_platform_profile...` — isolates
+  //                 the ISSUER, so a failure names the issuer.
+  //   BROADEST      here — the token that a real login actually returns, through routing, authentication
+  //                 and issuance. **Realest instance, weakest isolation: a dozen things could redden it.**
+  //   SUPPORTING    `PlatformAccessTokenClaimsTests` — the claims record, a precondition.
+  // **Breadth and strength are different axes and a trait shows neither.**
   public async Task Platform_login_issues_a_validated_platform_token_with_refresh_and_csrf_cookies()
   {
     var (email, identityId) = await SeedEligibleOperatorAsync();
@@ -82,6 +103,21 @@ public sealed class PlatformSupportAuthenticationEndToEndTests(PlatformSupportAu
   // ---- M2 : positive HTTP refresh rotation ----
 
   [Fact]
+  [Trait("Criterion", "AC-TEN-0073")]
+  // ⚠ `AC-TEN-0073` CITED FOR ITS DENIAL AND NOT FOR ITS COMPROMISE SEMANTICS, WHICH IS THE `AC-TEN-0059`
+  // DISTINCTION AGAIN. *"Platform refresh-token REUSE MARKS THE PLATFORM SESSION COMPROMISED/REVOKED …
+  // WITHOUT AFFECTING TENANT SESSIONS."*
+  //
+  //   replay denied            asserted here — 401 and `authentication.refresh_failed`
+  //   session COMPROMISED      NOT asserted here; a 401 says the request failed, not that the session was
+  //                            marked. **A route that simply rejected the consumed cookie and left the
+  //                            session Active passes every line of this test.** The witness is
+  //                            `PlatformAuthenticationSessionFlowSqlServerTests.Refresh_reuse_of_a_consumed_
+  //                            token_compromises_the_session`, which reads the stored status.
+  //   tenant sessions spared   NOT asserted at either site.
+  //
+  // **Denial and compromise are the same colour from outside**, which is why the criterion names the second
+  // and the HTTP layer can only see the first.
   public async Task Platform_refresh_rotates_the_continuation_and_denies_the_previous_token()
   {
     var (email, identityId) = await SeedEligibleOperatorAsync();
@@ -177,6 +213,21 @@ public sealed class PlatformSupportAuthenticationEndToEndTests(PlatformSupportAu
   // ---- Cross-plane refresh isolation over HTTP ----
 
   [Fact]
+  [Trait("Criterion", "AC-TEN-0081")]
+  // `AC-TEN-0081` OVER HTTP. Two mislabelling attacks in one test: real platform refresh material presented
+  // under the TENANT cookie name, and a foreign token presented under the PLATFORM cookie name. Both 403.
+  //
+  // ⚠ THE SECOND ONE IS THE CRITERION'S FIRST DIRECTION BY CLASS MEMBERSHIP: the token is a random GUID
+  // pair, not a real tenant refresh token, so *"a TENANT refresh token presented on the platform refresh
+  // route"* is covered as an instance of *"a token not in the platform store"*. **The store-level witness is
+  // `PlatformAuthenticationSessionSqlServerTests.Platform_refresh_token_is_invisible_to_the_tenant_session_
+  // repository`, same trait, which shows the two repositories answer the same id oppositely.**
+  //
+  // ⚠⚠ AND THE COMMENT ALREADY RECORDS WHY THE FOREIGN TOKEN CANNOT SIMPLY BE REPLAYED: **the CSRF payload
+  // is bound to the real refresh token's public id.** So this is not one guard but two in series — cookie
+  // name/path scoping AND CSRF binding — and a plant that removed either would still leave the other
+  // returning 403. **Two guards over one property make each look dead**, which is worth knowing before
+  // anyone measures this test's discriminating power with a single plant.
   public async Task A_platform_refresh_cookie_presented_under_the_tenant_cookie_name_is_refused()
   {
     // Cookie names/paths differ by plane; presenting real platform refresh material under the tenant refresh
@@ -365,6 +416,7 @@ public sealed class PlatformSupportAuthenticationEndToEndHost : IAsyncLifetime
   private const string Issuer = "https://platform-support-e2e.tests";
   private const string Audience = "platform-support-e2e-tests";
 
+  private readonly System.Collections.Concurrent.ConcurrentBag<string> observed = [];
   private WebApplication? application;
   private HttpClient? client;
   private string connectionString = string.Empty;
@@ -407,16 +459,40 @@ public sealed class PlatformSupportAuthenticationEndToEndHost : IAsyncLifetime
       .AddHostAuthenticationTransport(builder.Configuration, builder.Environment)
       .AddHostProblemDetails();
 
+    builder.Services.AddScoped<SSAS.Platform.Application.Subscriptions.ITenantEntitlementReader, SSAS.Platform.Infrastructure.Subscriptions.TenantEntitlementReader>();
+    builder.Services.AddSingleton<SSAS.Platform.Application.Subscriptions.ITenantEntitlementCache, SSAS.Platform.Infrastructure.Subscriptions.InMemoryTenantEntitlementCache>();
+    builder.Services.AddScoped<SSAS.BuildingBlocks.Api.Authorization.ITenantModuleEntitlement, SSAS.Platform.API.Subscriptions.TenantModuleEntitlement>();
+
     application = builder.Build();
     await using (var scope = application.Services.CreateAsyncScope())
     {
       await scope.ServiceProvider.GetRequiredService<PlatformDbContext>().Database.MigrateAsync();
     }
 
+    // ---- `283`'s OBSERVER. See the ratchet in `DisposeAsync`.
+    //
+    // Records the MATCHED ROUTE PATTERN and status of every request this host serves. It watches what the
+    // tests DO rather than what their source says, so interpolated paths and helper indirection are not
+    // blind spots — a request that happened is recorded however the test spelled it.
+    application.Use(async (context, next) =>
+    {
+      await next();
+      if ((context.GetEndpoint() as RouteEndpoint)?.RoutePattern.RawText is { } pattern)
+      {
+        observed.Add($"{context.Request.Method} /{pattern.TrimStart('/')} {context.Response.StatusCode}");
+      }
+    });
+
     application.UseCorrelationId();
     application.UseAuthentication();
     application.UseAuthorization();
     application.MapPlatformSupportAuthenticationEndpoints();
+
+    // ⚠ AND THE TENANT AUTH ROUTES, FOR `PlatformAuthenticationEndToEndTests` (280). They share this host
+    // deliberately: it already owns a migrated platform database and the singleton rate limiter, and a
+    // second `IAsyncLifetime` host would create and migrate a second database for four tests. The two
+    // surfaces are structurally separate in `src/` and stay separate here — only the host is shared.
+    application.MapPlatformAuthenticationEndpoints();
 
     await application.StartAsync();
     client = application.GetTestClient();
@@ -425,6 +501,8 @@ public sealed class PlatformSupportAuthenticationEndToEndHost : IAsyncLifetime
 
   public async Task DisposeAsync()
   {
+    // ⚠ CLEAN UP FIRST, ASSERT SECOND. The ratchet below throws, and a throw before this point would leak
+    // a real database and a running host for every subsequent run.
     client?.Dispose();
     if (application is not null)
     {
@@ -434,6 +512,113 @@ public sealed class PlatformSupportAuthenticationEndToEndHost : IAsyncLifetime
       }
 
       await application.DisposeAsync();
+    }
+
+    AssertPositiveCoverageRatchet();
+  }
+
+  // ================================================================================================
+  // ⚠⚠⚠ THE POSITIVE-COVERAGE RATCHET (283). IT RUNS ON EVERY GATE RUN AND NEEDS NO CONFIGURATION.
+  // ================================================================================================
+  //
+  // **These five routes are pinned because THIS HOST is where they are exercised** — two of them only
+  // because `280` added them on 2026-09-02. The set is the assertion; there is no threshold and no baseline
+  // file, so there is nothing here for the guarded party to lower.
+  //
+  // ⚠⚠⚠ THIS COMMENT DELIBERATELY CARRIES NO SUITE-WIDE COVERAGE FIGURES, AND THE REASON IS A RETRACTION.
+  // An earlier version cited a measurement of the whole `/api` surface. **It was wrong.** The observer that
+  // produced it was wired into two hosts, and this suite builds many more — most API test classes are
+  // `IAsyncLifetime` and construct their own `WebApplication`. Every route exercised through one of those
+  // was recorded as never invoked. **An instrument counts what it can see, and its blind spot was published
+  // as an absence.**
+  //
+  // ⚠ The stated bound was on the wrong axis, which was worse than having none: it said *by anything the
+  // gate runs* — gated versus ungated — when the real limit was WHICH HOSTS WERE WIRED. **A bound on the
+  // wrong axis signals that bounds were considered and closes the question.**
+  //
+  // So: no number lives here until a sweep that enumerates hosts BY MECHANISM produces one.
+  //
+  // ---- ⚠⚠ HOW TO RE-DERIVE IT, BECAUSE A DATED NUMBER NOBODY CAN REFRESH IS ONE THEY TRUST OR IGNORE.
+  //
+  // Reinstate the `282` observer — deliberately not committed: middleware recording
+  // `METHOD | matched RoutePattern.RawText | status` for every request, plus the population read from
+  // `EndpointDataSource`.
+  //
+  // ⚠⚠⚠ WIRE IT INTO **EVERY** HOST, NOT THE TWO OBVIOUS ONES. `HostWebApplicationFactory` and this host
+  // are the shared ones; every `*ApiTestHost` and every `IAsyncLifetime` test class that builds its own
+  // `WebApplication` is another. **Omitting them is what made the first run wrong.**
+  //
+  // ⚠ Read the population on the FIRST REQUEST, not at startup — a startup filter runs before the host's
+  // `MapX` calls and sees an EMPTY endpoint set, which inverts the result into a confident backwards answer.
+  //
+  // ---- ⚠⚠ A BETTER MECHANISM WAS TRIED AND IS UNRESOLVED. READ THIS BEFORE REPEATING IT.
+  //
+  // Per-host middleware has a structural flaw: its population is *the hosts somebody remembered*, so a host
+  // added later is a silent hole — which is precisely how the first sweep went wrong. The fix attempted was
+  // to hook the framework instead: a `[ModuleInitializer]` subscribing to `DiagnosticListener` for
+  // `Microsoft.AspNetCore.Hosting.EndRequest`, which every host in the process emits through the shared
+  // hosting layer. **That makes the population the framework's own pipeline rather than a list anyone
+  // maintains, and it would cover hosts that do not exist yet.**
+  //
+  // **It ran — 952 green, so it perturbs nothing — AND PRODUCED NO OUTPUT FILE AT ALL. Not an empty file:
+  // none.** Two candidates, NEITHER PROVEN:
+  //   * the `[ModuleInitializer]` never fired in the test host, or
+  //   * the hosting diagnostics never reached the subscriber.
+  // ⚠ The discriminating fact already known: **the middleware version wrote its files under the IDENTICAL
+  // environment-variable setup, so variable propagation into the test host is NOT the cause.**
+  //
+  // Recorded as unresolved rather than as *doesn't work*, because a bare "doesn't work" hides which half
+  // was never tested and the next person pays for that twice.
+  //
+  // ⚠ Compare pairs against pairs. Distinct `(method, route, STATUS)` triples are a different key space and
+  // give a different, plausible, wrong number.
+  //
+  // ---- WHY A RATCHET ON THE SET, AND NOT A THRESHOLD ON A COUNT.
+  //
+  // A count can be satisfied by an unrelated addition: delete a login test, add any other passing request,
+  // and a count-based check stays green over a DIFFERENT set. **An exact set cannot be satisfied by
+  // substitution.** It also needs no baseline file, so there is no threshold for the guarded party to
+  // lower — the failure `#28` records is that `gate.sh` condition 4 is advisory and a suite that LOSES
+  // tests merges green. This closes that for the one set where the answer is known.
+  //
+  // ⚠⚠ AND IT IS DELIBERATELY NOT ENV-VAR GATED. The measurement instrument that produced the numbers
+  // above was, and shipping it that way would have reproduced `#27` exactly: a security-shaped clause,
+  // plumbed through an interface, `false` at every call site, never executed. **An instrument that runs
+  // only when someone sets a variable nobody sets reads as coverage infrastructure and is dead code.**
+  // This one has no switch. If it stops running, the collection stops running, and that is loud.
+  //
+  // ---- WHAT IT CANNOT DO, STATED SO NOBODY CREDITS IT WITH MORE.
+  //
+  // It sees ONLY this host. The other 149 route+method pairs are served by `HostWebApplicationFactory` and
+  // are outside its reach; **139 of them receive no HTTP request from the gated suite at all**, which is an
+  // exposure profile for the owner (`#29`) and not something this guard addresses. It also proves only that
+  // each route ANSWERED 2xx once — not that the response was correct. The tests above do that.
+  private void AssertPositiveCoverageRatchet()
+  {
+    string[] required =
+    [
+      "POST /api/platform/support/auth/login",
+      "POST /api/platform/support/auth/refresh",
+      "POST /api/platform/support/auth/logout",
+      "POST /api/platform/auth/login",
+      "POST /api/platform/auth/select-tenant"
+    ];
+
+    var successful = observed
+      .Select(entry => entry.Split(' '))
+      .Where(parts => parts.Length == 3 && parts[2].StartsWith('2'))
+      .Select(parts => $"{parts[0]} {parts[1]}")
+      .ToHashSet(StringComparer.Ordinal);
+
+    var lost = required.Where(route => !successful.Contains(route)).ToArray();
+    if (lost.Length > 0)
+    {
+      throw new InvalidOperationException(
+        "POSITIVE HTTP COVERAGE REGRESSED. These routes received no 2xx from any test in this collection: " +
+        string.Join(", ", lost) +
+        ". A route that is only ever exercised into a 4xx cannot distinguish 'rejects bad input' from " +
+        "'rejects everything' — which is why these five are pinned. Restore the test that exercised it, or " +
+        "change this list deliberately and say why.");
     }
   }
 

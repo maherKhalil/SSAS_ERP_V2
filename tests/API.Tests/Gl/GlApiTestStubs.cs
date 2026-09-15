@@ -1,3 +1,4 @@
+using SSAS.GL.Application.Calendar;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.GL.Application.Abstractions;
 using SSAS.GL.Application.Reads;
@@ -28,6 +29,12 @@ public sealed class StubGlReads : IGlReadService
   public List<JournalListItem> Journals { get; } = [];
 
   public JournalDetail? Journal { get; set; }
+
+  // T-098's draft reads. Separate collections rather than reusing the journal ones: a test that set
+  // `Journals` and asserted a DRAFT route returned them would be asserting the stub, not the route.
+  public List<JournalDraftListItem> Drafts { get; } = [];
+
+  public JournalDraftDetail? Draft { get; set; }
 
   public AccountBalance? Balance { get; set; }
 
@@ -82,6 +89,21 @@ public sealed class StubGlReads : IGlReadService
   {
     ObservedScopes.Add(scope);
     return Task.FromResult(Journal?.JournalEntryId == journalEntryId ? Journal : null);
+  }
+
+  public Task<IReadOnlyList<JournalDraftListItem>> SearchJournalDraftsAsync(
+    GlReadScope scope, Guid? companyId, DateTimeOffset? fromUtc, DateTimeOffset? toUtc, string? reference,
+    CancellationToken cancellationToken = default)
+  {
+    ObservedScopes.Add(scope);
+    return Task.FromResult<IReadOnlyList<JournalDraftListItem>>(Drafts);
+  }
+
+  public Task<JournalDraftDetail?> GetJournalDraftAsync(
+    GlReadScope scope, Guid journalDraftId, CancellationToken cancellationToken = default)
+  {
+    ObservedScopes.Add(scope);
+    return Task.FromResult(Draft?.JournalDraftId == journalDraftId ? Draft : null);
   }
 
   public Task<AccountBalance?> GetAccountBalanceAsync(
@@ -156,10 +178,21 @@ public sealed class StubCalendarRepository : IFiscalCalendarRepository
   public Task<FiscalYear?> GetByIdAsync(Guid fiscalYearId, CancellationToken cancellationToken = default) =>
     Task.FromResult(Years.TryGetValue(fiscalYearId, out var year) ? year : null);
 
-  public Task<FiscalYear?> GetCoveringAsync(
-    Guid companyId, DateTimeOffset instantUtc, CancellationToken cancellationToken = default) =>
-    Task.FromResult(Years.Values.FirstOrDefault(
-      year => year.CompanyId == companyId && year.Covers(instantUtc)));
+  // ⚠ THE STUB REPRODUCES THE AMBIGUITY RULE, IT DOES NOT ASSUME IT AWAY (T-187).
+  //
+  // A stub that returned `FirstOrDefault` regardless would make every test green while the production
+  // repository refuses — and the one condition worth testing here is the one the stub would erase.
+  public Task<Result<FiscalYear?>> GetCoveringAsync(
+    Guid companyId, DateTimeOffset instantUtc, CancellationToken cancellationToken = default)
+  {
+    var covering = Years.Values
+      .Where(year => year.CompanyId == companyId && year.Covers(instantUtc))
+      .ToList();
+
+    return Task.FromResult(covering.Count > 1
+      ? Result.Failure<FiscalYear?>(CalendarErrors.AmbiguousCoveringYear)
+      : Result.Success<FiscalYear?>(covering.FirstOrDefault()));
+  }
 
   public Task<FiscalPeriod?> GetPeriodAsync(
     Guid fiscalPeriodId, CancellationToken cancellationToken = default) =>
@@ -184,6 +217,15 @@ public sealed class StubCalendarRepository : IFiscalCalendarRepository
 
 public sealed class StubJournalDraftRepository : IJournalDraftRepository
 {
+  // ---- NOTHING TO DO, AND THE EMPTINESS IS THE POINT.
+  //
+  // An in-memory stub has no change tracker and therefore no orphans. The defect this method exists for is
+  // a PERSISTENCE fact — the platform overriding a module's configured cascade with `Restrict` — and it is
+  // invisible to every stub by construction. That is precisely why it survived until a real-SQL end-to-end
+  // test drove the equivalent Payroll path.
+  public Task RemoveLinesAsync(JournalDraft draft, CancellationToken cancellationToken = default) =>
+    Task.CompletedTask;
+
   public Dictionary<Guid, JournalDraft> Drafts { get; } = [];
 
   public List<JournalDraft> Added { get; } = [];
@@ -249,4 +291,52 @@ public sealed class StubJournalEntryRepository : IJournalEntryRepository
     Entries[entry.Id] = entry;
     return Task.CompletedTask;
   }
+}
+
+// ================================================================================================
+// THE FISCAL-CALENDAR LOCK, STUBBED (T-184).
+// ================================================================================================
+//
+// **Grants by default**, because every existing calendar test asks about a rule and not about
+// contention — a stub that refused would fail them all for a reason unrelated to what they assert.
+//
+// ⚠ **`Failure` is the interesting answer and must be asked for by name.** `Gl.FiscalCalendarBusy` is
+// the only transient refusal on this route: the caller is not wrong and nothing about the request needs
+// changing, which is what separates it from `DuplicateCode` and `OverlappingYear`.
+// 249. The posting fence, stubbed on the same principle as the calendar lock above: GRANTS BY DEFAULT,
+// because every existing posting test asks about a rule rather than about contention, and a stub that
+// refused would fail them all for a reason unrelated to what they assert.
+//
+// ⚠ Each side is refusable INDEPENDENTLY, because a poster and a period-state change fail differently and
+// a single flag would make the two indistinguishable in a test that meant to exercise one.
+public sealed class StubFiscalPeriodPostingLock : IFiscalPeriodPostingLock
+{
+  public Error? PostingFailure { get; set; }
+
+  public Error? StateChangeFailure { get; set; }
+
+  public void Reset()
+  {
+    PostingFailure = null;
+    StateChangeFailure = null;
+  }
+
+  public Task<Result> AcquireForPostingAsync(
+    Guid tenantId, Guid companyId, CancellationToken cancellationToken = default) =>
+    Task.FromResult(PostingFailure is null ? Result.Success() : Result.Failure(PostingFailure));
+
+  public Task<Result> AcquireForStateChangeAsync(
+    Guid tenantId, Guid companyId, CancellationToken cancellationToken = default) =>
+    Task.FromResult(StateChangeFailure is null ? Result.Success() : Result.Failure(StateChangeFailure));
+}
+
+public sealed class StubFiscalYearDefinitionLock : IFiscalYearDefinitionLock
+{
+  public Error? Failure { get; set; }
+
+  public void Reset() => Failure = null;
+
+  public Task<Result> AcquireAsync(
+    Guid tenantId, Guid companyId, CancellationToken cancellationToken = default) =>
+    Task.FromResult(Failure is null ? Result.Success() : Result.Failure(Failure));
 }

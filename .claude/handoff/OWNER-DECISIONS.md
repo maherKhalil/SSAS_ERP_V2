@@ -1,0 +1,1473 @@
+# Open decisions for the owner — assembled 2026-08-28 (T-130)
+
+**24 entries, 23 of them live** — **eleven ERP (1-11), four HIS (12-15), four measured on 2026-08-30
+(16-19), four on 2026-08-31 (20-23), and one on 2026-09-01 (24)**. ⚠ **Entry 17 is WITHDRAWN in place and
+struck: the dispatcher it said did not exist had existed for a month.** Each carries **what it is**, **the
+measured facts**, **what it blocks**, and **the options**. Where the call is genuinely the owner's there is
+no recommendation.
+
+⚠ **This count is derived from the headings, not incremented** — `grep -c "^## [0-9]\+\."` on this file,
+re-run on 2026-09-01, then one subtracted for the struck entry.
+
+⚠⚠ **AND IT WAS STALE AGAIN WHEN THIS WAS REWRITTEN, WHICH IS THE SECOND TIME AND THE FIRST TIME WITH THE
+WARNING ALREADY ABOVE IT.** The line said *"22 items"* while the file held 24, **and its own breakdown
+enumerated only 20** — so it disagreed with the body AND with itself, three entries after the note
+explaining exactly how that happens was added. **A note describing a failure mode confers no immunity from
+it; the derivation has to be RE-RUN, and nothing here makes anyone re-run it.** The only real fix is that
+appending an entry and re-deriving this line are ONE ACT.
+
+**12-15 were added 2026-08-30 because they existed only in `scripts/his-catalogue/MIGRATION-PLAN.md`** — a
+window reading this file alone would have concluded there were eleven decisions when there are fifteen.
+**Their analysis stays in the plan and is pointed at rather than copied**; what lives here is the question
+and what it costs.
+
+⚠ **Entries 1-15 were re-verified against the tree on 2026-08-30** — three had moved since they were
+recorded, and one had moved enough to change what the decision is about; those are marked ⚠ **CHANGED**.
+**16-24 have not been re-verified since the day each was added**, which is in each heading. **The word this
+line used to carry was *today*, with no date and no scope** — an undated re-verification claim ages into a
+false one at midnight and cannot be checked by the reader it is aimed at.
+
+---
+
+## 1. Overtime tiers — ⚠ CHANGED, and the decision is a different one than recorded
+
+**What it was recorded as.** *"`PayElement.OvertimeTier` — four layers, a fifth never written."*
+
+**⚠ That is stale. The tier is wired end to end and it does price.**
+
+```
+AttendanceRecord.OvertimeTier          captured, validated, persisted
+AttendanceSummaryResult                summed per tier into OvertimeQuantityByTier
+PayrollRunCommandHandlers              passed to the calculator
+PayrollCalculator.OvertimeQuantity     element.OvertimeTier -> quantities[tier] -> priced at the element rate
+```
+
+**What is missing is not a layer. It is a shared VOCABULARY**, and the gap is a money path:
+
+```
+AttendanceRecord   trims, does not case-fold
+PayElement         trims, does not case-fold      (the same rule, written separately)
+the match          TryGetValue, StringComparer.Ordinal — CASE-SENSITIVE
+```
+
+**Neither side case-folds, and the match is case-sensitive.** A record tagged `"Night"` against an element
+tagged `"NIGHT"` **does not match — and the lookup returns `0m`.** The employee is paid **no overtime for
+that tier, silently**: no error, no warning, and a payslip that looks complete.
+
+**Every test on both sides used the literal `"NIGHT"`**, so the mismatch was covered nowhere.
+
+**✅ FIXED (T-131), and it needed no decision from you.** Both sides now normalise through one shared rule —
+trim then upper-case, the same treatment leave-type codes and calendar names already had. A test now covers
+the mismatched-case cases, and reverting the fix fails it.
+
+**What it blocks.** Nothing today — one tier spelled consistently works. It is a latent money defect that
+surfaces the first time two people type the same tier differently.
+
+**⚠ THIS IS TWO PROBLEMS AND ONLY ONE OF THEM IS YOURS.**
+
+**The accidental half is fixed and needed no decision.** One rule — how a tier is normalised — was written
+twice, and **the half neither copy implemented was case.** Nobody chose that. Both sides now share one rule,
+so **a tier typed in any case matches.**
+
+**The half that IS yours: what should happen when a tier genuinely has no matching pay element.** A record
+can still carry a tier no element prices — because someone invented a tier, or the element was retired.
+**That still pays zero, silently, and no amount of normalising changes it.**
+
+**The options.**
+- **Refuse the run** — payroll fails and names the unmatched tier. Nobody is underpaid, but a single bad
+  record blocks the whole run until someone fixes it. *This is what the product already does for a
+  comparable contradiction (`AttendanceContradictsEmployment`), which is precedent, not a decision.*
+- **Pay zero and report** — the run completes and lists what it could not price. Nothing is blocked; someone
+  has to read the report for the underpayment to be caught.
+- **A tier catalog** — companies define their tiers once, and records and elements can only reference an
+  existing one. Removes the possibility rather than handling it, at the cost of a setup step.
+- **Keep paying zero silently** — with the hazard recorded and accepted.
+
+---
+
+## 2. Platform's administration transport — ⚠ CHANGED (it is roughly twice the task it was)
+
+**What it is.** Three whole administrative surfaces exist as domain logic and application handlers with no
+HTTP routes: **tenants, roles, and users beyond de/reactivation.**
+
+**The measured facts.**
+
+```
+Platform permissions catalogued                            28
+  of those, required by no route                           16
+Platform.Application handlers                              65
+  named nowhere in SSAS.Platform.API                       29   (a FLOOR — see below)
+TenantStorageErrors codes declared                        117
+  returned somewhere in src/                              115
+  mapped to an HTTP status by any mapper                     0
+```
+
+**The 29 is a floor**, not an exact count: the measurement counts a handler as "routed" if its name appears
+anywhere in the API assembly, including in a comment. The true number is 29 or higher.
+
+**⚠ What changed.** This was carried for a fortnight as *"16 permissions and ~23 handlers"*. The handler
+count is **29, not ~23**, and the mapping half was not in the record at all. **No file in
+`SSAS.Platform.API` names a single `TenantStorage.` error code.** On the day this transport is built, **115
+business refusals arrive with no HTTP status** and fall through to `500` — no exception, no log entry, and
+handlers that read correctly. That failure has been found twice this fortnight (T-118, T-125) at one
+instance each.
+
+**What it blocks.** Any self-service administration. Today a tenant, role, or user change requires
+engineering.
+
+**The options.**
+- **Build it** — the routes plus 115 status decisions. The second half is the larger piece.
+- **Build a slice** — e.g. tenants only, and accept that roles and users stay manual.
+  **⚠ Corrected 2026-08-29 (T-155, T-158): a tenants slice needs about SEVEN error mappings, not 115.**
+  The 115 belong to storage administration — backup, restore, cutover — which tenant lifecycle never
+  touches. **And the tenant slice is separately blocked by a recorded deferral; see the note in item 1.**
+- **Defer knowingly** — it works today via engineering; the cost is engineering time per change.
+
+---
+
+## 3. Employment type — ⚠ BASIS CORRECTED 2026-08-29 (T-153, T-158). Built; the question survives.
+
+**⚠ What changed.** This item said employment type does not exist. **It does** — shipped on the owner's
+ruling: full time is monthly, part time is daily or hourly, contract takes no compensation record.
+`Employee` carries the field and the assumption guards now number four, not three.
+
+**The decision is unchanged and its stated basis was wrong.** The type lives on the **command path**, read
+once when compensation is recorded, and **never reaches a calculation**. So a part-timer is expressible in
+HR and **payroll still cannot tell one from a full-timer**.
+
+**The question, precisely:** should the calculation itself use employment type — proration, accrual, anything
+that should differ for a part-timer — or is expressing it at the compensation boundary enough?
+
+**What it is.** There is **no employment-type concept anywhere in HR.** `Employee` has no field for it. Every
+payroll calculation assumes one shape of employment.
+
+**The measured facts.** `EmploymentTypeAssumptionTests` carries **three guards** whose only job is to fail
+when someone adds an input that would silently assume full-time employment — the guards exist precisely
+because the concept does not.
+
+**What it blocks.** The first non-full-time hire. A part-timer, a fixed-term contractor, or an intern would
+be paid on full-time assumptions with nothing detecting it.
+
+**The options.**
+- **Add it before the first such hire** — it reaches Employee, the calculator, and attendance proration.
+- **Decide the business will not have non-full-time staff**, and the guards become permanent.
+- **Accept the risk knowingly** with a manual check at hiring.
+
+---
+
+## 4. Self-service grants — ⚠ MECHANISM CORRECTED 2026-08-29 (T-158). There is no per-user grant.
+
+**⚠ What changed.** This item described *"per-user permission grants, one person at a time"*. **No such
+mechanism exists in this product.** `TenantUser` holds role assignments and nothing else; there is no
+`TenantUserPermission` or `UserPermissionGrant` entity anywhere in `src/`. **Permissions reach a user only
+through a role** — so the option this item offered as an improvement, *"a bulk grant by role"*, is already
+the only mechanism there is.
+
+**What is actually absent** is assigning a role to many users at once, or a role granted by default at hire.
+**The three self-service permissions are confirmed as recorded, and none appears in any seeded role.**
+
+**What it is.** Employee self-service is gated by per-user permission grants, with **no bulk mechanism**.
+Granting it to a workforce means granting it one person at a time.
+
+**⚠ The measured facts — the recorded count was six.** There are **three**:
+
+```
+Attendance.Records.ViewOwn
+Attendance.Leave.ViewOwn
+Payroll.Payslips.ViewOwn
+```
+
+**What it blocks.** Rolling self-service out to more than a handful of staff.
+
+**The options.**
+- **A bulk grant** — by role, department, or "all active employees".
+- **Grant by default at hire**, so the question never arises per-person.
+- **Keep it manual** if self-service stays limited to a few people.
+
+---
+
+## 5. `POST /api/attendance/records/bulk` — ⚠ REWEIGHTED 2026-08-29 (T-157). It was never specified.
+
+**What it is.** A bulk attendance-record route that exists as **one row in a route table and nothing else**.
+
+**⚠ What changed.** This item previously read *"specified in FP-013's api-contracts and never built"*. That
+is literally accurate and it invites you to picture a specification. **There is none.** Measured:
+
+```
+"bulk" across all thirteen FP-013 documents        3 occurrences, all in api-contracts.md,
+                                                   all the same route-table row plus its note
+requirements.md / acceptance-criteria.md /
+test-scenarios.md / traceability-matrix.md         zero — no REQ, no AC, no TS names it
+anything doing it under another name               none; RecordAttendanceCommand is strictly singular
+```
+
+**Compare item 1's tenant transport: ten criteria, fifteen scenarios, an ADR and a decision id.**
+
+**And the block it sits in lost five of its six other arguments.** That api-contracts section was written as a
+**proposal before the module shipped**, and nothing compared the two until the route inventory was built. The
+comparison found six divergences — two paths carrying an id the live routes do not take, three routes built
+and never documented — and **all five were corrected to the code.** `/records/bulk` is the sole survivor, and
+it survived **not because it was validated but because it was the one claim with no code to contradict it.**
+
+**It is not deferred.** No guard, no criterion, no scope statement defers it; the document explicitly
+declined to decide, saying *"whether it is still wanted is the owner's call."*
+
+**What it blocks.** Importing attendance from a device or a spreadsheet. Today each record is one request.
+**Whether that is wanted is the only real question here, and nothing found supports or contradicts it.**
+
+**The options.** Build it; delete the row and record that attendance arrives one record at a time; or leave
+it as a known gap — now correctly weighted as a proposal nobody has ruled on rather than as unbuilt work.
+
+---
+
+## 6. The hours-per-day factor — ✅ NO DECISION NEEDED NOW (T-194). Absent and unclaimed.
+
+**What it is.** There is **no hours-per-day constant anywhere in `src/` or `docs/`.** It was raised, held,
+and no consumer has appeared under the owner's own model of the business.
+
+**What it blocks.** Nothing observed. It would matter if an hourly employee's entitlement had to be
+expressed in days, or a daily employee's in hours.
+
+**The options.** Leave it absent until something needs it; or define it now if the business already thinks
+in both units.
+
+---
+
+## 7. Calendar resolution — ✅ NO DECISION NEEDED NOW (T-194). Duplicated and unpinned; blocks nothing while companies have one calendar each.
+
+**⚠ What changed.** The inference is not only undecided — it is **written twice and enforced nowhere.**
+`IsDefault` descending then `NormalizedName` appears at `AttendanceRepositories.cs:46` **and again** at
+`AttendanceReadService.cs:347`. **They agree today. No test pins the order.** And the requirement that makes
+it matter — that two calls must not return different calendars and therefore different day counts — **is
+stated in only one of the two.** The read path silently depends on the write path's comment.
+
+**What it is.** When a company has more than one working calendar, the code picks one by
+**`IsDefault` first, then by name** — chosen for determinism, so the answer is never arbitrary.
+
+**That is an inference, not a ruling.** Nobody has said what *should* happen when a company has several
+calendars, and **the same inference governs both leave and pay.**
+
+**What it blocks.** Nothing today, while companies have one calendar each.
+
+**The options.** Ratify the current rule; assign calendars per employee or per department; or forbid more
+than one calendar per company and delete the ambiguity.
+
+---
+
+## 8. Period versus pay date in run inclusion — ✅ NO DECISION NEEDED NOW (T-194). Deliberate; recorded so the results do not look wrong.
+
+**What it is.** Two different dates decide two different questions, and the split is real:
+
+```
+which employees and records are in the run   the PERIOD's bounds
+which compensation is in force               the period's PayDateUtc
+```
+
+**`PayDateUtc` is separate from `EndUtc` because the date determining the fiscal period for posting is not
+the date the period ends.** The code says so and the domain enforces `PayDateBeforePeriod`.
+
+**What it blocks.** Nothing. It is recorded here because it produces results that look wrong to someone who
+assumes one date governs both — a raise dated between period end and pay date applies, while attendance
+from the same days does not.
+
+**The options.** Confirm it; or change one side, which is a payroll-semantics decision with back-dating
+consequences.
+
+---
+
+## 9. `Company.BaseCurrencyCode` is stored non-Unicode — ✅ NO DECISION NEEDED NOW (T-194). Added 2026-08-28 (T-134).
+
+**What it is.** Currency codes are persisted as **`char(3)` under an ordinal collation**, not Unicode. Every
+other column holding ERP data is Unicode.
+
+**The measured facts.** The product has **five** non-Unicode string columns. Four are localization plumbing —
+culture codes (`varchar(2)`), a text-format token, a change-type token. **`Company.BaseCurrencyCode` is the
+only one in the ERP's own data.**
+
+**Why it is defensible today.** ISO 4217 defines currency codes as three uppercase ASCII letters, so `char(3)`
+holds every legal value. **The engineer who flagged it wrote the caveat themselves:** *"it is always ASCII" is
+an argument that ages badly, and this one is nearer the ERP's own data than a culture code is.*
+
+**What it blocks.** Nothing today. It matters if the product ever stores something in that column that is not
+an ISO 4217 code — a local or historical currency designation, or a symbol.
+
+**What it costs to change.** **A tenant migration**, which is why it was recorded for a decision rather than
+altered by the change that found it.
+
+**The options.**
+- **Leave it** — ISO 4217 is a real standard and the column holds a code, not a name.
+- **Widen it to `nvarchar(3)`** — a tenant migration now, while the data is small.
+- **Decide when a non-ISO currency is actually needed** — cheapest today, most expensive if it arrives with
+  live data behind it.
+
+---
+
+## 10. Overlapping leave requests under concurrency — ✅ RESOLVED, NOTHING TO DECIDE (T-194)
+
+**⚠ This shipped and the list did not say so.** `ILeaveSubmissionLock` is registered in production
+(`SSAS.Attendance.Infrastructure/ServiceCollectionExtensions.cs`), `SubmitLeaveRequestCommandHandler` takes
+it, and `AttendanceOverlapChainSqlServerTests` proves it against real SQL Server with three tests: the lock
+refuses without an open transaction, a second submission for the same employee on a SECOND CONNECTION
+cannot take it, and a submission for a different employee is not blocked. A database unique index refuses a
+second identical active request besides.
+
+**Struck rather than deleted, because the entry below records why it was weighed differently from the
+fiscal-year and attendance-period guards** — a leave request is self-service and submitted whenever an
+employee likes, so the rarity argument that justified accepting the other two never applied here. That
+reasoning is what produced the lock and is worth keeping.
+
+---
+
+<details><summary>The original entry, for the record</summary>
+
+### 10. Overlapping leave requests are possible under concurrency — added 2026-08-29 (T-146, T-148)
+
+**What it is.** Two leave requests for the same employee covering the same days can both be accepted, if
+they are submitted close enough together. Overlapping approved leave becomes **double-counted unpaid
+absence**, and unpaid absence is a line on a payslip.
+
+**The measured facts.**
+
+```
+SubmitLeaveRequest        reads the overlap check, decides, saves — nothing held in between
+transaction               none, and correctly so: every Attendance handler mutates one repository
+isolation level           not set anywhere in src/ — SQL Server default, READ COMMITTED
+idempotency on the route  none; the product has no general request-idempotency mechanism
+RowVersion on the request does not help — it guards an UPDATE, and these are two INSERTs
+database constraint       impossible: no index can express "these ranges must not overlap"
+```
+
+**A double-clicked submit button is sufficient.** It needs no adversary and no unusual timing.
+
+**Why this is not the same as the other two range-overlap guards.** Fiscal years and attendance periods
+have the identical weakness, and `CalendarCommandHandlers.cs:73` records a deliberate decision to accept it:
+*"the exposure is small (defining a fiscal year is rare and deliberate) and the alternative is a lock held
+across a human-scale operation."* **That reasoning is sound and it is about frequency.** A fiscal year is
+defined once a year by an accountant; an attendance period monthly by an operator. **A leave request is
+self-service, submitted by an employee whenever they like.** The exposure was weighed for a different
+operation.
+
+**The options, and what each does not do.**
+
+- **Add a transaction** — **does not fix it.** At READ COMMITTED a transaction takes no range locks, and the
+  competing rows do not exist yet, so both submissions still pass. Recorded because it is the fix a
+  reasonable engineer reaches for and would then believe was done.
+- **Serializable isolation or an explicit range lock** — closes it, and is exactly the "lock held across a
+  human-scale operation" that was weighed and declined for fiscal years. The question is whether that
+  judgement survives a self-service operation.
+- **An application-level lock** — closes it, same cost, different mechanism.
+- **A unique constraint on (employee, start date, end date)** — cheap, and catches the **double-click case
+  only**: identical repeated submissions. It does nothing for a genuine partial overlap. The likeliest case,
+  not the general one.
+- **Accept it, as fiscal years did** — with the frequency difference stated, so the acceptance is about
+  leave rather than inherited from a decision about something else.
+
+**What is already true.** The guard itself is tested against a real database (T-146), so it works when
+requests arrive one at a time. **Tested is not enforced:** the test proves the check runs, not that
+concurrency cannot defeat it.
+
+</details>
+
+## 11. The commercial plane is half-built, and nothing recorded that — added 2026-08-29 (T-158)
+
+**What it is.** FP-014's subscription and billing feature. **The domain and the read path exist. The entire
+write half does not, and invoicing does not exist at all.**
+
+**The measured facts.**
+
+```
+BUILT    domain, 9 entities   ModuleDefinition, PlanLimit, PlanModuleGrant, PlanPrice,
+                              SubscriptionPlan, TenantEntitlement, TenantEntitlementGrant,
+                              TenantSubscription, TrialSubscription
+         persistence          migration, configurations, repository
+         the READ path        entitlement cache, reader, snapshot, and an API projection
+
+ABSENT   write handlers       create / update / retire a plan, assign a subscription,
+                              grant or revoke an entitlement — zero
+         permissions          all six documented ones absent from the catalog:
+                              Plans.View/.Administer, Subscriptions.View/.Administer,
+                              EntitlementGrants.Administer, Invoices.View
+         routes               all 25 documented routes absent
+         invoicing            NO invoice type in the product. No file even named for one.
+```
+
+**⚠ Why this is not the same as item 1.** Item 1's surfaces are **handlers built, transport missing** — the
+doors are the only thing absent. **This is domain built, and handlers, permissions, routes and an entire
+invoice concept missing.** *"Just needs transport"* and *"needs handlers, permissions, routes and an
+invoice aggregate"* are different decisions, and the first would badly understate this.
+
+**And nothing records the gap.** The tenant transport's absence is deferred by a criterion and enforced by
+a live test. **FP-014's api-contracts describes 25 routes with no reconciliation note, no
+specified-but-unbuilt marking, and no instrument has ever compared it to the code.**
+
+**What it blocks.** Selling the product. There is no way to define a plan, price it, subscribe a tenant,
+grant an entitlement or issue an invoice other than by engineering.
+
+**The options.** Put it on the roadmap as a feature rather than a transport slice; mark the document so a
+reader stops believing 25 routes exist; or decide the commercial plane is out of scope before release and
+record that. **Doing nothing leaves a document describing a product that is half there.**
+
+---
+
+### ⚠ MEASURED 2026-08-30 (T-161) — THE SPLIT IS NOW A NUMBER, AND ONE PART OF IT IS NOT ENGINEERING WORK
+
+**All 54 of FP-014's acceptance criteria were mapped against the tree and the test suite: 20 pinned by a
+named test, 11 implemented but unpinned, 19 not implemented, 4 blocked on an undefined subject.**
+
+⚠ **THE LINE FALLS ALMOST EXACTLY BETWEEN WHAT A TENANT MAY USE AND WHAT A TENANT IS CHARGED.** The
+entitlement half is built and genuinely well tested — append-only immutability with both bypass routes
+covered, term invariants, expiry, cache expiry at the boundary instant, the seed run twice. **The billing
+half does not exist:** no declaration of `Invoice`, `PaymentAttempt`, `Overage`, `Proration` or `SeatUsage`
+anywhere in `src/`. **This sharpens the entry above rather than replacing it** — "half-built" is now
+measured, and the half that exists is the half with the guarantees.
+
+⚠ **AND FOUR CRITERIA ARE NOT WORK AT ALL — THEY ARE THIS DECISION, WAITING.** `AC-SUB-0040`, `0049`,
+`0050` and `0051` all rest on the **undefined seat**: `DEC-L-009` says *"seats"* and never defines one, and
+`AC-SUB-0049` names `TenantUser` **because that is the only reading available, not because it was ruled.**
+Flagged in T-008, again in T-013, still open — as is `REQ-SUB-0027`'s two enforcement semantics.
+**Filing these under "not implemented" would present a decision nobody has made as engineering not yet
+done, which is precisely the sentence that would mislead this decision.** They are counted separately for
+that reason.
+
+**One more thing the owner should know before reading any status table:** `AC-SUB-0008` — *no tenant-plane
+subscription permission exists* — **is satisfied because this package defines no permissions on either
+plane.** All 28 platform permission names were enumerated; none is a subscription permission. **A green
+row there is universal absence, not an implemented distinction.**
+
+**Nothing above changes what this decision asks.** It changes what a reader would otherwise assume the
+remaining work is: **the seat is not build work, and the entitlement half is not at risk.**
+
+---
+
+## 12. `GeneralStores` — is it a shared service or an ERP module? — added 2026-08-30 (T-216, T-229)
+
+**What it is.** In the HIS schema, inventory is referenced from Marketing, InPatient, Nursing, Maintenance,
+CSSD, Emergency and Laboratory. Whether it is shared or ERP-owned decides **59 of the 159 crossing foreign
+keys (37%)**, and it also decides whether **7 of the 13 `dbo` rule-encoding views** are ours or theirs.
+
+**Recommendation: shared.** Being referenced by seven clinical modules is correct design, not an accident,
+and it must survive the split. **This needs ratifying, not deriving** — your own framing (*one product, HIS
+with ERP included*) already implies it.
+
+**Analysis:** `scripts/his-catalogue/MIGRATION-PLAN.md`. Not repeated here.
+
+## 13. `ApplicationSetup` — is it shared master data? — added 2026-08-30 (T-216)
+
+**What it is.** Cities, governorates, countries, banks — referenced from both sides and owned by neither.
+Decides **8 crossing edges**.
+
+**Recommendation: shared.** Same footing as 12: ratification rather than a question.
+
+## 14. Who owns the hospital's organisational structure — HR, or the clinical modules? — added 2026-08-30
+
+**What it is.** ⚠ **This is the real architectural question, it decides 63 edges (40% of the seam), and it
+is genuinely open.** `Nursing.Employee` is one person master with two role extensions (`Doctors`,
+`NurseMaster`); `HR.Department` and `HR.SubDepartment` are pointed at from InfectionControl, CSSD, Billing
+and InPatient. **It is referenced in both directions, so it cannot simply follow ERP.**
+
+**No recommendation — this one is argued, not derived.** It is answerable without reading a schema, which
+is why it is worth your time rather than more of ours.
+
+**⚠ It is one decision only if three parts move together.** They are coupled by the edges, not identical:
+the **person master** (38 edges), the **ward and department tree** (14), and **employment reference data**
+(11). Splitting them is legitimate — the person master could sit with HR while the ward tree stays clinical
+— **and the price of each split is that its edge count stays crossing.** So: one decision at 63 edges, or
+up to three with a stated cost for separating them.
+
+## 15. Does the HIS migration proceed at all? — added 2026-08-30
+
+**What it is.** ⚠ **Nothing on this list, and nothing in the plan, has ever asked this.** Decisions 12–14
+all presuppose it. The plan is complete and self-checking, the ERP is unaffected either way, and **no code
+has been written for HIS by instruction** — so the cost of answering "no" is the planning already done and
+nothing further.
+
+**It is recorded because it was never asked, not because it is in doubt.** A prior question that only ever
+lives inside the answers to later ones is how a project acquires a direction nobody chose.
+
+## 16. Attendance-driven hourly overtime cannot be paid — added 2026-08-30 (T-270, measured)
+
+**What it is.** ⚠ **Measured end to end, not read.** A pay element's overtime tier can only be set by
+`PayElement.SetOvertimeTier`, **which has no production caller**. Attendance accepts and validates a tier on
+recorded overtime; **Payroll has no way to price one.** Probe with an element built exactly as the API can
+build it and 6 hours of `NIGHT` overtime: **overtime lines 0, overtime amount 0; basic pay correct. The run
+succeeds — no error, no warning, a payslip that looks complete.**
+
+**Locked twice, independently, so closing either half alone fixes nothing:** overtime recorded *without* a
+tier never reaches payroll (`AttendanceSummaryService:227` filters on `OvertimeTier is not null`); overtime
+*with* a tier reaches it and finds no element that can match.
+
+**Boundary, stated precisely:** *Attendance-driven **hourly** overtime*. **Base salary, fixed-amount
+elements, absence deductions and one-off payments are unaffected**, and a `FixedAmount` element used as an
+overtime allowance still pays.
+
+**Why it survived.** Four test files call `SetOvertimeTier` **directly**, each supplying the missing half,
+**so every test of the capability passes while the capability is unreachable from any request.** And the
+mechanism was already documented — `EmployeeErrorWireContractTests` recorded it — **but nobody followed it
+to the payslip.**
+
+**The decision.** Finishing it means adding a tier to the pay-element commands: **a product decision, not an
+engineering one.** ⚠ **The other half is yours alone: whether anyone has recorded overtime expecting
+payment.** The code answer does not depend on it.
+
+## 17. ⚠ WITHDRAWN THE SAME DAY — THE DISPATCHER EXISTS. THIS ENTRY WAS FALSE
+
+**This entry was added 2026-08-30 (T-271) and withdrawn 2026-08-30 (T-165). It asked the owner to build a
+dispatcher or record a deferral. There was nothing to decide: the dispatcher was built on 2026-07-31 and
+the flow is complete.** Three `Accepted` ADRs were annotated on this premise; **all three annotations are
+withdrawn in place.**
+
+`AggregateRoot<TId> : Entity<TId>, IHasDomainEvents` → 65 raise sites → tracked by the `DbContext` →
+`ITenantUnitOfWork` / `IPlatformUnitOfWork`, injected in **122 places** → `EfUnitOfWork.SaveChangesAsync`
+→ `DispatchDomainEventsAsync`, reading `ChangeTracker.Entries().OfType<IHasDomainEvents>()` →
+`IDomainEventDispatcher.DispatchAsync` (registered `AddScoped`) → each `IDomainEventConsumer` →
+`ClearDomainEvents()`.
+
+⚠ **THE MECHANISM OF THE ERROR, WHICH IS THE PART WORTH KEEPING.** The instrument looked for production
+readers of **`DequeueDomainEvents`** and correctly found none. **The dispatch path does not use that
+method** — it reads the `DomainEvents` property and calls `ClearDomainEvents()`. **A complete and correct
+enumeration of the WRONG MEMBER was published as the absence of the whole mechanism.** ⚠ **And it was
+stated three ways — *"nothing consumes them"*, *"there is no dispatcher"*, *"checked three ways"* — which
+made one measurement read as three corroborating ones.** *A complete enumeration of the wrong set reads
+exactly like a complete enumeration*, written on this board on the same day, applied to the architect's
+own work six hours later.
+
+**What survives, and it is small:** exactly **one** `IDomainEventConsumer` is registered
+(`LocalizationCacheDomainEventConsumer`). **Handler coverage is a fair question and is not an owner
+decision.** ⚠ **The specific harm this entry claimed to prevent — a handler written in good faith that
+never runs — was never possible: a registered consumer is delivered to.**
+
+**Original entry retained below, struck, because the correction is worth more than the claim.**
+
+### ~~17. Three Accepted ADRs specify a domain-event dispatcher that does not exist — added 2026-08-30 (T-271)~~
+
+**What it is.** `RaiseDomainEvent` is called **65 times** across the product. **Nothing consumes them** —
+`DequeueDomainEvents`, `ClearDomainEvents` and the `DomainEvents` property have no production reader, and
+there is no dispatcher of any name. **Every domain event raised is appended to a list on its aggregate and
+discarded.**
+
+**This is not an unrecorded plan — it is the opposite.** **ADR-009 is `Status: Accepted`** and gives the
+publishing flow; **ADR-008** states *"Domain Events are dispatched after successful persistence"*;
+**ADR-004** lists *"Commands publish Domain Events"* as a consequence.
+
+⚠ **And the convention for handling this correctly already exists in the repository and is followed
+elsewhere:** `FP-010-ANALYSIS` carries `status: Deferred — gated on ADR-028` in its own front matter.
+**Documented, deferred, and the record says so.** **So this is one document departing from a convention you
+already keep, not a convention to adopt.**
+
+**The risk.** Nothing is visibly broken, **because nothing depends on the events — which is why it went
+unnoticed.** ⚠ **The exposure is the next person to write a handler in good faith against an Accepted ADR,
+subscribing to an event that will never be delivered: it would compile, pass review, and never run.**
+**All three ADRs were annotated 2026-08-30 so that harm cannot land while this waits.**
+
+**The decision: build the dispatcher, or record the deferral formally.** Either closes it.
+
+## 18. `Branch.FirstBranchRequired` is specified and not implemented — added 2026-08-30 (T-272)
+
+**What it is.** `Branch-Management.md` gives the code a **role table, a state table and an error-table
+row** — *"The tenant has no active branch; an administrator must create the first branch."* **Nothing
+produces it.**
+
+**Same shape as 17 and the smallest of the three.** **The decision is the same: build it, or record it as
+deferred the way `FP-010` does.** ⚠ **One of 63 documented codes with no producer, and the only one of the
+seven that is neither deliberate nor already recorded as deferred.**
+
+## 19. The distributed rate-limit obligation is a declaration, not a verification — added 2026-08-30 (T-283)
+
+**What it is.** ⚠ **This is a DEPLOYMENT obligation, and it is the only item on this list that lives outside
+the code.**
+
+The support-authentication surface — the one anonymous door into the privileged cross-tenant plane — is
+**well defended in the application**: login is limited twice over (30/minute per IP **and** 5 per 15 minutes
+per identity+IP), refresh and logout are limited, keys are HMAC'd, **and the limiter's default switch arm is
+1/minute, so an endpoint added without a case is throttled rather than unlimited.** Account lockout is 5
+attempts for 15 minutes, **held on the account rather than the IP, so address rotation buys nothing against
+one account.**
+
+**⚠ But the limiter's window store is an in-process dictionary and does not span replicas.** The design knows
+this: **production start-up throws unless the HMAC secret is at least 32 characters AND
+`UpstreamDistributedRateLimitingEnforced` is set.**
+
+**⚠ That flag is a DECLARATION, NOT A VERIFICATION. The application cannot check that an upstream limiter
+actually exists.** So on multiple instances **the per-IP limits divide by the replica count while the
+account lockout does not** — the backstop holds, the front door widens.
+
+**The decision.** **Confirm that an upstream distributed limiter is actually deployed in front of this
+surface, or run it single-instance.** **Nothing in the repository can answer this and nothing in it will
+ever fail if the answer is no.**
+
+**Related and NOT a defect:** revoking a support principal's administer permission leaves their issued token
+valid **for at most fifteen minutes** — `JwtOptionsValidator` refuses any configured value above that, so
+**misconfiguration cannot widen the window.** **Disable is the immediate action; revoke is bounded.** Worth
+knowing during an incident, and not a finding.
+
+**Not examined, so that this entry is not read as a clean bill:** whether the upstream limiter is deployed
+(not knowable from the repository), and **MFA on this surface — not looked for either way, and whether it
+should carry a second factor is a product decision rather than a measurement.**
+
+## 20. ⚠ 36% of what this repository asserts never runs before a merge — added 2026-08-31 (T-176, measured)
+
+**What it is.** `DEC-L-007` — your rule — says a gated task with a **green gate merges immediately**. The
+gate at `GATE_SCOPE=TASK` **excludes `Integration.Tests` by design.** Nobody had measured what that
+excludes.
+
+**The measured facts.**
+
+```
+Integration.Tests      3,724 of 10,457 assertions  = 36% of everything the repository asserts
+                       68 files, 772 facts         TASK runs NONE of it
+Release configuration  a different analyzer set    TASK runs Debug only
+                       the gate's own header records the first Release run exposing CA1826
+                       that Debug had never shown
+```
+
+⚠ **The structural reason is sharper than the count: NO TASK SUITE EVER MATERIALISES A REAL SCHEMA.** 144
+`EnsureCreated`/`Migrate` calls in Integration against **eight** across all seven TASK suites — and the TASK
+suites naming `UseSqlServer` point at `"Server=model-only;Database=none"`. **A model is built; a connection is never
+opened.** So **everything the mapping layer MEANS at the database level is asserted in exactly one suite,
+and it is the one the merge gate skips.**
+
+**What TASK does still catch, so this is not overstated:** it builds the whole solution, **so a change that
+fails to compile anywhere — Integration included — reddens it. A compile break cannot merge.** The exposure
+is runtime behaviour and Release-only analysis.
+
+⚠⚠ **UPDATED AGAIN, AND THE ACUTE HALF IS CLOSED: THE FIRST GREEN PHASE GATE RAN ON 2026-08-31 —
+`[GATE GREEN — all eight suites, Debug and Release]`, INTEGRATION 848/848 IN BOTH CONFIGURATIONS.** The
+one named test is fixed and confirmed **in the configuration that failed it**, and the total moved from
+846 to 848 **because two capture controls were added — nothing was removed, weakened or skipped to reach
+green.**
+
+⚠ **AND `test-baseline.txt` GAINED ITS ROWS: 7 → 16.** **For the first time since 2026-08-27 this
+repository has a recorded expectation for the Integration suite and the Release configuration.**
+
+⚠⚠ **WHICH EXPOSED THE CONSEQUENCE NOBODY HAD DRAWN: condition 4 skips any suite with no baseline row, so
+for four days IT COMPARED SEVEN OF SIXTEEN SUITE/CONFIGURATION PAIRS** — and reported that only as a
+count. **It compares all sixteen from the next run on**, and the gate's header now says so and tells a
+reader to read the *suite total(s) checked* number rather than the word `ok`.
+
+**WHAT THIS DOES AND DOES NOT CHANGE FOR YOUR DECISION.** ⚠ **The structural exposure is unchanged: 36% of
+the repository's assertions still do not run before a merge, and no TASK suite still ever materialises a
+schema.** **What has changed is that the suite is now KNOWN GREEN and has a recorded baseline, so the next
+divergence is detectable rather than invisible.** **The options below are unchanged; they are now a choice
+about keeping a known-good suite watched, rather than about discovering what an unwatched one contains.**
+
+⚠⚠ **IT IS NO LONGER HYPOTHETICAL. THE INTEGRATION SUITE HAS BEEN RED SINCE BEFORE THIS WORK BEGAN, AND
+EVERY MERGE WENT GREEN OVER IT.** Found 2026-08-31 by the first `GATE_SCOPE=PHASE` run to complete.
+
+`PlatformAuthenticationPersistenceTests.Concurrent_http_refresh_and_logout_use_validated_transport_and_sql_serialization`
+**fails 1 of 846 — a logout answering `403 Forbidden` where `204 No Content` is expected. It fails in both
+the Debug and the Release legs, and it is DETERMINISTIC rather than a race.**
+
+**Bisected rather than guessed**, running that one test at each point in a separate worktree: it fails at
+the pre-175 commit, at the pre-164 commit, **and at `112cb31` — the commit this whole stretch of work
+started from.** ⚠ **So it is nobody's change from this loop, and it predates all of it.**
+
+**And the repository already said why nobody knew.** `test-baseline.txt`, in its own words: *Integration,
+and every Release row — NOT YET WRITTEN. Both are produced only by a green `GATE_SCOPE=PHASE` run, and none
+has completed since this file was introduced on 2026-08-27.* ⚠ **The FACT was recorded. The IMPLICATION —
+that nobody therefore knows whether Integration is green — was never drawn.**
+
+**That is this decision, without a hypothetical: a suite holding 36% of the repository's assertions has
+been failing for days, and the merge rule never looked.**
+
+⚠ **DIAGNOSED 2026-08-31, AND THE ANSWER MATTERS TO HOW YOU READ THIS ENTRY: THE PRODUCT IS CORRECT. THE
+TEST IS WRONG — AND IT EXPIRED, LITERALLY, AT 2026-08-30 12:00:00 UTC, ABOUT FIFTEEN HOURS BEFORE THE RUN
+THAT FOUND IT.**
+
+The fixture freezes its clock at **2026-07-31 12:00:00 UTC** and dates the test's CSRF value from a seeded
+expiry of that instant plus the 30-day session idle lifetime. **The service that validates it uses a
+time-limited protector checked against the REAL clock.** Measured in the failing run:
+`csrfExpiry=2026-08-30T12:00:00Z`, `realNow=2026-08-31T03:31:09Z`, `expired=True`. ⚠ **The token was
+genuinely expired and refusing it was exactly right.**
+
+**So this is a TIME BOMB, not a regression** — which is why it bisected to every commit tried, including
+the one this work started from. **Nothing in this stretch of work caused it and nothing in it could have
+prevented it.**
+
+⚠ **DO NOT READ THE RED SUITE AS A BROKEN PRODUCT. Read it as this:** a suite holding 36% of the
+repository's assertions **went unwatched for four days**, and what it was hiding happened to be a test
+defect. **The exposure is unchanged; the luck is that this time it cost nothing.** **The next thing that
+suite hides may not be a test.**
+
+**The diagnosis was reached by instrumenting rather than arguing:** the wire response names
+`authentication.request_rejected` for **both** the refresh and the logout — so not a race — and an echo
+endpoint under the same path prefix proved the transport gate accepted the request (`IsHttps`, origin,
+both cookies, the CSRF header all present), **leaving the CSRF check as the only remaining site.**
+
+---
+
+**The earlier example, kept because the trajectory matters.** This entry first claimed that deleting
+`EmployeeConfiguration`'s `.HasFilter("[NormalizedNationalId] IS NOT NULL")` would ship a data defect. **That was
+false** — EF Core's SQL Server provider supplies that filter **by convention** for any unique index over a
+nullable column, measured by removing the declaration and reading the built model. **The reachable form is
+`.HasFilter(null)`, which explicitly overrides the convention**, and with that substitution every other
+claim held — but `HasFilter(null)` is a **deliberate act** where deleting a line is an accident, **so the
+example had already stopped carrying this decision before the real one arrived.** ⚠ **Evidence went
+hypothetical → weakened → actual, and all three states are on the record, because a decision that shows
+only its strongest moment is not one you can weigh.**
+
+**Classes only Integration catches**, named from its own test names rather than from categories: scoped
+uniqueness *including absence many times*; `rowversion` optimistic concurrency; migration refusal against
+live data; database-level cascade from a **raw** delete bypassing EF; routing/cutover atomicity under
+concurrent change; schema health surviving connectivity churn.
+
+**What engineering is doing without you, so this decision is smaller than it looks.** ⚠ **The specific hole
+is being closed rather than the rule being changed:** item 177 builds a structural guard — a unique index
+over a nullable column must carry a NULL filter — which runs under TASK and reddens on exactly the deletion
+above. **It also enumerates the 45 unique indexes that carry no filter today, because if any is over a
+nullable column that is a live defect and not a hypothetical one.** Item 178 measures the Release half,
+which was stated from the gate's header and not measured.
+
+**What it blocks.** Nothing today. **It is a standing exposure, and it is the kind that is invisible until
+it is expensive.**
+
+**The options.**
+
+- **Leave `DEC-L-007` as it is.** Defensible once 177 lands: the worst known class becomes TASK-visible,
+  and a compile break already cannot merge. **The residual is whatever nobody has thought to guard.**
+- **Require `GATE_SCOPE=PHASE` for changes touching persistence configuration or migrations** — a narrow
+  rule over the area where TASK is structurally blind, at the cost of a ~24-minute gate on those changes.
+- **Run Integration on every merge.** Closes it completely; makes every merge cost the full run.
+
+**A related fact, WEAKER THAN THIS ENTRY FIRST CLAIMED.** `Performance.Tests` and `UI.Tests` contain zero
+source files — a `.csproj` each. **This entry first said their names assert coverage that does not exist.**
+⚠ **They are in fact recorded and deliberate: `test-baseline.txt` names both as EMPTY SCAFFOLDS and says
+*their absence is correct and stays correct until somebody writes a test in one.*** **So it is a known
+placeholder, not an unnoticed gap, and it needs nothing from you.** `B17` is retained only to establish
+what they were for before anything is removed.
+
+**Measurement caveats, stated by the window that made it:** assertion counts are `Assert.*` **call sites**
+rather than executed assertions, so a `[Theory]` multiplies at run time — **the comparison between suites
+is fair but no figure is exact** — and the Release half is taken from the gate's own header rather than
+from a Release-only analysis run.
+
+---
+
+## 21. ⚠ The coder cannot restart itself, and no wording fixes the last gap — added 2026-08-31 (T-186, measured from inside the loop)
+
+**What it is.** You have flagged *coder idle* **more than a dozen times this session.** Every diagnosis
+until now was the architect's, made from outside the coder's process, **and two of three were wrong.**
+Item 186 asked the coder to instrument its own loop instead. **The answer is structural and it is not
+either window's fault.**
+
+**The measured facts, in the coder's own terms.**
+
+- ⚠ **`QUEUE.md` IS A MAILBOX WITH NO DOORBELL.** It is durable, authoritative and immune to the message
+  transport — **and nothing reads it on its own.** **Only a delivered message starts a turn.** A ruling
+  that reaches the file but not the wire leaves the file saying *work outstanding* while the coder is
+  stopped: **from the architect's side the queue is full; from the coder's, nothing happened.**
+- **It had read that file TWICE in the entire session**, both times because a message said to.
+- **A turn ends when it emits its final summary. Reporting to the architect is a tool call and does not end
+  it.** ⚠ **Nothing sits between *item complete* and *turn over* — there is no step where the queue is
+  consulted, because there is no step there at all.**
+- **Messages arriving mid-turn are seen and acted on. Mid-turn delivery is NOT the failure.**
+- ⚠ **It cannot self-wake. No timer, no poll. Only inbound input starts a turn.**
+
+⚠ **AND THE FILE'S OWN INSTRUCTION COULD NOT EXECUTE.** It said *read this before going idle* — **going
+idle is not an action anybody takes; the turn simply ends.** **An instruction attached to a non-event has
+nothing to fire on.** The rule three lines below it — *grep the results trail before building any
+instrument* — **fired repeatedly, because it hangs on an action somebody performs.**
+
+**What has been done without you.** The coder made reading the queue **the last step of completing an
+item** — an event that exists — and the file's header is rewritten to match, with the inert instruction
+withdrawn rather than repeated louder.
+
+⚠⚠ **UPDATED HOURS LATER, AND THE UPDATE IS GOOD NEWS THIS ENTRY DID NOT PREDICT: THE RE-ANCHORING TOOK
+HOLD ON ITS FIRST CYCLE.** The coder read `QUEUE.md` as the closing step of its next turn, **found two
+unstarted items, and began a 69-minute run with no message telling it to.** **First time in the session it
+picked up work from the file rather than from the wire.** ⚠ **The architect's *doorbell* message arrived
+while the item it dispatched was already running — and the architect had, for the third time, called an
+idle that was not one.**
+
+**So the strong claim above is withdrawn.** *Stopped with items queued* is no longer the normal case; the
+file now starts work.
+
+⚠ **WHAT REMAINS, AND IT IS GENUINELY SMALLER: THE LAST COMPLETION STILL ENDS SOMEWHERE.** When the queue
+is empty at that last look, nothing restarts the coder. **A window that cannot self-wake needs an EXTERNAL
+trigger for that final gap, and no wording supplies one.** **The options below still stand — they are just
+buying a smaller thing than this entry first said.**
+
+**What it blocks.** Nothing technical. **It costs you an interruption every time the loop reaches its own
+end, and it has cost you a dozen already.**
+
+**The options.**
+
+- **Leave it.** You nudge when you notice. **Now with the honest expectation that this is irreducible from
+  inside, not a discipline problem either window can drill away.**
+- **Give the coder a scheduled wake** — anything that starts a turn on a timer would let it re-read the
+  queue unprompted. **Neither window can arrange this; it is a change to how the coder is run.**
+- **Have the architect send on a cadence rather than only on completion** — cheap, and it makes the
+  architect the doorbell. **It still fails when the architect's own last turn ends.**
+
+- ⚠ **BUILT 2026-08-31, AND IT IS THE THIRD OPTION: the architect now holds a recurring timer that wakes
+  IT roughly every quarter hour.** On waking it reads origin, the working tree and this repository's queue
+  file; **if the coder is stopped with open rows it sends a doorbell restating each row's scope in full,
+  and if a run is in flight it does nothing.** **The architect is the doorbell, on a cadence rather than
+  only on completion.**
+
+⚠⚠ **AND IT IS NOT PERMANENT, WHICH THE OWNER SHOULD HEAR PLAINLY RATHER THAN DISCOVER: the timer lives
+only in the architect's session. It is not written to disk, it dies when that session exits, and it
+auto-expires after seven days.** **It closes the gap while the loop is running and closes nothing
+afterwards.**
+
+**A genuinely durable fix is outside both windows.** It needs one of: **a scheduled wake attached to the
+coder itself**, or **a supervisor outside both sessions**, or **the owner's own nudge**. ⚠ **Neither
+window can arrange any of the three, and neither has proposed a change to `CLAUDE.md`, settings or
+permissions to get there.** **The choice is the owner's; what has been built is the best available
+approximation and it is labelled as one.**
+
+⚠ **Nothing here is a request to change `CLAUDE.md`, settings or permissions.** The coder proposed no such
+change and the architect would not carry one; **the remedy above is yours to choose or decline.**
+
+---
+
+## 22. Two test categories are declared in the standards, scaffolded, and never built — added 2026-08-31 (T-199)
+
+⚠ **THIS BLOCKS NOTHING AND *LEAVE IT* IS A LEGITIMATE ANSWER. It is here because the alternative is that
+it goes stale on a board, and because the disposal is a decision about a STANDARDS DOCUMENT rather than
+about two files.**
+
+**What it is.** `Performance.Tests` and `UI.Tests` are each a `.csproj` with **no source file at all.**
+
+**The measured facts.** Both were created in `28fcc62` *milstone 01* on 2026-07-30 — the initial
+scaffolding commit — **alongside six siblings, all eight test projects at once. Six were populated; these
+two never were, and each has exactly ONE commit touching it: its creation.** The `.csproj` files are
+boilerplate and record no intent: no `ProjectReference`, no benchmark or browser package.
+
+⚠ **BUT THE INTENT IS DOCUMENTED AND STILL STANDING.** `Solution-Structure.md` lists both in the intended
+tree beside `Architecture.Tests`, which is green and real. **`Development-Standards.md` names *UI Tests*
+and *Performance Tests* as CATEGORIES**, under *every critical business workflow shall be covered by
+automated tests.*
+
+**So: a plan written down, scaffolded, never executed, and never withdrawn.** Both sit in the solution, so
+**every build builds two empty assemblies, in both configurations on a PHASE run.**
+
+⚠ **WHY ENGINEERING HAS NOT SIMPLY DELETED THEM, AND IT IS NOT DEFERENCE: deleting them while leaving the
+standards in place would leave a REQUIREMENT WITH NOTHING NAMED TO SATISFY IT.** The next reader would
+find a standard with no home, rather than a home with no content — **and an empty project is at least a
+visible claim.**
+
+**What it blocks.** Nothing. **The cost is two empty assemblies per build and a standard that names
+coverage nobody is producing.**
+
+**The options.**
+
+- **Leave it.** The claim stays visible and unmet, which is the honest current state. **Costs two empty
+  assemblies per build.**
+- **Withdraw the categories from `Development-Standards.md` and `Solution-Structure.md`, then remove the
+  projects.** Ends the claim. ⚠ **The documents must go first, or the requirement outlives its home.**
+- **Keep the standard and fill one of them.** The only option that makes the documents true.
+
+---
+
+## 23. ⚠⚠ The trial balance and the GL fiscal-period read threw on every call, and nothing could have noticed — added 2026-08-31 (item 233)
+
+**No decision is asked for. This is the consequence entry 20 predicted, arriving eleven hours later, and
+you should see it.**
+
+**`GlReadService.GetTrialBalanceAsync` and `GlReadService.GetFiscalPeriodsAsync` both ordered by a property
+of a CLIENT-CONSTRUCTED object. EF Core cannot translate an `ORDER BY` over one, so each query threw
+`InvalidOperationException: The LINQ expression … could not be translated` — not slowly, not subtly, but on
+EVERY call.** ⚠ **The trial balance is a financial report.**
+
+**Both are fixed, minimally, each matching a pattern the product already had** — `EmployeeReadService` joins
+into an anonymous type, orders on the ENTITY, pages, and projects last.
+
+### ⚠⚠ Why nothing caught them, and why that is the real entry
+
+**`GlReadService` had never been constructed by any test, in any suite.** Not stubbed-and-verified —
+**never instantiated.** The API fixture registers a stub, and the real registration lives in an
+infrastructure assembly the fixture does not call, so the concrete class was never on any code path a test
+executed.
+
+⚠⚠ **The two modules whose read services were never constructed are the two that carried defects.**
+`EmployeeReadService` is constructed by four tests and is correct. `GlReadService` is constructed by none
+and was wrong twice. **That is not a coincidence; it is the mechanism.**
+
+**And an architecture test asserted that every method of the interface REQUIRES a scope parameter — which
+passes, is total, and says nothing about whether any method can run at all.** ⚠ **A structural guarantee
+reads as behavioural coverage.**
+
+### What has changed as a result
+
+- **Both defects are fixed and now pinned by a test that constructs the real service against a real
+  database** (item 233).
+- **The class was enumerated rather than guessed: all 31 `OrderBy` sites across the six module read
+  services were read. Exactly two ordered over a projected object; both were these.**
+- **The remaining never-constructed service, Attendance's, is being covered in the same item** — and its
+  read path performs a per-row privacy redaction.
+- **A standing control (item 235) asserts that each module's own registration binds the concrete read
+  service, so a stub can never again stand unchallenged unnoticed.**
+
+⚠ **The honest scope statement: this was found because somebody executed the class for the first time. Any
+production type that no test constructs is in the same position, and the count of those is not known.**
+
+### ⚠ THE COUNT IS NOW KNOWN — measured the same evening (item 237)
+
+**Coverage instrumentation was run once, across all eight suites, over 2390 types. It was not added to the
+gate, no threshold was set, and no ratio was reported: the question asked was the binary one, WHICH TYPES
+HAVE ZERO EXECUTED LINES.**
+
+**332 have none. 202 of those are legitimate — 194 compiler-generated, 7 design-time factories, 1
+migration. Of the 130 that remain, 61 are transport contracts.** ⚠⚠ **SIX ARE QUERY-BEARING TYPES THAT
+NOTHING IN ANY SUITE EXECUTES:** `AttendanceRecordRepository`, `LeaveBalanceRepository`,
+`EmployeeApproverDirectoryService`, `EmployeePlacementDirectoryService`, `TenantCompanyCurrencyLookup`,
+`UserCompanyAccessRepository`.
+
+**The measurement is validated rather than assumed: the three read services made live earlier that day all
+register a non-zero count, and all three would have read ZERO that morning.**
+
+⚠⚠ **CORRECTED THE SAME NIGHT (item 238): AN EARLIER VERSION OF THIS LINE QUOTED THE COUNTS — 20, 2 AND 86
+AGAINST ANOTHER SERVICE'S 1500 — AS THOUGH THEY WERE COMPARABLE MAGNITUDES. THEY ARE NOT.** **Async method
+bodies compile into generated state-machine classes, which the report's noise filter strips, so a type's own
+entry counts little more than its constructor and field initialisers.** ⚠ **THE BINARY IS SOUND — never
+constructed reads zero, constructed reads more than zero — AND THE NUMBER IS NOT A MEASURE OF HOW MUCH RAN.**
+Read this entry's figures as presence and absence only.
+
+⚠ **What this does NOT say: that the six are defective.** They are unexecuted — **which is how the two
+defects above survived** — and that is a reason to look, not a prediction. **Queued as item 238, six types
+and then stop.**
+
+## 24. ⚠⚠ The machine can no longer finish a full PHASE run, and this is now measured rather than suspected — added 2026-09-01 (item 242, four attempts)
+
+**The decision needed: raise the memory available to the box, lower `MEMORY_FLOOR_MB` from 2048, or accept
+that the full-matrix gate runs only when the machine happens to be quiet.** This is an owner decision
+because every option spends something that is not ours to spend — money, safety margin, or confidence in
+the gate.
+
+### The numbers, all from tonight
+
+| | |
+|---|---|
+| `MEMORY_FLOOR_MB` | **2048** |
+| free at the abort | **1599 MB** (median of 5 samples) |
+| **spread across those 5 samples** | ⚠ **19 MB** |
+| dotnet/testhost processes at the abort | **3** |
+| Debug leg, this run | **fully green, Integration 862 passed** |
+| Debug leg duration | ⚠ **37m56s**, against **26m09s** on the previous run |
+| `min_free` during the Debug leg | ⚠ **271 MB** |
+| `peak_testhost_ws` | 837 MB |
+| consecutive PHASE attempts without a verdict | ⚠ **4** |
+
+### ⚠ What is NOT wrong: the code
+
+**Every leg that has ever completed has completed green.** The one full run that finished
+(`e7f29dd`) passed all sixteen legs, 4122 tests per configuration. Tonight's Debug leg passed including the
+862 Integration tests. **There is no failing test behind any of these four attempts.** The gate is stopping
+on the machine, not on the product.
+
+### ⚠⚠ Why this is a measurement and not a guess, which it was not until tonight
+
+**Until tonight the three reasons a run could abort were indistinguishable in the output**, and the
+response to each was a retry. Two discriminators added this week answered on their first real firing:
+
+- **A 19 MB spread across five samples.** A volatile box — one where the reading happened to catch a
+  trough — shows a wide spread. 19 MB says the samples agree: **the box is genuinely full, and the abort is
+  correct rather than unlucky.** A retry would meet the same wall.
+- **Three dotnet/testhost processes.** The usual remedy, `dotnet build-server shutdown`, reclaims memory
+  held by idle build servers. **Three processes means there is nothing idle to reclaim** — a fact measured
+  by hand six hours earlier, at the cost of running the shutdown for nothing, and now automated.
+
+**The two independent instruments agree**: the abort says the box is full, and the Debug leg's 37m56s
+against 26m09s says the same thing from the other side.
+
+### The options, with what each costs
+
+| option | cost | what it buys |
+|---|---|---|
+| **More memory on the box** | money; nothing else | the gate runs on demand again — the only option that fixes the cause |
+| **Lower `MEMORY_FLOOR_MB`** | ⚠ **the floor is what stops Integration from being killed mid-suite**; a run that dies at 90% wastes 40 minutes and reports nothing | nothing, if the memory genuinely is not there |
+| **Accept quiet-hours-only** | the gate stops being available when it is wanted, which is when someone is working | no spend |
+| **Cut Integration out of PHASE** | ⚠ the 862 Integration tests are the only ones that touch SQL Server; without them PHASE tests less than it claims to | a run that always finishes |
+
+**Engineering's read, not a decision:** the floor is doing its job and lowering it converts a clean refusal
+into a random mid-suite death. **The measurement says the memory is not there; no amount of gate wording
+creates it.**
+
+### ⚠⚠⚠ AMENDED 2026-09-01 — TWO THINGS CHANGED AFTER THIS ENTRY WAS WRITTEN, AND THEY PULL OPPOSITE WAYS
+
+**FIRST, THE COST OF LEAVING THIS UNANSWERED IS NOW CONCRETE RATHER THAN GENERAL.** A confirmed
+correctness gap on the journal posting path was found tonight — a journal can be committed into an
+accounting period that was closed after the posting transaction read it. **Its regression test is
+Integration-scoped, which is the suite this decision blocks.**
+
+⚠⚠ **SECOND, AND IT LARGELY UNDOES THE FIRST: A SINGLE FILTERED INTEGRATION TEST RUNS ON THIS BOX IN
+ABOUT 21 SECONDS.** That was measured, not assumed — the gap above was confirmed by exactly such a run.
+**The memory floor is a GATE PRECONDITION, not a physical limit**, and the two windows had been treating
+them as the same thing.
+
+**So targeted verification is available today and the full sixteen-leg matrix is not.** What this decision
+still buys is the thing a targeted run cannot give: **Debug-versus-Release configuration drift, and the
+whole-suite baseline.** ⚠ **It does NOT block confirming or fixing a specific defect, and this entry
+should not be read as saying it does.**
+
+### ⚠⚠⚠ AMENDED AGAIN 2026-09-01 — THE THIRD NARROWING, AND IT CHANGES WHAT IS BEING ASKED
+
+**RELEASE WAS NEVER BLOCKED. THE SEVEN NON-INTEGRATION SUITES RUN IN 75 SECONDS** — a 12-second
+`--no-incremental` solution build plus 63 seconds of tests, **3243 tests, all green, and every count
+identical to Debug.** Measured, not estimated; the build was verified fresh rather than assumed.
+
+⚠ **SO THE REMAINING QUESTION IS ENTIRELY ABOUT INTEGRATION-IN-RELEASE: 862 tests, the only part that
+touches SQL Server, and essentially the whole of the 51-minute figure this entry was written around.**
+**Seventy-five seconds buys the other three quarters of the suite in both configurations.**
+
+⚠⚠ **AND THE BOX IS BUSY RATHER THAN SMALL. 862 MB free of 15,287 — and roughly 7.2 GB of that is
+interactive desktop applications** (an editor at ~3.2 GB across 16 processes, browsers at ~3.0 GB across
+two families, this loop's own sessions at ~1.0 GB). **`dotnet build-server shutdown` reclaims a further
+~520 MB and has not been run — it was offered twice and left as the owner's call.**
+
+**SO THE DECISION IS SMALLER THAN THIS ENTRY ORIGINALLY PUT IT.** It is not *is this machine large enough*.
+It is: **is it acceptable that the full sixteen-leg matrix runs only when the desktop is quiet?** ⚠ **The
+options are now closing some applications before a phase run, accepting quiet-hours-only for the Integration
+half alone, or spending on memory — and the third buys the least it ever has, because the part that was
+assumed expensive turns out to cost 75 seconds.**
+
+### ⚠⚠ AND ONE NARROW RE-STRENGTHENING, 2026-09-01 — A CORRECT TEST CANNOT LAND UNTIL A PHASE RUN HAPPENS
+
+**Earlier this entry's blocking claim was withdrawn as overstated, because targeted verification turned out
+to be available. That withdrawal stands.** But there is now a specific artefact that cannot merge:
+
+**A guard asserting that the tracked test-count baseline's Debug and Release rows agree is BUILT, CORRECT,
+AND RED** — red because the baseline's Release rows are stale, which is exactly what it exists to detect.
+**Landing it would block the branch for everyone; hand-editing the rows would erase the evidence; inverting
+it to a pending state would be a test weakened to green a gate.** ⚠ **The only clean path is a green PHASE
+run first, and PHASE cannot start: 1,391 MB free against a 2,048 MB pre-leg floor.**
+
+**So the honest form is narrower than *work is blocked* and larger than nothing: ONE SPECIFIC CORRECT TEST
+IS UNMERGEABLE UNTIL THE FULL MATRIX CAN RUN ONCE.** Its green half — asserting that no test is compiled
+out by configuration, which is the premise the other half rests on — lands independently.
+
+⚠ **AND THE FLOOR IS NOT ARBITRARY AND WAS NOT ARGUED WITH: `gate.sh:470` records BOTH Integration legs
+exiting 127 with no results file at all when the box reached 14 MB free, noting that the instant-of-exit
+sample looked healthy — *which is exactly what a memory kill looks like from outside*. And `:483` records
+that the lowest healthy mid-leg reading ever seen is 550 MB and is explicitly NOT a threshold, because two
+samples were once generalised into a band the next run halved.**
+
+### ⚠ One thing tonight proved that no green run could have
+
+**The abort path fired in production for the first time, and its output was exactly what the offline
+demonstration predicted — same lines, same order, different numbers.** Those demonstrations were justified
+as "the only instrument that reaches this code", **which is an argument from necessity and cannot be
+wrong**. Tonight it was checked against the real event and held. **It is one confirmation on one of six
+paths, not a general verification** — but the reasoning behind trusting the harness is no longer untested.
+
+## What is NOT on this list
+
+**Engineering-owned items are excluded** — guard coverage, test shape, the register's floor, inventory
+migration. Those are being handled in the loop and do not need the owner.
+
+**One item was checked and INVERTED rather than removed.** It was recorded as *"Company's `{companyId}`
+route lacks a type constraint"*. Measuring it showed the opposite: **a 400 for a malformed identifier is the
+product's convention, asserted by six tests across three modules and stated as a principle in FP-007** — and
+Company follows it. **Attendance's `:guid` routes answer 404 for the same condition, which contradicts that
+convention and is asserted by no test at all.**
+
+**So the open item is Attendance's, not Company's, and it is engineering's to settle** — recorded here only
+so the earlier framing does not outlive the measurement. See `T-130.md`.
+
+**⚠ AND THAT INVERSION HAS ITSELF BEEN INVERTED — 2026-08-30 (T-236, T-237). READ THIS BEFORE ACTING ON THE
+PARAGRAPH ABOVE.** The claim *"a 400 for a malformed identifier is the product's convention, asserted by six
+tests across three modules"* **does not survive enumeration.** Those six tests cover **four different input
+surfaces** — malformed rowversions, a malformed company header, a malformed query-string filter, a malformed
+policy name and malformed JSON. **Exactly one is about a ROUTE PATH, and it is Company's.**
+
+**Counted across `src/`: 71 route-path identifiers are constrained and answer 404; 25 are unconstrained and
+answer 400.** Attendance was **not** the deviant — Company and Localization are. The paragraph above named
+the wrong module as the exception because it inferred a route-path convention from tests about headers,
+bodies and query strings. **"Malformed input is a 400" is real and well-evidenced everywhere except the one
+surface it was cited for.**
+
+**Ruled by engineering, no owner action: 400 everywhere, and the constraints come off.** The ruling does
+**not** rest on which behaviour is in the majority — it rests on the fact that **404 makes a malformed
+identifier indistinguishable from an absent record**, so a caller cannot tell "your GUID is not a GUID"
+from "that record is gone". A 400 with a problem document can say which. Staged behind a per-module route
+ambiguity check, since removing a constraint widens what a route matches.
+
+**Recorded rather than edited away, because this entry has now been wrong in two directions** — and a
+correction that erases its predecessor teaches nobody why the first reading was persuasive.
+
+**⚠ TEST CADENCE IS EXCLUDED, AND IT WAS ESCALATED ANYWAY.** On 2026-08-30 `NEXT-SESSION.md` listed *"when
+to run the integration suite"* under what waits on the owner, phrased as *"it is their compute and their
+time"*. **That is inside the "test shape" exclusion above** — the loop put a question to the owner that
+this very section assigns to engineering, and the two documents contradicted each other for a day.
+
+**Struck, and recorded rather than quietly removed.** The measured position is 24.2 minutes against 43.9
+(855 passing, board row 1095): not per-task, comfortably a pre-merge or nightly gate where 44 was not.
+**The loop decides it.**
+
+**The general control this section is for: an escalation is a claim that engineering cannot answer
+something, which makes it an absence claim** — and it spends the owner's attention, the one cost in this
+project that appears on no ledger. **Check a new escalation against this list's exclusions before it is
+written, not after.**
+
+---
+
+## 25 — `BR-HR-0007` was adopted and never built, and the code says so in writing
+
+**Raised 2026-09-01 by the architect, out of the `AC-DEP-0023` citation sweep (`265`).**
+
+**THE DECISION YOU MADE.** `OD-DEP-003` asked what `BR-HR-0007` — *an employee cannot directly manage
+themselves* — actually constrains, given that no employee→manager reporting line exists anywhere in the
+repository. Three readings were offered (`README.md:209-213`). **You closed it on 2026-08-20 adopting
+reading (iii)** (`decisions-approved.md:27`). **Reading (iii) is *both*: *(i) now, (ii) when a reporting line
+is introduced*.** Reading (i) is *an employee may not be the manager of the department they themselves belong
+to*, marked **enforceable in FP-007 — Yes, fully**, and named `BRULE-DEP-0012`.
+
+**WHAT THE PRODUCT DOES.** `DepartmentManagerCommandHandlers.cs:68-70`: *"department membership is not
+consulted either, in either direction… `Employee.DepartmentId == Department.Id` is explicitly NOT a rule."*
+Eligibility is same tenant, same company, not terminated — *"that is the whole list."*
+
+⚠ **THAT IS THE EXACT NEGATION OF THE RULE YOU ADOPTED**, written deliberately and at length.
+
+**WHY IT WAS NOT NOTICED.** `AC-DEP-0023` was labelled *(OD)* and *under reading (i)* — the branch NOT
+adopted — so it read as conditioned on a rejected option to two independent readers tonight. The label was
+wrong; the substance was never conditional. **Relabelled in `acceptance-criteria.md` today.**
+
+**WHY THIS IS YOURS AND NOT OURS.** Closing it changes product behaviour, and the cost is one the decision
+record already put in front of you (`README.md:219-222`): ⚠ ***a department head cannot be a member of the
+department they head, which many organizations would find backwards.*** You adopted (iii) with that note in
+view. **But the code was then written the other way by someone who may have had a reason we cannot see, and
+a peer window cannot overrule either the decision or the code.**
+
+**THE THREE ANSWERS.**
+1. **BUILD IT.** `BRULE-DEP-0012` is enforced in both directions, `AC-DEP-0023` becomes citable, `TS-DEP-0039`
+   gets written. Department heads can no longer belong to their own department.
+2. **NARROW THE DECISION TO (ii).** `BR-HR-0007` is entirely deferred, FP-007 enforces nothing for it — which
+   `README.md:221` explicitly names as *a legitimate answer but must be recorded rather than assumed*.
+   `AC-DEP-0023` is then retired the way `AC-DEP-0016` was.
+3. **SOMETHING ELSE** — if the handler comment reflects a ruling of yours that never reached these documents,
+   say so and the documents get corrected instead of the code.
+
+**NOTHING IS BEING BUILT OR DELETED UNTIL YOU ANSWER. NO TEST WILL BE WRITTEN FOR IT** — a test would harden
+whichever side happened to be tested.
+
+---
+
+## 26 — Thirteen tenant tables can be dropped from a cutover and the copier reports success
+
+**Raised 2026-09-01 by the architect, out of `266`. This is a data-loss exposure, not a test-coverage item.**
+
+**WHAT IS MEASURED.** `AC-DEP-0049`'s plants dropped one table at a time from the derived copy manifest:
+`DepartmentManager` — **the copy returned SUCCESS**, 2 rows became 0. `EmployeeDepartmentAssignment` —
+**SUCCESS**, 3 rows became 0. `Department` — **the copy FAILED**, loudly, before any count comparison.
+
+**WHY THE THIRD ONE FAILED IS THE WHOLE FINDING.** `Employees` holds a NOT NULL foreign key to `Departments`,
+so the database itself refused. **Nothing points into the other two.** ⚠ **A TABLE NO FOREIGN KEY REFERENCES
+CAN VANISH FROM A CUTOVER WITH NO CONSTRAINT COMPLAINING.**
+
+**THE POPULATION, FROM THE COMPOSED EF MODEL: 17 OF THE 35 COPIED ENTITIES HAVE ZERO INBOUND FOREIGN KEYS,
+AND 13 OF THOSE HAVE NEVER HAD A ROW COPIED BY ANY TEST.**
+
+| Module | Exposed and never exercised |
+|---|---|
+| **Finance / GL** | `FiscalPeriod`, `JournalDraftLine`, **`JournalLine`** |
+| **Payroll** | `OneOffPayment`, `PayElementAssignment`, `PayrollRunDraftLine`, **`PayrollRunLine`** |
+| **Attendance** | `AttendanceRecord`, `CalendarHoliday`, `LeaveBalance`, `LeaveRequest` |
+| **HR** | `EmployeeImportRun`, `EmployeePositionAssignment` |
+
+⚠⚠⚠ **`JournalLine` IS THE GENERAL LEDGER'S DETAIL. `PayrollRunLine` IS THE PAYSLIP DETAIL.** The predicate
+selects almost exclusively **line, assignment, balance and record** tables — ⚠ **precisely the data that
+cannot be reconstructed from what survives, because a header row with no lines still reads as a valid
+header.** A dropped employee is noticed in a day; a ledger with headers and no lines is noticed at the audit,
+with the source database already gone.
+
+**WHAT IS *NOT* CLAIMED.** **We have NOT found the copier dropping anything in production.** The plants
+injected the defect. What is established is that **for thirteen tables including the ledger and the payslips,
+nothing would tell us if it did** — and that the copier returns success when it happens.
+
+**THE RECOMMENDATION (the coder's, and the architect agrees).** **Do not write thirteen seeded fixtures.**
+They close thirteen tables and rot the moment a new module adds a fourteenth. **Reconcile a per-table SOURCE
+count against the TARGET inside the copier's own validation** — that closes all 35 at once and every future
+entity for free, with nothing to maintain.
+
+⚠ **WHY IT IS YOURS.** It is a production change to the engine that migrates tenants between databases, and
+**a reconciliation that is too strict fails cutovers that would have succeeded, which is its own outage.**
+Scope, risk appetite and timing are yours. **One open question is being read now (`267`): whether the existing
+report's row counts come from the target or are the copier's own account of its own work — if the latter, the
+fix is reading the target rather than new plumbing.**
+
+**NOTHING IS BEING BUILT. No `Platform.Infrastructure` change is queued to the coder.**
+
+---
+
+## 26 — ⚠⚠⚠ SUPERSEDED BY THIS AMENDMENT, SAME DAY. READ THIS BEFORE ACTING ON ANYTHING ABOVE.
+
+**The headline of #26 was FALSE and the recommendation attached to it was WRONG. Retracted 2026-09-01 by the
+architect who raised it, on the coder's reading of the code #26 was escalated without.**
+
+**WHAT #26 CLAIMED:** *for thirteen tables including the ledger and the payslips, nothing would tell us if the
+copier dropped rows.* **THAT IS NOT TRUE.**
+
+**WHAT THE CODE ACTUALLY DOES.** `TenantCutoverCopyValidator.ValidateAsync:27-92` opens a reader on the
+**source** and a reader on the **target** with an identical projection and identical primary-key ordering,
+then walks them in lockstep: a row present on one side and not the other is a `Mismatch` naming the primary
+key; **every column of every row is compared by value**; tenant ownership is re-asserted per target row. **And
+it GATES THE COMMIT** — copy and validation share one target transaction and `!validation.IsExact` **rolls
+back**. A table is committed only once proven exact. **The report's row counts come from that two-sided walk,
+not from the copier** — `bulkCopy.RowsCopied` is returned and then discarded, unused.
+
+⚠ **SO THE PER-TABLE COUNT RECONCILIATION #26 RECOMMENDED BUILDING WOULD BE STRICTLY WEAKER THAN WHAT ALREADY
+SHIPS.** Building it would have added redundant plumbing at best.
+
+**WHY THE PLANT PASSED ANYWAY, WHICH IS THE REAL FINDING.** The plant removed the entity from
+`TenantCutoverCopyPlan.Build`. The per-table loop iterates the plan — **so with no plan row the table was
+never copied AND NEVER VALIDATED.** ⚠⚠ **THE VALIDATOR IS NOT WEAK; IT IS NEVER CONSULTED. THE PLAN IS BOTH
+THE WORK LIST AND THE CHECKLIST, so an omission from it is invisible by construction.** The mechanism is
+**manifest omission, not a copy that loses rows** — which moves the question from the copier to the manifest.
+
+**WHAT THIS DOES TO THE THIRTEEN.** Severity down, kind changed. They are **not** silent-loss exposure: any
+real row divergence on them is caught at copy time and rolls the cutover back. What they genuinely lack is
+**exercise of their per-table plan construction** — identity columns, computed columns, type quirks — and a
+wrong plan there fails loudly, with one exception below.
+
+### THE ONE QUESTION STILL WORTH YOUR TIME — and it is much smaller
+
+**`ColumnList` drives BOTH the copy projection and the validation projection.**
+`TenantCutoverCopyPlan.cs:182-185` states this deliberately: *a column the copy skipped cannot be a column the
+validation silently checks, or the reverse.* It is a real safety property against mismatch. ⚠ **AND IT CARRIES
+THE SAME BLIND SPOT ONE LEVEL DOWN: A COLUMN OMITTED FROM THE PROJECTION IS OMITTED FROM VERIFICATION.** If
+`Describe` ever wrongly excluded a column, the copy skips it, the validation never looks at it, **and the
+cutover reports EXACT while the target column holds a default.**
+
+**Table membership is guarded by an exact 35-name list. COLUMN membership per table appears to be guarded by
+nothing.** ⚠ **That last clause is being verified now (`268`) and is not yet established.**
+
+**NOTHING IS QUEUED AND NOTHING IS BEING BUILT.** No decision is needed from you until `268` reports.
+
+**THE PROCESS FAILURE, RECORDED BECAUSE IT IS THE OWNER'S TIME THAT WAS SPENT:** the architect escalated #26
+while the mechanism was explicitly unread, and said so inside #26. **A caveat travels with a claim and does
+not stop the claim being acted on.** The correct move was to hold the escalation until the read returned.
+
+### #26 — RESOLVED TO ONE CONCRETE QUESTION (`268` reported 2026-09-01)
+
+**THE REFRAME HOLDS. TABLE MEMBERSHIP IS GUARDED BY AN EXACT LIST, TWICE OVER** — read by body, not by test
+name. `CutoverManifestArchitectureTests.cs:93-131` asserts an **ordered exact-set** equality between a
+35-name literal list and the entities derived from the composed model; `:134-138` then asserts the **plan**
+equals that derived set. ⚠ **THE TWO CLOSE DIFFERENT HOLES: the first catches the MODEL losing an entity (the
+FP-013 unregistered-contributor case, which really happened), the second catches the PLAN losing one the model
+still has — which is exactly the mechanism of our plant.** Three independent routes agree on 35: the literal
+list, the model census, and `TablesCopied`. **So a whole table cannot silently leave the cutover.**
+
+**COLUMN MEMBERSHIP IS THE OPEN EXPOSURE, AND IT IS NARROWER AND SHARPER THAN #26 ORIGINALLY SAID.**
+
+The only positive column assertion in the entire test tree is
+`TenantCutoverCopyPlanTests.cs:91-110` — `foreach (var required in [14 names]) Assert.Contains(required,
+companies.Columns)`.
+
+⚠⚠ **THAT IS A REQUIRED SUBSET, NOT AN EXACT LIST. It cannot see a missing column that is not on its list, and
+it cannot see an extra column at all. It covers FOURTEEN columns of ONE entity — and it runs against
+`PlatformOnlyModel`, so it touches NO contributed entity.** ⚠⚠⚠ **ZERO OF THE 33 MODULE-OWNED TABLES HAVE ANY
+POSITIVE COLUMN ASSERTION.** The four other column assertions are `DoesNotContain(RowVersion, …)` — the
+opposite direction from this defect — plus one `NotEmpty` floor of one.
+
+**SO THE EXPOSURE, STATED EXACTLY:** if `Describe` ever wrongly excluded a column from any of the 34
+non-`Company` entities, or an unnamed column of `Company`, **the copy skips it, the validation never looks at
+it, and the cutover reports EXACT while the target column holds a default.** Nothing would see it.
+
+**THE DECISION.** Do we add a guard on column membership analogous to the table-level one?
+
+⚠ **AND IT NEED NOT BE 35 HAND-MAINTAINED LISTS.** The table guard's shape works here: **derive the expected
+column set per entity from the composed model, subtract the deliberate exclusions (`RowVersion`, computed
+columns), and assert EXACT equality against `ColumnList`.** One test, all 35 entities, nothing to maintain as
+modules are added, and it fails loudly the day an exclusion rule misfires. **That is a test-tree change, not a
+`Platform.Infrastructure` change — materially smaller and safer than what #26 first proposed.**
+
+**Still nothing queued and nothing built. This is the whole of what #26 should have asked in the first place.**
+
+### #27 — `requireJson`: A CLAUSE THAT HAS NEVER EXECUTED. ENABLE IT, OR DELETE IT AS DEAD. (raised 2026-09-02, from `279`)
+
+**WHAT IT IS.** `AuthenticationTransportServices.cs:21` guards the authentication transport:
+
+```
+if (!IsHttps || (requireJson && !HasJsonContentType())) return false;
+```
+
+⚠⚠ **`requireJson` IS `false` AT ALL SEVEN PRODUCTION CALL SITES. THE CLAUSE CAN NEVER FIRE.** And the only
+other implementation of the interface is a test stub — `PlatformSupportAuthenticationLogoutPipelineTests.cs:176`
+— which **returns `true` unconditionally and ignores the parameter entirely**, so nothing exercises the real
+check either. ⚠ **Both halves are dead independently. Either alone would have been survivable; together they
+mean the clause has never run and no test could have noticed.**
+
+### ⚠⚠⚠ READ THIS BEFORE THE OPTIONS: IT IS REDUNDANT, NOT A SECURITY GAP
+
+**The first version of this finding said content type was unenforced on the authentication routes. THAT WAS
+FALSE AND IS RETRACTED.** It is enforced, explicitly, one line above each reader call —
+`AuthenticationEndpointRouteBuilderExtensions.cs:45` (login) and `:80` (select-tenant), and
+`PlatformSupportAuthenticationEndpointRouteBuilderExtensions.cs:71` (support login). The Origin/Referer
+allowlist in the same transport method runs **unconditionally** and rejects cross-origin posts regardless.
+
+**The error's mechanism is worth your attention more than the error: the search was scoped to two directories
+and a product-wide absence was concluded from it.** A restricted search is safe for *I found X* and silently
+fatal for *there is no X*. Repo-wide there are six sites, three of them the very routes reported as having none.
+
+**So nothing is open. This is dead code wearing a security costume — which is its own hazard: the next reader
+who finds it will believe they are closing a hole, and will wire it up.**
+
+### THE DECISION
+
+**(a) ENABLE IT** — pass `true` at the seven call sites. ⚠ **This is not a no-op.** The enforcement already
+happens at each endpoint, which returns a Problem 400; the transport gate instead returns `false` and takes a
+different path. **Enabling changes the response shape for a non-JSON request on the live authentication
+surface.** Defence in depth, at the cost of a behaviour change on the login path.
+
+**(b) DELETE THE PARAMETER** — remove it and the clause. Nothing is lost, because every route it would cover
+already refuses non-JSON explicitly. Removes the trap.
+
+**MY RECOMMENDATION IS (b).** A parameter that is `false` everywhere, in a method whose other clause is
+unconditional, reads as an unfinished safety feature and will eventually be "finished" by someone who has not
+established that the protection already exists elsewhere. **The redundancy is not worth the misdirection.**
+
+### ⚠ NOT OPTIONAL UNDER EITHER BRANCH
+
+**The stub at `PlatformSupportAuthenticationLogoutPipelineTests.cs:176` gets fixed regardless.** A test double
+that accepts a parameter, ignores it, and returns a constant is the reason none of this was visible. ⚠ **Under
+(a) it would let the newly-enabled clause pass tests without ever being exercised; under (b) it is a live
+example of the pattern to remove.** **It is the instrument defect, and it outlives whichever branch you pick.**
+
+**Nothing is queued and nothing is being built. The coder is under a standing prohibition not to touch
+`requireJson` until you rule.**
+
+### #28 — THE TEST-COUNT CHECK CANNOT FAIL THE GATE, AND WE HAVE THE INSTANCE IT MISSED (raised 2026-09-02, from `281`)
+
+**WHAT IS TRUE.** `scripts/gate.sh` condition 4 compares the test count against
+`.claude/handoff/test-baseline.txt`. ⚠⚠ **`GATE_C4_NOTE` IS ONLY EVER ECHOED — `:1632`, `:1718`, `:1719`. It
+never sets `GATE_FAILED` and never exits non-zero.** The header says so deliberately: *"PARTIALLY MECHANISED
+-- AND THE PARTIAL IS THE POINT."*
+
+**This was found while disposing of a different worry, and that worry IS disposed of** — a hand-edited
+baseline buys nothing, because `OLD` is read from `git show "$BASE:…"` (the merge-base commit, not the
+working tree), and because C4 cannot fail anyway. **Two independent reasons, both checked.**
+
+### ⚠⚠⚠ BUT THE SAME FACT READ THE OTHER WAY IS THE FINDING
+
+**If condition 4 cannot fail the gate, then A GENUINE TEST-COUNT REGRESSION CANNOT FAIL IT EITHER.** A suite
+that loses tests merges green, with an advisory that nobody is obliged to read.
+
+⚠⚠ **AND THIS IS NOT HYPOTHETICAL. Earlier on this project the write-run-restore plant discipline was
+applied by SHAPE rather than by PURPOSE, and it DELETED THE ONLY REGRESSION TEST FOR NEW INFRASTRUCTURE.
+Nothing caught it.** **We now know why nothing caught it: the one mechanism positioned to notice a
+disappearing test is advisory.**
+
+**That is what changes this from a design choice into a design choice with a recorded failure.** The
+partial mechanisation may still be right — but it should be re-affirmed knowing it has already been paid
+for once, rather than inherited.
+
+### THE DECISION
+
+**(a) MAKE CONDITION 4 FAIL THE GATE when the count drops.** Catches the deletion case mechanically. ⚠ **The
+cost is real: legitimate consolidation — merging two tests into a better one, removing a genuinely
+redundant case — would block a merge until the baseline is updated in the same change.** That may be
+acceptable, since updating it in the same diff is exactly the visibility the current design wants.
+
+**(b) LEAVE IT ADVISORY AND MAKE THE ADVISORY UNMISSABLE** — the count drop is currently one echoed line
+among a gate's worth of output.
+
+**(c) LEAVE IT EXACTLY AS IT IS**, now recorded as a considered choice rather than an unexamined one.
+
+**NO RECOMMENDATION FROM ME.** ⚠ **A gate that fails on every deliberate test consolidation is the shape of
+guard I have twice ruled should be deleted for having more false positives than true ones — and I do not
+know this repo's consolidation rate, so I cannot say which side that lands on. That number is the thing
+that decides it, and neither of us has measured it.**
+
+**Nothing is queued. The coder is under a standing prohibition not to edit `scripts/gate.sh` at all — the
+architect writes the ruling, the coder applies it, between runs.**
+
+### ⚠⚠⚠ #29 IS RETRACTED — SAME DAY, BEFORE ANY DECISION WAS TAKEN. DO NOT ACT ON THE NUMBERS BELOW.
+
+**`15 observed` and `139 never invoked` ARE WITHDRAWN. They are not a measurement of the gated suite. They
+are a measurement of TWO HOSTS, reported as the suite.**
+
+**The instrument recorded traffic through `HostWebApplicationFactory` and the support-auth E2E host. ⚠ The
+suite has roughly TWENTY hosts** — `LocalizationEffectiveApiTests`, `PositionApiTestHost`,
+`PayrollApiTestHost`, `AttendanceApiTestHost`, `EmployeeApiTestHost`, `DepartmentApiTestHost`,
+`GlApiTestHost`, `CompaniesEndpointTests`, `RolesEndpointTests` and others each build their own
+`WebApplication`. **Every route exercised through a per-class host was recorded as never invoked — and that
+is precisely where HR, GL, Payroll, Attendance and Companies live, the population this item said receives
+no HTTP request at all.**
+
+**The disproof is one line: `LocalizationEffectiveApiTests.cs:64` asserts `OK` on
+`GET /api/platform/localization/effective` — a positive HTTP test on a route reported as rejection-only.**
+
+⚠⚠ **AN INSTRUMENT COUNTS WHAT IT CAN SEE, AND ITS BLIND SPOT WAS PUBLISHED AS AN ABSENCE.** The coder
+found this while answering an unrelated question and stopped the escalation before any decision was taken.
+
+⚠⚠⚠ **THE ARCHITECT'S HALF IS WORSE AND IS RECORDED HERE BECAUSE THIS FILE IS WHERE THE OWNER'S TIME WAS
+SPENT.** The report said *middleware in BOTH hosts*. **`BOTH` IS A CLOSED-SET CLAIM AND IT WAS NEVER
+TESTED.** Every other population in this sweep was audited — 33 controls, 40 exercises, 154 routes, 872
+methods — **and the population predicate of the INSTRUMENT ITSELF was not.** Worse: the architect
+explicitly praised the bound *never invoked by anything the gate runs* and adopted it verbatim. ⚠ **THAT
+BOUND WAS ON THE WRONG AXIS. The gap was not gated-versus-ungated; it was which hosts were wired. A STATED
+BOUND ON THE WRONG AXIS IS WORSE THAN NO BOUND, because it signals that bounds were considered and closes
+the question.**
+
+**WHAT SURVIVES:** `154` as a population (read from `EndpointDataSource`, not from traffic); the
+calibration readings for `/auth/refresh` (403 only) and `/auth/logout` (absent), both on instrumented
+hosts; and `283`'s ratchet mechanism at `8303c13` — though **its header prose and commit subject carry the
+retracted numbers and are being corrected.**
+
+**A corrected sweep is queued: hosts enumerated BY MECHANISM rather than by name, with
+`LocalizationEffectiveApiTests:64` as a known-positive control the sweep must find. No number from this
+item may be quoted until that reports.**
+
+---
+
+### #29 (ORIGINAL TEXT, RETAINED FOR THE RECORD — RETRACTED ABOVE) — 139 OF 154 `/api` ROUTES RECEIVE NO HTTP REQUEST FROM THE GATED SUITE (raised 2026-09-02, from `282`)
+
+**MEASURED, NOT ESTIMATED — and by observation rather than by matching test source.** Middleware in both
+test hosts recorded `METHOD | matched route pattern | status` for every request the suite actually issues;
+the population came from the live `EndpointDataSource`. A static search would have had blind spots on
+interpolated paths and helper indirection, and every blind spot returns as a false absence.
+
+| | count | |
+|---|---|---|
+| Population (`/api` only) | **154** | distinct `(method, route)` pairs |
+| Observed at all | **15** | |
+| **Never invoked** | **139** | **90%** |
+| — of the 15: positive (any 2xx) | **5** | support login/refresh/logout; tenant login and select-tenant |
+| — of the 15: rejection-only | **10** | never once a 2xx |
+
+⚠ **TWO OF THE FIVE POSITIVE ROUTES ONLY BECAME POSITIVE TONIGHT**, under `280`. Before this evening the
+tenant authentication surface had no successful HTTP request asserted against it at all.
+
+### ⚠ THE BOUND, WHICH MUST TRAVEL WITH THE NUMBER
+
+***Never invoked* means *by anything the merge gate runs*.** `Integration.Tests` certainly exercises some of
+these routes and does not run at the gate (`#28`, `281`). This is a statement about what defends a merge,
+not about what exists.
+
+### WHAT THE NUMBER DOES AND DOES NOT MEAN
+
+⚠⚠ **139 IS NOT 139 DEFECTS.** Most of these routes have domain, application and route-inventory coverage.
+**But a route-inventory test proves the route is MAPPED, and mapped is not reachable** — which is exactly
+why asking *is this tested?* kept returning an honest, researched, true yes across HR, GL, Payroll,
+Attendance and Companies.
+
+**AND WE HAVE ONE DEMONSTRATED INSTANCE THIS EVENING.** The tenant login surface had full domain,
+application and persistence coverage and no HTTP-layer test. That missing layer is where a live contract
+defect sat — the private body readers whose serializer options were silently load-bearing (`279`). Nothing
+found it until the layer was tested directly.
+
+⚠ **The ten rejection-only routes are the sharper half of the 15.** Nine are
+`/api/platform/localization/*`, every observed response a **401**. The suite proves they refuse an
+anonymous caller; **it cannot distinguish that from a group that refuses everything.**
+
+### THE DECISION — SCOPE, NOT WHETHER
+
+**Nobody is proposing to E2E-cover 154 routes. The question is how far down this list to go.**
+
+**(a) THE TEN REJECTION-ONLY ROUTES ONLY.** Smallest, and the shape is proven to hide defects. The
+localization nine are already queued behind `283` pending your view.
+
+**(b) (a) PLUS THE HIGHEST-DAMAGE SURFACES** — GL, Payroll and anything moving money — on the argument that
+untested and wrong are correlated and the cost of being wrong is not uniform across the 139.
+
+**(c) (a) PLUS ROUTES BINDING THROUGH ANYTHING UNUSUAL**, since that is what `279` actually caught.
+
+**(d) TREAT 139 AS ACCEPTED EXPOSURE** and rely on the layers below HTTP.
+
+**MY RECOMMENDATION IS (a) NOW AND A DECISION ON THE REST LATER**, once `283` makes the number
+re-derivable. ⚠ **I am deliberately not recommending (b) or (c) yet: both are prioritisation arguments
+built on which routes I GUESS are risky, and this project has spent the evening establishing that guesses
+about where the gaps are have been wrong more often than right.**
+
+**`283` lands the instrument with a ratchet on the five positive routes, so this number becomes repeatable
+rather than a figure in a document that decays. Nothing else is queued.**

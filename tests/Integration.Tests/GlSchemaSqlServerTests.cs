@@ -6,6 +6,8 @@ using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using SSAS.GL.Domain.Accounts;
 using SSAS.GL.Domain.Calendar;
 using SSAS.GL.Domain.Journals;
+using SSAS.GL.Application.Permissions;
+using SSAS.GL.Application.Reads;
 using SSAS.GL.Infrastructure.Persistence;
 using SSAS.Platform.Application.Companies;
 using SSAS.Platform.Infrastructure.Persistence.TenantErp;
@@ -104,6 +106,22 @@ public sealed class GlSchemaSqlServerTests
   }
 
   [Fact]
+  // ---- ⚠⚠⚠ `AC-GL-0020` IS NOT CITED HERE AND THE NON-CITATION IS CORRECT (recorded 2026-09-05).
+  //
+  // *"No foreign key exists between any GL table and any table in the Platform database."* → `DEC-GL-0006`,
+  // which is the trait this test already carries. **The criterion is TRUE, and this test deliberately
+  // asserts something WEAKER, for the reason stated below it: cross-database foreign keys are not
+  // expressible in SQL Server, so the criterion holds by the engine rather than by anyone's design.**
+  //
+  // ⚠⚠ ***AND THE CONTRASTING CASE IS WORTH MORE THAN THIS ENTRY: `AC-PAY-0031` IS THE SAME CRITERION,
+  // WORD FOR WORD, ONE MODULE OVER — AND IT WAS CITED.*** Its test banned foreign keys to `SSAS.HR.` and
+  // `SSAS.GL.` under the claim *"bans one to ANY other module's table, which is strictly wider"*.
+  // **`SSAS.Platform.` was not in that predicate: a DIFFERENT set that excludes the criterion's subject,
+  // not a wider one.** *That citation was withdrawn at `a0495c6`.*
+  //
+  // ***TWO AUTHORS, ONE CRITERION SHAPE, OPPOSITE DECISIONS — AND THE ONE WHO DECLINED WAS RIGHT.*** **The
+  // withdrawal over there is a correction toward the standard already set here, not a judgement imposed on
+  // that file.** *Whoever revisits either should read them together.*
   [Trait("Decision", "DEC-GL-0006")]
   public async Task No_gl_table_has_a_foreign_key_leaving_the_tenant_database()
   {
@@ -156,6 +174,95 @@ public sealed class GlSchemaSqlServerTests
     Assert.Equal(1, filtered);
   }
 
+  // ==============================================================================================
+  // ⚠⚠⚠ THE TWO INDEX ASSERTIONS ABOVE NAME THE ENFORCER. THESE TWO EXERCISE IT.
+  // ==============================================================================================
+  //
+  // `Journal_numbers_are_unique_…` and `Only_one_reversal_per_original_…` assert that an index EXISTS WITH A
+  // GIVEN NAME and `is_unique = 1` — ***not its columns, and not its filter predicate.*** **An index of that
+  // name over the wrong columns passes both, and a migration is exactly where a definition changes while a
+  // name is kept.** *The strong form was already in this file, by the same author:
+  // `Two_accounts_cannot_share_a_code_within_a_tenant` INSERTS TWICE and expects the failure.*
+  //
+  // ⚠⚠ **THE NAME ASSERTIONS ARE KEPT RATHER THAN REPLACED.** They fail differently and usefully: a renamed
+  // index reddens them and not these, which tells a reader the CONSTRAINT survived and its NAME did not.
+  //
+  // ⚠⚠⚠ ***NOT RUN. `Integration.Tests` IS OUTSIDE `GATE_SCOPE=TASK` AND I CANNOT EXECUTE IT — THESE ARE
+  // COMPILATION-VERIFIED ONLY.*** An unrun assertion is a claim, not a check, and it must not be reported as
+  // coverage until a `PHASE` run has seen it.
+  [Fact]
+  [Trait("Decision", "BR-GL-0005")]
+  public async Task A_second_journal_reusing_a_number_in_one_year_is_refused_by_the_database()
+  {
+    await using var fixture = await GlFixture.CreateAsync();
+    await using var context = fixture.CreateContext();
+
+    var debit = Account.Create("1000", "Cash").Value;
+    var credit = Account.Create("4100", "Receivables").Value;
+    context.Set<Account>().AddRange(debit, credit);
+    await context.SaveChangesAsync();
+
+    var year = FiscalYear.Create(
+      "FY2026",
+      new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+      new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero),
+      [("FY2026", new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+        new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero))]).Value;
+    year.CompanyId = fixture.CompanyA;
+    context.Set<FiscalYear>().Add(year);
+    await context.SaveChangesAsync();
+
+    var period = year.Periods.First();
+
+    JournalEntry Numbered(string number, string reference)
+    {
+      var draft = JournalDraft.Create(fixture.EntryDate, $"Entry {reference}", reference).Value;
+      draft.CompanyId = fixture.CompanyA;
+      draft.ReplaceLines([(debit.Id, 100m, 0m, "debit"), (credit.Id, 0m, 100m, "credit")]);
+
+      return JournalEntry.Post(draft, year.Id, period.Id, number);
+    }
+
+    context.Set<JournalEntry>().Add(Numbered("1", "FIRST"));
+    await context.SaveChangesAsync();
+
+    // THE PREMISE, so this is not vacuous: the first entry really is there under number "1".
+    Assert.Equal(1, await context.Set<JournalEntry>().CountAsync());
+
+    context.Set<JournalEntry>().Add(Numbered("1", "SECOND"));
+
+    await Assert.ThrowsAnyAsync<DbUpdateException>(() => context.SaveChangesAsync());
+  }
+
+  // ⚠ THE FILTERED INDEX IS WHAT MAKES THE RACE UNWINNABLE, and the aggregate's own refusal is not enough:
+  // two concurrent requests can both read "not yet reversed". **This exercises the DATABASE's half.**
+  //
+  // ⚠⚠⚠ NOT RUN — compilation-verified only, as above.
+  [Fact]
+  [Trait("Decision", "OD-GL-0006")]
+  public async Task A_second_reversal_of_one_original_is_refused_by_the_database()
+  {
+    await using var fixture = await GlFixture.CreateAsync();
+    var originalId = await fixture.SeedPostedJournalAsync();
+
+    await using var context = fixture.CreateContext();
+
+    var original = await context.Set<JournalEntry>().FirstAsync(entry => entry.Id == originalId);
+    var period = original.FiscalPeriodId;
+
+    context.Set<JournalEntry>().Add(
+      JournalEntry.Reverse(original, period, "2", original.EntryDateUtc, "First correction"));
+    await context.SaveChangesAsync();
+
+    // THE PREMISE: one reversal exists, so the refusal below is about the SECOND rather than about any.
+    Assert.Equal(2, await context.Set<JournalEntry>().CountAsync());
+
+    context.Set<JournalEntry>().Add(
+      JournalEntry.Reverse(original, period, "3", original.EntryDateUtc, "Second correction"));
+
+    await Assert.ThrowsAnyAsync<DbUpdateException>(() => context.SaveChangesAsync());
+  }
+
   [Fact]
   [Trait("Decision", "DEC-GL-0007")]
   public async Task Posted_journal_tables_carry_no_row_version_column()
@@ -180,6 +287,25 @@ public sealed class GlSchemaSqlServerTests
 
   [Fact]
   [Trait("Decision", "BR-GL-0002")]
+  // ⚠ CITES `AC-GL-0005` — *"An attempt to update or delete a posted journal or any of its lines is refused,
+  // BY WHATEVER PATH IT IS ATTEMPTED — repository, direct context, or a future path nobody has written yet."*
+  //
+  // ***"BY WHATEVER PATH" IS A CLAIM ABOUT AN UNBOUNDED SET, AND ONLY A WRITE-BOUNDARY GUARD CAN DISCHARGE
+  // IT.*** The comment below already makes that argument — a repository test proves only *"there is no
+  // repository method for it"* — and the criterion asks for the stronger thing this test does.
+  //
+  // **THE THREE TESTS TOGETHER COVER THE CRITERION'S FOUR VARIABLES:** update (here) and delete
+  // (`A_posted_journal_line_cannot_be_deleted`), entry (here) and line (there).
+  // ⚠⚠ AND `A_draft_by_contrast_can_be_edited_and_deleted` IS THE ANTI-VACUITY CONTROL: without it, a
+  // context that refused EVERY write would satisfy both refusal tests. *It is what makes the guard SELECTIVE
+  // rather than a blanket, and it lives in the arrangement rather than in an assertion.*
+  //
+  // ⚠⚠⚠ ***TIER 2 — THIS WITNESS IS UNGATED.*** `Integration.Tests` does not run in `GATE_SCOPE=TASK`, so
+  // this criterion is **verified at a dated commit, not continuously**: green 2026-09-01, 862 passing. **A
+  // reader must not take this citation as gated coverage** — the marker half (`JournalEntryDomainTests
+  // .Posted_journals_and_their_lines_are_marked_append_only`) IS gated, but the REFUSAL half is not, and the
+  // marker without the guard is, in this file's own words, *the appearance of immutability and none of it*.
+  [Trait("Criterion", "AC-GL-0005")]
   public async Task A_posted_journal_cannot_be_modified_by_attaching_it_directly_to_the_context()
   {
     // ---- THIS IS THE TEST THAT MATTERS, AND IT IS WHY THE INTERFACE EXISTS.
@@ -265,6 +391,22 @@ public sealed class GlSchemaSqlServerTests
   // ================================================================================================
 
   [Fact]
+  // ---- ⚠⚠⚠ WHAT THIS CITATION COVERS OF `AC-GL-0003`, AND WHAT IT DOES NOT (recorded 2026-09-05).
+  //
+  // *"**Every** monetary amount is persisted as **`decimal(19,4)`** and round-trips without loss of
+  // precision."* **Three claims. This test carries one of them.**
+  //
+  //   ✓ round-trips without loss — `1234.5678m` written and read back equal, at one column.
+  //   ✗ ***"PERSISTED AS `decimal(19,4)`" IS A TYPE CLAIM AND THIS IS A VALUE OBSERVATION.***
+  //     **A `decimal(19,6)` column round-trips `1234.5678` exactly as well**, and a `decimal(19,2)` would
+  //     fail — so this bounds the scale from BELOW and says nothing about the scale from above, nor about
+  //     the precision 19 at all. *Nothing here reads `sys.columns`.*
+  //   ✗ ***"EVERY MONETARY AMOUNT" IS SAMPLED AT ONE COLUMN.*** `JournalLine.Debit` is asserted;
+  //     `JournalLine.Credit` is not, nor any other monetary column in the module.
+  //
+  // ⚠⚠ **Compare `Arabic_text_round_trips_unchanged` below: the same shape, but its round-trip IS strong
+  // evidence for its type, because Arabic mangles under `varchar`.** ***THIS ONE HAS NO SUCH IMPLICATION —
+  // precision and scale leave no trace in a value that fits both.*** *Of the two, this is the weaker.*
   [Trait("Decision", "AC-GL-0003")]
   public async Task Amounts_round_trip_at_four_decimal_places()
   {
@@ -280,6 +422,18 @@ public sealed class GlSchemaSqlServerTests
   }
 
   [Fact]
+  // ---- ⚠⚠ WHAT THIS CITATION COVERS OF `AC-GL-0019` (recorded 2026-09-05).
+  //
+  // *"**Every** persisted GL string column **is `nvarchar`** and round-trips Arabic text unchanged."*
+  //
+  // ***THE TYPE CLAIM IS WELL EVIDENCED FOR THIS COLUMN AND ONLY THIS COLUMN.*** **Arabic does not survive a
+  // `varchar` column under a non-Arabic collation, so a successful round-trip is strong evidence that
+  // `Account.Name` really is `nvarchar`** — *which is more than a value observation usually buys, and is why
+  // this is a stronger citation than `AC-GL-0003` above.*
+  //
+  // ⚠ ***THE DEFECT IS THE QUANTIFIER, NOT THE ASSERTION: "EVERY persisted GL string column" IS SAMPLED AT
+  // ONE.*** **`Account.Name` is asserted; every other GL string column is not.** *A column added later as
+  // `varchar` would satisfy this test by not being looked at.*
   [Trait("Decision", "AC-GL-0019")]
   public async Task Arabic_text_round_trips_unchanged()
   {
@@ -347,224 +501,122 @@ public sealed class GlSchemaSqlServerTests
     }
   }
 
+
+  // ================================================================================================
+  // THE COMPANY PREDICATE, PER SITE, AGAINST THE REAL READ SERVICE (item 233).
+  // ================================================================================================
+  //
+  // ---- WHY THIS DID NOT EXIST.
+  //
+  // `GlReadService` was constructed by no test in any suite. The GL API host registers a stub and never
+  // calls `AddGlInfrastructure`, so the concrete class -- and every `scope.CompanyIds.Contains(...)` in
+  // it -- had never executed. Two GL API tests assert
+  // `A_caller_with_no_authorized_company_is_refused_rather_than_served_an_empty_page`, and both arrange
+  // an EMPTY set: that is *this caller reaches nothing*, which a caller cannot provoke. An OUT-OF-SET
+  // company is *this caller reaches something, and not that*, and it is the one an attack produces.
+  //
+  // ---- PER SITE, NOT PER METHOD. SEVEN COMPANY-SCOPED SITES ACROSS SIX METHODS.
+  //
+  // `GlReadService` shares no predicate helper at all -- every one is written out inline -- so a case per
+  // method would still leave sites unproven where one method carries two queries.
+  //
+  // ---- AND THREE READS CARRY NO COMPANY PREDICATE, WHICH IS CORRECT AND IS ASSERTED POSITIVELY.
+  //
+  // `OD-GL-0003` ruled the chart TENANT-level: `Account` is deliberately not `ICompanyOwnedEntity` and
+  // has no `CompanyId` to filter by. A silent exclusion has no evidence attached to it and the next
+  // reader concludes a leak -- the natural remedy for which is to add a predicate to correct code. The
+  // cases below turn *nobody filtered here* into *filtering here is forbidden*, by asserting that a scope
+  // for company B sees the SAME account.
+  // ⚠ CITES `AC-GL-0015`'s FIRST CLAUSE — *"An account balance enquiry returns only movements within the
+  // caller's authorized scope"* — at SITE 6 below. **Both companies posted 100 to the same tenant-wide
+  // account, and an A-only scope reads 100 rather than 200: the chart is SHARED and the money is NOT.**
+  //
+  // ⚠⚠⚠ ***TIER 2 — UNGATED.*** `Integration.Tests` does not run in `GATE_SCOPE=TASK`; green 2026-09-01,
+  // 862 passing. **This is the clause that CARRIES the criterion, so the criterion is tier 2 regardless of
+  // anything gated elsewhere.**
+  //
+  // ---- ⚠⚠ THE SECOND CLAUSE IS ENFORCED BY CONSTRUCTION AND NO FIXTURE CAN WITNESS IT.
+  //
+  // *"...and its total equals the sum of the movements it returned."* **`AccountBalance` exposes
+  // `TotalDebits` and `TotalCredits`, and `Balance` is a COMPUTED PROPERTY — `=> TotalDebits - TotalCredits`.
+  // There is no setter, so the total cannot disagree with the sides it is derived from.** *A test would have
+  // to construct a state the type does not admit.* `GlReadModels.cs` names the criterion at that record and
+  // says the same: the claim is *"only checkable if both are present"*, and both are present as the totals.
+  //
+  // ⚠ **AND NOTHING WATCHES THE SHAPE THAT PROVIDES IT.** Replace the computed property with a stored field
+  // and the clause silently stops being enforced, with no fixture to redden — the same residual as any
+  // type-system discharge. *Named here rather than left for a reader to infer from the citation's presence.*
+  [Fact]
+  [Trait("Criterion", "AC-GL-0015")]
+  public async Task A_scope_authorized_for_one_company_reads_none_of_the_others_rows()
+  {
+    await using var fixture = await GlFixture.CreateAsync();
+
+    var accounts = await fixture.SeedSharedAccountsAsync();
+    var a = await fixture.SeedCompanySubjectsAsync(fixture.CompanyA, "AAA", accounts.Debit, accounts.Credit);
+    var b = await fixture.SeedCompanySubjectsAsync(fixture.CompanyB, "BBB", accounts.Debit, accounts.Credit);
+
+    await using var context = fixture.CreateContext();
+    var reads = GlFixture.Reads(context);
+
+    var scope = await fixture.Resolver(fixture.CompanyA).ResolveAsync(GlPermissionNames.ViewJournals);
+    Assert.True(scope.IsSuccess, scope.IsFailure ? scope.Error.Code : null);
+    Assert.Equal([fixture.CompanyA], scope.Value.CompanyIds);
+
+    var from = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+    var to = new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero);
+
+    // ---- SITE 1: GetFiscalPeriodsAsync.
+    Assert.NotEmpty(await reads.GetFiscalPeriodsAsync(scope.Value, fixture.CompanyA));
+    Assert.Empty(await reads.GetFiscalPeriodsAsync(scope.Value, fixture.CompanyB));
+
+    // ---- SITE 2: SearchJournalsAsync. Company B's id is passed with an A-only scope, which isolates the
+    // SCOPE predicate from the PARAMETER.
+    Assert.Single(await reads.SearchJournalsAsync(scope.Value, fixture.CompanyA, null, null, null));
+    Assert.Empty(await reads.SearchJournalsAsync(scope.Value, fixture.CompanyB, null, null, null));
+
+    // ---- SITE 3: GetJournalAsync. No company parameter: the id alone must not reach.
+    Assert.NotNull(await reads.GetJournalAsync(scope.Value, a.PostedJournalId));
+    Assert.Null(await reads.GetJournalAsync(scope.Value, b.PostedJournalId));
+
+    // ---- SITE 4: SearchJournalDraftsAsync.
+    Assert.Single(await reads.SearchJournalDraftsAsync(scope.Value, fixture.CompanyA, null, null, null));
+    Assert.Empty(await reads.SearchJournalDraftsAsync(scope.Value, fixture.CompanyB, null, null, null));
+
+    // ---- SITE 5: GetJournalDraftAsync.
+    Assert.NotNull(await reads.GetJournalDraftAsync(scope.Value, a.DraftId));
+    Assert.Null(await reads.GetJournalDraftAsync(scope.Value, b.DraftId));
+
+    // ---- SITE 6: GetAccountBalanceAsync's ENTRY query.
+    //
+    // The account is tenant-wide and both companies posted 100 to it. A balance of 100 rather than 200 is
+    // the whole claim: the chart is shared and the money is not.
+    var balance = await reads.GetAccountBalanceAsync(scope.Value, accounts.Debit, from, to);
+    Assert.NotNull(balance);
+    Assert.Equal(100m, balance!.TotalDebits);
+
+    // ---- SITE 7: GetTrialBalanceAsync.
+    var trialA = await reads.GetTrialBalanceAsync(scope.Value, fixture.CompanyA, from, to);
+    Assert.NotEmpty(trialA.Rows);
+
+    var trialB = await reads.GetTrialBalanceAsync(scope.Value, fixture.CompanyB, from, to);
+    Assert.Empty(trialB.Rows);
+
+    // ---- AND THE THREE TENANT-LEVEL READS, ASSERTED POSITIVELY FROM BOTH COMPANIES.
+    var scopeB = await fixture.Resolver(fixture.CompanyB).ResolveAsync(GlPermissionNames.ViewAccounts);
+    Assert.True(scopeB.IsSuccess, scopeB.IsFailure ? scopeB.Error.Code : null);
+
+    Assert.Equal(2, (await reads.SearchAccountsAsync(scope.Value, null, null)).Count);
+    Assert.Equal(2, (await reads.SearchAccountsAsync(scopeB.Value, null, null)).Count);
+
+    Assert.NotNull(await reads.GetAccountAsync(scope.Value, accounts.Debit));
+    Assert.NotNull(await reads.GetAccountAsync(scopeB.Value, accounts.Debit));
+
+    // The same account, reached from the company that did NOT create it. Filtering here is forbidden.
+    Assert.NotNull(await reads.GetAccountBalanceAsync(scopeB.Value, accounts.Debit, from, to));
+  }
+
   // ================================================================================================
   // THE FIXTURE
   // ================================================================================================
-
-  private sealed class GlFixture : IAsyncDisposable
-  {
-    private const string Actor = "fp011-gl-tests";
-
-    private readonly string token = Guid.NewGuid().ToString("N")[..12];
-
-    private string catalog = string.Empty;
-
-    public Guid Tenant { get; } = Guid.NewGuid();
-
-    public Guid CompanyA { get; } = Guid.NewGuid();
-
-    public DateTimeOffset EntryDate { get; } = new(2026, 6, 15, 0, 0, 0, TimeSpan.Zero);
-
-    public static async Task<GlFixture> CreateAsync()
-    {
-      var fixture = new GlFixture();
-      await fixture.InitializeAsync();
-      return fixture;
-    }
-
-    public TenantDbContext CreateContext()
-    {
-      var options = new DbContextOptionsBuilder<TenantDbContext>()
-        .UseSqlServer(ConnectionFor(catalog))
-        .Options;
-
-      return new TenantDbContext(
-        options, new FixtureUser(), new FixtureTenant(Tenant), new FixtureClock(),
-        companyAuthorizer: new GrantingCompanyAuthorizer(CompanyA),
-        modelContributors: [new GlTenantModelContributor()]);
-    }
-
-    // Seeds a posted journal the way POSTING does — through the internal factory, from a balanced draft —
-    // so the row under test is the row the product would have written.
-    public async Task<Guid> SeedPostedJournalAsync(decimal debit = 100m)
-    {
-      await using var context = CreateContext();
-
-      var debitAccount = Account.Create("1000", "Cash").Value;
-      var creditAccount = Account.Create("4100", "Receivables").Value;
-      context.Set<Account>().AddRange(debitAccount, creditAccount);
-      await context.SaveChangesAsync();
-
-      var year = FiscalYear.Create(
-        "FY2026",
-        new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
-        new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero),
-        [("FY2026", new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
-          new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero))]).Value;
-      year.CompanyId = CompanyA;
-      context.Set<FiscalYear>().Add(year);
-      await context.SaveChangesAsync();
-
-      var draft = JournalDraft.Create(EntryDate, "Seeded", "SEED").Value;
-      draft.CompanyId = CompanyA;
-      draft.ReplaceLines([(debitAccount.Id, debit, 0m, "debit"), (creditAccount.Id, 0m, debit, "credit")]);
-
-      var period = year.Periods.First();
-      var entry = JournalEntry.Post(draft, year.Id, period.Id, "1");
-
-      context.Set<JournalEntry>().Add(entry);
-      await context.SaveChangesAsync();
-
-      return entry.Id;
-    }
-
-    public async Task<int> ScalarAsync(string sql)
-    {
-      await using var connection = new SqlConnection(ConnectionFor(catalog));
-      await connection.OpenAsync();
-      await using var command = connection.CreateCommand();
-      command.CommandText = sql;
-      return Convert.ToInt32(
-        await command.ExecuteScalarAsync(), System.Globalization.CultureInfo.InvariantCulture);
-    }
-
-    public async Task<string?> StringAsync(string sql)
-    {
-      await using var connection = new SqlConnection(ConnectionFor(catalog));
-      await connection.OpenAsync();
-      await using var command = connection.CreateCommand();
-      command.CommandText = sql;
-      return (await command.ExecuteScalarAsync())?.ToString();
-    }
-
-    private async Task InitializeAsync()
-    {
-      catalog = $"SSAS_FP011_Tenant_{token}";
-
-      await MasterAsync($"CREATE DATABASE [{catalog}]");
-      await MigrateAsync();
-      await SeedCompanyAsync(CompanyA, "CMPA");
-    }
-
-    private async Task MigrateAsync()
-    {
-      await using var connection = new SqlConnection(ConnectionFor(catalog));
-
-      var options = new DbContextOptionsBuilder<TenantDbContext>()
-        .UseSqlServer(connection, sql => sql.MigrationsHistoryTable(
-          TenantPersistenceConstants.MigrationHistoryTable,
-          TenantPersistenceConstants.MigrationHistorySchema))
-        .Options;
-
-      await using var context = new TenantDbContext(
-        options, new FixtureUser(), new FixtureTenant(Tenant), new FixtureClock(),
-        modelContributors: [new GlTenantModelContributor()]);
-
-      await context.Database.MigrateAsync();
-    }
-
-    private Task SeedCompanyAsync(Guid companyId, string code) =>
-      ExecuteAsync($"""
-        INSERT INTO [tenant].[Companies]
-          ([CompanyId], [TenantId], [CompanyCode], [NormalizedCompanyCode], [CompanyName],
-           [BaseCurrencyCode], [Status], [StatusChangeReasonCode], [StatusChangedUtc], [StatusChangedBy],
-           [CreatedUtc], [CreatedBy], [ModifiedUtc], [ModifiedBy])
-        VALUES
-          ('{companyId}', '{Tenant}', N'{code}', N'{code}', N'Company {code}',
-           'SAR', N'Active', N'Created', SYSDATETIMEOFFSET(), N'{Actor}',
-           SYSDATETIMEOFFSET(), N'{Actor}', SYSDATETIMEOFFSET(), N'{Actor}');
-        """);
-
-    private async Task ExecuteAsync(string sql)
-    {
-      await using var connection = new SqlConnection(ConnectionFor(catalog));
-      await connection.OpenAsync();
-      await using var command = connection.CreateCommand();
-      command.CommandText = sql;
-      await command.ExecuteNonQueryAsync();
-    }
-
-    private static async Task MasterAsync(string sql)
-    {
-      await using var connection = new SqlConnection(ConnectionFor("master"));
-      await connection.OpenAsync();
-      await using var command = connection.CreateCommand();
-      command.CommandText = sql;
-      await command.ExecuteNonQueryAsync();
-    }
-
-    private static string ConnectionFor(string name) =>
-      new SqlConnectionStringBuilder(IntegrationSqlEnvironment.BaseConnectionString)
-      {
-        InitialCatalog = name
-      }.ConnectionString;
-
-    public async ValueTask DisposeAsync()
-    {
-      if (string.IsNullOrEmpty(catalog))
-      {
-        return;
-      }
-
-      try
-      {
-        await MasterAsync(
-          $"ALTER DATABASE [{catalog}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [{catalog}];");
-      }
-      catch (SqlException)
-      {
-        // The gate reaps to zero before every configuration, so a catalog that outlives its test is
-        // collected there rather than failing a test on teardown.
-      }
-    }
-
-    private sealed class FixtureUser : ICurrentUser
-    {
-      public string? UserId => Actor;
-
-      public string? UserName => Actor;
-
-      public string? Email => null;
-
-      public Guid? CompanyId => null;
-
-      public string? SessionId => null;
-
-      public string? TokenId => null;
-
-      public IReadOnlyCollection<string> Roles => [];
-
-      public IReadOnlyCollection<string> Permissions => [];
-    }
-
-    // ---- A GRANTING AUTHORIZER, AND WHAT THAT DOES AND DOES NOT WEAKEN.
-    //
-    // `FiscalYear` is `ICompanyOwnedEntity` (`OD-GL-0004`), so `TenantDbContext.ApplyCompanyRulesAsync`
-    // demands a trusted company context before ANY company-owned row is written. Without one these tests
-    // failed with "A trusted company context is required" — which is the ruling working, and is worth
-    // recording because it was the first proof that closing a period really is a company-scoped write.
-    //
-    // The production authorizer needs a Platform database, an access resolver and a live session. That
-    // graph belongs to the company-ownership tests, which own that property and assert it against the real
-    // resolver. Substituting it HERE narrows nothing these tests claim: the write boundary still runs, and
-    // what is under test is the APPEND-ONLY refusal, which the boundary applies before any of this.
-    //
-    // The same shape as HR's `GrantingHierarchyLock` in the API host, for the same reason.
-    private sealed class GrantingCompanyAuthorizer(Guid companyId) : ICompanyWriteAuthorizer
-    {
-      public Task<SSAS.BuildingBlocks.Domain.Result<Guid>> AuthorizeCurrentCompanyAsync(
-        Guid tenantId, CancellationToken cancellationToken = default) =>
-        Task.FromResult(SSAS.BuildingBlocks.Domain.Result.Success(companyId));
-    }
-
-    private sealed class FixtureTenant(Guid tenantId) : ICurrentTenant
-    {
-      public Guid? TenantId => tenantId;
-    }
-
-    private sealed class FixtureClock : IDateTimeProvider
-    {
-      public DateTimeOffset UtcNow => DateTimeOffset.UtcNow;
-    }
-  }
 }

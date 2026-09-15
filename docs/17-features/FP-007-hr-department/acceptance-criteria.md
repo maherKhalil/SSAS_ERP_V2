@@ -13,8 +13,27 @@ Criteria marked **(OD)** are provisional and depend on an unresolved owner decis
 
 - **AC-DEP-0001** — Creating a department with a code, a name and no parent produces an `Active` root
   department whose `TenantId` and `CompanyId` match the caller's trusted context.
-- **AC-DEP-0002** — `TenantId` and `CompanyId` supplied in the request body are ignored, not honoured. A
-  request naming another tenant's identifiers produces a department in the caller's own tenant.
+- **AC-DEP-0002** — `TenantId` and `CompanyId` supplied in the request body are **refused**, not honoured and
+  not silently ignored: the request is rejected with `400 request.invalid`, and no department is produced.
+
+  > ⚠⚠ **CORRECTED 2026-09-01, architect. This read *are ignored, not honoured… produces a department in the
+  > caller's own tenant*, and THE PRODUCT DOES NEITHER — IT REFUSES.** Strict binding at
+  > `StrictRequestReader.cs:41` returns null for any property absent from the `fields` dictionary; the
+  > dictionary at `DepartmentEndpointRouteBuilderExtensions.cs:181-186` is exactly
+  > `code / name / parentDepartmentId`; a null request becomes `ApiErrors.RequestInvalid` → `400` at
+  > `:190-193`. **The behaviour was already asserted and uncited** —
+  > `API.Tests/Departments/DepartmentEndpointTests.cs:78` `D5_Create_rejects_an_undeclared_field` posts a body
+  > carrying `companyId` and asserts `400` + `request.invalid`.
+  >
+  > ⚠⚠⚠ **AND THIS DOCUMENT CONTRADICTED ITSELF: `AC-DEP-0035` STATES THE OPPOSITE DISPOSITION FOR THE SAME
+  > CLASS OF UNDECLARED FIELD — *the field is not accepted there, and a request containing it is REJECTED
+  > RATHER THAN SILENTLY IGNORED*.** Same file, same problem, opposite rules, **and the product implements
+  > `0035`'s.** So this was never a criterion the code merely outgrew: **the specification disagreed with
+  > itself and the implementation picked the safer side.** Each criterion reads perfectly well alone, which
+  > is why neither reader caught it until both were held together.
+  >
+  > **`TS-DEP-0002` inherited the defect and is corrected with it** — it was written as a control asserting a
+  > department IS produced in the caller's tenant, which is not implementable against strict binding.
 - **AC-DEP-0003** — A second department with a code that normalizes to an existing code in the same company is
   refused with `409`, and the refusal comes from the unique index under concurrent creation, not only from a
   prior read.
@@ -60,11 +79,49 @@ Criteria marked **(OD)** are provisional and depend on an unresolved owner decis
 - **AC-DEP-0019** — Assigning an employee from a different company is refused.
 - **AC-DEP-0020** — Assigning a terminated employee is refused.
 - **AC-DEP-0021** — Terminating an employee who is a manager does **not** clear the assignment; the department
-  reads back with `manager.isTerminated = true`.
+  reads back with the manager still present and shown as inactive. **(Field name corrected 2026-09-01, architect: this read `manager.isTerminated = true`, and the contract exposes `IsActive` — three sites in `DepartmentReadModels.cs` and `DepartmentQueryHandlers.cs`, and no `IsTerminated` member anywhere on the department read models. The CLAIM was right and the FIELD did not exist; the test asserts `IsActive` false and was correct all along.)**
 - **AC-DEP-0022** — Clearing a manager removes the assignment and the department reads back with a null
   manager.
-- **AC-DEP-0023 (OD)** — Under `OD-DEP-003` reading (i): assigning an employee as manager of the department
-  they belong to is refused, and moving an employee into the department they manage is refused.
+- **AC-DEP-0023** — Assigning an employee as manager of the department they belong to is refused, and moving
+  an employee into the department they manage is refused.
+
+  > ⚠⚠⚠ **LIVE AND NOT IMPLEMENTED — RELABELLED 2026-09-01, architect.** This read **(OD)** and *under
+  > `OD-DEP-003` reading (i)*, which made it look conditioned on a branch the owner did not take. **The owner
+  > CLOSED `OD-DEP-003` on 2026-08-20 adopting reading (iii)** (`decisions-approved.md:27`), and **(iii) is
+  > *both* — `README.md:213`: *(i) now, (ii) when a reporting line is introduced*.** So **(iii) subsumes (i)
+  > in full**, (i) is marked *enforceable in FP-007 — **Yes**, fully*, and it is named `BRULE-DEP-0012` at
+  > [`business-rules.md`](business-rules.md). The decision is closed, the provisional marker was wrong, and
+  > the substance was never conditional. **The MISLABEL is the whole reason this criterion read as stale to
+  > two independent readers.**
+  >
+  > ### ⚠⚠⚠ **RESOLVED 2026-09-06 — THE ESCALATION IS CLOSED AND THE ASSIGN HALF IS ENFORCED**
+  >
+  > **This block read, until now:** *"**AND THE PRODUCT DOES THE OPPOSITE, DELIBERATELY AND IN WRITING.**
+  > `DepartmentManagerCommandHandlers.cs:68-70` states "department membership is not consulted either, in
+  > either direction… `Employee.DepartmentId == Department.Id` is explicitly NOT a rule"… **That is the exact
+  > negation of `BRULE-DEP-0012`.** This is **not a test gap**; **no test should be written for it** until the
+  > conflict is resolved. **ESCALATED TO THE OWNER**…"*
+  >
+  > ***ALL OF THAT IS NOW FALSE, AND THE MOST DANGEROUS CLAUSE IS THE INSTRUCTION NOT TO WRITE A TEST.***
+  > **The owner ruled, the guard shipped in `984a806`, and `DepartmentManagerCommandHandlers.cs:69` now
+  > opens:** *"⚠⚠⚠ DEPARTMENT MEMBERSHIP **IS** CONSULTED, AS OF THE OWNER'S RULING. SUPERSEDED 2026-09-06."*
+  > **The superseded argument is preserved in the handler at `:71-79`, which records that it was reading
+  > (ii)-only, that `README.md` named that option in advance, and that the owner did not choose it.**
+  >
+  > ⚠⚠ **BUT THE CRITERION IS NOT FULLY MET, AND THIS IS THE HALF TO KEEP:** **`BRULE-DEP-0012` refuses
+  > *assigning* a manager who already belongs to the department. *THE MOVE DIRECTION IS NOT ENFORCED* —
+  > `ChangeEmployeeDepartmentCommandHandler` performs no manager lookup, so an employee can still be moved
+  > into the department they manage.** `TS-DEP-0039` scopes both directions, so a reader checking this
+  > criterion must not read "resolved" as "complete".
+  >
+  > **The cost the owner accepted when adopting (iii) still stands and is still worth reading**
+  > (`README.md:219-222`): *a department head cannot be a member of the department they head, which many
+  > organizations would find backwards.*
+  >
+  > ⚠ **WHY IT SURVIVED: THE CODE EXPLAINS ITSELF CONFIDENTLY.** A missing check reads as an omission and
+  > invites a second look. A paragraph asserting *that is the whole list* reads as a considered decision and
+  > stops the reader. **The comment is the concealment** — and it is the only concealment shape found in
+  > FP-007 whose author was production code rather than a test name, a seed, a summary row or a scope.
 - **AC-DEP-0024** — A department has at most one manager, enforced by the primary key of
   `tenant.DepartmentManagers` rather than by a handler check.
 
@@ -89,14 +146,57 @@ Criteria marked **(OD)** are provisional and depend on an unresolved owner decis
   company succeeds.
 - **AC-DEP-0035** — An employee's department cannot be changed through `PUT /api/hr/employees/{id}`; the field
   is not accepted there, and a request containing it is rejected rather than silently ignored.
-- **AC-DEP-0036** — `POST /api/hr/employees/{id}/department` changes the department and refuses a stale
-  `RowVersion` with `409`.
+- **AC-DEP-0036** — `POST /api/hr/employees/{id}/change-department` changes the department and refuses a stale
+  `RowVersion` with `409`. **(Route corrected 2026-09-01, architect: this named `/department`; the endpoint is `change-department`, at `DepartmentEndpointRouteBuilderExtensions.cs:160`. A criterion naming a route that does not exist cannot be checked by anybody who greps for it.)**
 - **AC-DEP-0037** — Transferring an employee between branches leaves their department unchanged; changing an
   employee's department leaves their branch unchanged.
 - **AC-DEP-0038** — Terminating an employee leaves their department intact.
 - **AC-DEP-0039 (OD)** — The `OD-DEP-001` strategy actually chosen is implemented, and its terminal state is
   asserted: under A, no employee has a null department after migration; under B or C, the follow-up migration
   exists and is named; under D, the migration fails loudly if any null remains.
+  - ⚠⚠ **RESOLVED 2026-09-01 — THE STRATEGY IS OPTION A, SO THE TERMINAL STATE TO ASSERT IS *NO EMPLOYEE HAS
+    A NULL DEPARTMENT AFTER MIGRATION*.** `decisions-approved.md`'s amendment closing `OD-DEP-001` on
+    2026-08-20 adopts A explicitly: one `UNASSIGNED` department per company holding legacy Employees, those
+    Employees assigned to it, one initial history row each.
+  - ⚠⚠⚠ **THE *FAIL-LOUD* CLAUSE IS NOT OPTION D ARRIVING BY THE BACK DOOR — IT IS A SEPARATE RULE ABOUT A
+    DIFFERENT CONDITION.** The migration fails loudly and transactionally **only if the company ALREADY holds
+    a department whose `NormalizedCode` is `UNASSIGNED`.** **The summary cell in `decisions-approved.md` read
+    *Option A, fail-loud*, which attached D's characteristic behaviour to A's letter and made this criterion
+    undecidable from the documents; corrected there.**
+  - ⚠⚠⚠ **RETRACTED IN FULL 2026-09-01, architect. THE NOTE THAT STOOD HERE WAS FALSE ON EVERY COUNT AND IT
+    WAS WRITTEN THE SAME DAY.** It read: *the column's NOT NULL is asserted by nothing — the only schema-suite
+    mention is a fixture comment… neither the back-fill nor the collision rule is asserted at all.* **ALL
+    THREE CLAIMS ARE WRONG.** `tests/Integration.Tests/EmployeeDepartmentMigrationSqlServerTests.cs` (dated
+    2026-08-30, so it predated the search) holds **twelve tests**, verified at file and line:
+    - **NOT NULL** — `The_department_column_is_not_nullable_after_the_migration:205` seeds a legacy employee,
+      runs the real migration, then queries `INFORMATION_SCHEMA.COLUMNS` at `:214` for `IS_NULLABLE` on
+      `tenant.Employees.DepartmentId` and asserts `NO`. **The criterion's exact claim, against the real schema
+      after the real migration** — not a fixture comment.
+    - **BACK-FILL** — five, including two negative controls:
+      `One_legacy_employee_is_mapped_to_one_new_department_with_one_history_row:60`,
+      `Many_legacy_employees_in_one_company_share_exactly_one_new_department:99`,
+      `Each_affected_company_gets_its_own_unassigned_department:128`,
+      `Only_companies_with_legacy_employees_are_affected:160`,
+      `A_company_with_no_legacy_employees_gets_no_unassigned_department:47`.
+    - **COLLISION** — three: `An_existing_unassigned_department_stops_the_migration_and_changes_nothing:267`
+      asserts the throw, the actionable message, **and the no-partial-state half** (the customer department
+      untouched, `DepartmentCountAsync == 1` so no suffixed duplicate, no history rows, employee unchanged);
+      plus `A_collision_in_one_company_leaves_every_other_company_untouched:322` and the control
+      `An_unassigned_department_in_an_unaffected_company_does_not_block_the_migration:343`.
+
+    ⚠⚠ **THE MECHANISM OF MY ERROR IS PRINTED IN THE FALSE NOTE'S OWN WORDING: *the only SCHEMA-SUITE
+    mention*. THE SEARCH WAS SCOPED TO THE SCHEMA SUITE AND THE MIGRATION TESTS LIVE IN A DIFFERENTLY-NAMED
+    FILE. THE INSTRUMENT COUNTED WHAT IT COULD SEE AND NAMED ITS OWN SCOPE INSIDE THE ANSWER**, where it read
+    as emphasis rather than as a limit.
+
+    ⚠⚠⚠ **AND A FALSE ABSENCE IN AN ACCEPTANCE CRITERION IS MORE DANGEROUS THAN A FALSE PRESENCE, BECAUSE OF
+    THE REMEDY IT INVITES: WRITING TESTS THAT ALREADY EXIST.** Those duplicates would have passed, and passing
+    duplicates look exactly like progress. **Every other finding in this sweep was a criterion that read as
+    covered and was not; this one read as uncovered and is covered comprehensively.**
+
+  - **WHAT THIS CRITERION ACTUALLY NEEDS: CITATIONS, NOT TESTS.** The file carries **zero**
+    `[Trait("Criterion", …)]` attributes, so none of that coverage is mechanically answerable. Cited on the
+    **set**, per the rule set on `AC-DEP-0029`: a criterion covered only by a set is cited on the set.
 
 ## Authorization
 
@@ -127,6 +227,27 @@ Criteria marked **(OD)** are provisional and depend on an unresolved owner decis
   `DepartmentManagers` after Employee. A model in which `Department` holds a direct manager foreign key is
   asserted to make the plan fail with `CutoverCopyOrderUndecidable`, so the reason for `DEC-DEP-0022` is
   recorded executably and cannot be undone by accident.
+  - ⚠⚠ **STATUS 2026-09-01 — COVERED BY MECHANISM, NOT BY THIS CRITERION'S OWN WORDING. NOT CITED, AND
+    THAT IS DELIBERATE.** **Clause 1 is asserted** by
+    `C6_15_The_copy_order_places_every_principal_before_its_dependents`, which builds the plan with both
+    entities present and asserts each ordering the clause names.
+    **Clause 2 — that a model carrying a direct manager foreign key FAILS — is asserted for the MECHANISM
+    and not for Department.** `CutoverCopyOrderCycleTests` (`tests/Platform.Tests/TenantStorage/`, added
+    2026-09-01) proves the planner returns `CutoverCopyOrderUndecidable` for a foreign-key cycle among
+    tenant-owned entities, isolated from the two unrelated conditions sharing that error value by a matched
+    acyclic control that must pass.
+  - ⚠ **WHAT REMAINS ARGUED RATHER THAN TESTED: that Department with a direct manager foreign key produces
+    such a cycle.** That step is a reading of the model, not an execution. **`DEC-DEP-0022`'s reason is
+    therefore TESTED MECHANISM PLUS ARGUED SHAPE**, which is stronger than the *"verified in source"* it
+    rested on before and is not what this criterion asks for.
+  - **WHY IT STOPS HERE, RECORDED SO IT IS NOT REDISCOVERED:** the Department-shaped test needs a project
+    that references both `SSAS.HR.Domain` and `SSAS.Platform.Infrastructure`, and **`Architecture.Tests` is
+    the only one.** `Platform.Tests` must not gain a reference to `SSAS.HR.Domain` — **Platform is the layer
+    HR depends on, and adding the reverse edge to fit a test inverts the direction the module guards
+    exist to protect.** ⚠⚠ **And a contributor placed in `Architecture.Tests` would inject a foreign-key
+    cycle into a model FIVE unrelated guards reason over — which is worse than a moved entity count,
+    because a moved count is loud and a cycle is not.** See backlog `B25`; if that is ever done on its own
+    merits, this becomes available again.
 - **AC-DEP-0049** — A real cutover carries departments, department managers, employees and branch history, and
   source and destination counts agree for every one of them.
 - **AC-DEP-0050** — Department's `RowVersion` is excluded from the copy projection.

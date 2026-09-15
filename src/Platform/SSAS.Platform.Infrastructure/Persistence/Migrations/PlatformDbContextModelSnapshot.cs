@@ -18,7 +18,7 @@ namespace SSAS.Platform.Infrastructure.Persistence.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "8.0.0")
+                .HasAnnotation("ProductVersion", "8.0.8")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
@@ -1347,6 +1347,91 @@ namespace SSAS.Platform.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("SSAS.Platform.Domain.Subscriptions.SubscriptionInvoice", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CurrencyCode")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("nvarchar(3)");
+
+                    b.Property<string>("InvoiceNumber")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTimeOffset>("IssuedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("SubscriptionInvoices", (string)null);
+                });
+
+            modelBuilder.Entity("SSAS.Platform.Domain.Subscriptions.SubscriptionInvoiceLine", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("Amount")
+                        .HasColumnType("decimal(19,4)");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<Guid>("SubscriptionInvoiceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TenantSubscriptionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SubscriptionInvoiceId");
+
+                    b.ToTable("SubscriptionInvoiceLines", (string)null);
+                });
+
+            modelBuilder.Entity("SSAS.Platform.Domain.Subscriptions.SubscriptionPaymentAttempt", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("AttemptedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("ProviderReference")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<Guid>("SubscriptionInvoiceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("SubscriptionPaymentAttempts", (string)null);
+                });
+
             modelBuilder.Entity("SSAS.Platform.Domain.Subscriptions.SubscriptionPlan", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2325,6 +2410,51 @@ namespace SSAS.Platform.Infrastructure.Persistence.Migrations
                     b.ToTable("TenantUserRoleAssignments", "platform");
                 });
 
+            modelBuilder.Entity("SSAS.Platform.Domain.TenantUsers.UserEmployeeLink", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("UserEmployeeLinkId");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("CreatedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ModifiedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("ModifiedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("TenantUserId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "EmployeeId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_UserEmployeeLink_TenantId_EmployeeId");
+
+                    b.HasIndex("TenantId", "TenantUserId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_UserEmployeeLink_TenantId_TenantUserId");
+
+                    b.ToTable("UserEmployeeLink", "platform");
+                });
+
             modelBuilder.Entity("SSAS.Platform.Domain.Tenants.Tenant", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2600,6 +2730,15 @@ namespace SSAS.Platform.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("SSAS.Platform.Domain.Subscriptions.SubscriptionInvoiceLine", b =>
+                {
+                    b.HasOne("SSAS.Platform.Domain.Subscriptions.SubscriptionInvoice", null)
+                        .WithMany("Lines")
+                        .HasForeignKey("SubscriptionInvoiceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("SSAS.Platform.Domain.Subscriptions.SubscriptionPlan", b =>
                 {
                     b.OwnsMany("SSAS.Platform.Domain.Subscriptions.PlanLimit", "Limits", b1 =>
@@ -2826,6 +2965,16 @@ namespace SSAS.Platform.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("SSAS.Platform.Domain.TenantUsers.UserEmployeeLink", b =>
+                {
+                    b.HasOne("SSAS.Platform.Domain.TenantUsers.TenantUser", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "TenantUserId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("SSAS.Platform.Domain.Authentication.AuthenticationSession", b =>
                 {
                     b.Navigation("RefreshTokenRecords");
@@ -2849,6 +2998,11 @@ namespace SSAS.Platform.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("SSAS.Platform.Domain.Roles.Role", b =>
                 {
                     b.Navigation("PermissionAssignments");
+                });
+
+            modelBuilder.Entity("SSAS.Platform.Domain.Subscriptions.SubscriptionInvoice", b =>
+                {
+                    b.Navigation("Lines");
                 });
 
             modelBuilder.Entity("SSAS.Platform.Domain.TenantUsers.TenantUser", b =>

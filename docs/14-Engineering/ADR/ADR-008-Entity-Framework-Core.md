@@ -35,6 +35,16 @@ used_by:
 
 ---
 
+## ⚠ WITHDRAWN 2026-08-30 — THE EARLIER "NOT IMPLEMENTED" NOTE HERE WAS FALSE
+
+**An annotation added earlier this day said domain-event dispatch was specified here and not implemented.
+Every clause of it was wrong, and it is withdrawn.** The dispatcher has existed since 2026-07-31, and the
+flow was **exercised end to end through real infrastructure on 2026-08-30** (item 166, PR #384).
+
+⚠ **The full account — what the flow is, how the false finding was produced, and the two residual hazards
+that are genuinely open — lives in one place: the note at the head of `ADR-009`.** It is not repeated here,
+because a fact recorded in three places goes stale in two.
+
 # Context
 
 SSAS ERP V2 requires a robust, maintainable, and high-performance Object-Relational Mapper (ORM) that integrates seamlessly with the selected technology stack:

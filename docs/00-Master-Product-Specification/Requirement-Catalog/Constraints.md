@@ -249,6 +249,12 @@ Every pull request shall update documentation when requirements change.
 
 Source code shall comply with Coding Standards.
 
+> ⚠ **ANNOTATED 2026-09-06.** ***"Coding Standards" is an umbrella term, not a file — its five members are
+> Development Standards, Solution Structure, Clean Architecture, Naming Standards and Dependency Rules, and
+> the membership list is at `13-Implementation/Sprint-00-Foundation.md:451`.*** **`CON-0604` is a numbered
+> constraint, so a dangling term here is an audit failure rather than a broken link; see `NFR-0601`, which
+> carries the same defect and the same repair.**
+
 ---
 
 # AI Development Constraints

@@ -1,3 +1,4 @@
+using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using Microsoft.EntityFrameworkCore;
 using SSAS.Platform.Application.Subscriptions;
 using SSAS.Platform.Infrastructure.Persistence;
@@ -21,7 +22,9 @@ namespace SSAS.Platform.Infrastructure.Subscriptions;
 // takes the records that have taken effect and lets the snapshot decide; a cap in force is a property
 // of the record live at that moment, and baking "now" into the query would make the cached value
 // unusable for any other instant.
-public sealed class TenantEntitlementReader(PlatformDbContext context) : ITenantEntitlementReader
+public sealed class TenantEntitlementReader(
+  PlatformDbContext context,
+  IDateTimeProvider clock) : ITenantEntitlementReader
 {
   public async Task<TenantEntitlementSnapshot> ReadAsync(Guid tenantId, CancellationToken cancellationToken)
   {
@@ -34,7 +37,17 @@ public sealed class TenantEntitlementReader(PlatformDbContext context) : ITenant
     // the future has not taken effect, and the snapshot's own evaluation is where that is decided —
     // except that "in force" is defined against the present for the purpose of caching, so the read
     // takes only records that have already begun.
-    var now = DateTimeOffset.UtcNow;
+    // ⚠ ONE DECISION, ONE CLOCK (item 185). This read used to call `DateTimeOffset.UtcNow` directly while
+    // `TenantModuleEntitlement` evaluates expiry through the INJECTED `IDateTimeProvider` -- so half the
+    // entitlement decision was controllable by a caller and half was not, and a test setting the injected
+    // clock would have had this half silently ignore it. That split is how item 182's defect came to be
+    // written, one seam over.
+    //
+    // Production behaviour is unchanged: `UtcDateTimeProvider` returns `DateTimeOffset.UtcNow`. EF
+    // translation is unaffected -- the value is read here and captured, so it reaches SQL as a parameter
+    // exactly as the direct call did. **Prevention, not a live defect**: nothing today seeds a
+    // future-dated record, so nothing currently disagrees.
+    var now = clock.UtcNow;
 
     var inForce = await context.TenantSubscriptions
       .AsNoTracking()

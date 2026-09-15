@@ -40,19 +40,19 @@ public static class PlatformSupportAuthorityEndpointRouteBuilderExtensions
       .RequirePlatformPermission(Administer).WithName("PlatformSupportPrincipalsRegister");
     group.MapGet("", ListAsync)
       .RequirePlatformPermission(Administer).WithName("PlatformSupportPrincipalsList");
-    group.MapGet("/{principalId:long}", GetByIdAsync)
+    group.MapGet("/{principalId}", GetByIdAsync)
       .RequirePlatformPermission(Administer).WithName("PlatformSupportPrincipalsGetById");
-    group.MapGet("/{principalId:long}/assignments", ListAssignmentsAsync)
+    group.MapGet("/{principalId}/assignments", ListAssignmentsAsync)
       .RequirePlatformPermission(Administer).WithName("PlatformSupportPrincipalsAssignments");
-    group.MapGet("/{principalId:long}/permissions", GetActivePermissionsAsync)
+    group.MapGet("/{principalId}/permissions", GetActivePermissionsAsync)
       .RequirePlatformPermission(Administer).WithName("PlatformSupportPrincipalsActivePermissions");
-    group.MapPost("/{principalId:long}/grant", GrantAsync)
+    group.MapPost("/{principalId}/grant", GrantAsync)
       .RequirePlatformPermission(Administer).WithName("PlatformSupportPrincipalsGrant");
-    group.MapPost("/{principalId:long}/revoke", RevokeAsync)
+    group.MapPost("/{principalId}/revoke", RevokeAsync)
       .RequirePlatformPermission(Administer).WithName("PlatformSupportPrincipalsRevoke");
-    group.MapPost("/{principalId:long}/disable", DisableAsync)
+    group.MapPost("/{principalId}/disable", DisableAsync)
       .RequirePlatformPermission(Administer).WithName("PlatformSupportPrincipalsDisable");
-    group.MapPost("/{principalId:long}/reenable", ReenableAsync)
+    group.MapPost("/{principalId}/reenable", ReenableAsync)
       .RequirePlatformPermission(Administer).WithName("PlatformSupportPrincipalsReenable");
 
     return endpoints;

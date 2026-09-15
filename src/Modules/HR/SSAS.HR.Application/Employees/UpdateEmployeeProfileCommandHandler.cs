@@ -1,4 +1,5 @@
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
+using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.BuildingBlocks.Tenancy.Persistence;
@@ -21,6 +22,7 @@ public sealed record UpdateEmployeeProfileCommand(
 public sealed class UpdateEmployeeProfileCommandHandler(
   IEmployeeRepository employees,
   ITenantUnitOfWork unitOfWork,
+  ICurrentCompany currentCompany,
   ICurrentUser currentUser,
   IDateTimeProvider clock)
 {
@@ -29,7 +31,8 @@ public sealed class UpdateEmployeeProfileCommandHandler(
   {
     ArgumentNullException.ThrowIfNull(command);
 
-    if (string.IsNullOrWhiteSpace(currentUser.UserId))
+    if (currentCompany.CompanyId is not { } companyId ||
+      string.IsNullOrWhiteSpace(currentUser.UserId))
     {
       return Result.Failure(EmployeeErrors.InvalidActor);
     }
@@ -53,7 +56,7 @@ public sealed class UpdateEmployeeProfileCommandHandler(
     }
 
     var employee = await employees.GetByIdAsync(command.EmployeeId, cancellationToken);
-    if (employee is null)
+    if (employee is null || employee.CompanyId != companyId)
     {
       return Result.Failure(EmployeeErrors.NotFound);
     }

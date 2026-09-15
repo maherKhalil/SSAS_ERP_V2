@@ -54,7 +54,22 @@ public sealed class JournalDraftDomainTests
     Assert.Equal(100m, draft.TotalCredits);
   }
 
+  // ⚠ CITES `AC-GL-0004`'s FIRST CLAUSE — *"When the debit total differs from the credit total by any
+  // amount, the request is refused with `Gl.JournalUnbalanced`..."* **Asserted at BOTH spellings and both
+  // layers: the catalogue token here, and `gl.journal_unbalanced` in `GlEndpointTests` — which is what
+  // separates "the domain refused" from "the wire said so".**
+  //
+  // ⚠⚠ ***THE SECOND CLAUSE IS NOT DISCHARGED BY THIS TEST AND I HAVE NOT VERIFIED IT.*** *"...and NO ROW
+  // OF ANY KIND IS PERSISTED — not the header, not a partial set of lines, and not a record of the attempt."*
+  // **That is a claim about a DATABASE and cannot be observed from a domain unit test, which never persists
+  // anything.** *Recorded as UNVERIFIED rather than as absent: I have not planted it, and an unplanted
+  // absence is the claim that has been wrong five times in this feature alone.*
+  //
+  // ⚠ The criterion's own note makes the clause deliberate — *"the OPPOSITE of FP-009's import behaviour"*,
+  // where a refused run DOES record itself. **So the two features refuse differently on purpose, and a
+  // reader carrying FP-009's habit here would be wrong.**
   [Fact]
+  [Trait("Criterion", "AC-GL-0004")]
   [Trait("Decision", "BR-GL-0001")]
   public void An_unbalanced_draft_is_refused_at_post_time_and_not_at_edit_time()
   {
@@ -233,8 +248,16 @@ public sealed class JournalEntryDomainTests
     Assert.Equal(original.TotalCredits, reversal.TotalDebits);
   }
 
+  // ⚠ CITES THE SECOND CLAUSE OF `AC-GL-0006` — *"...The original is unchanged."* The first clause,
+  // *"a reversing journal whose lines MIRROR the original's debits and credits"*, is the per-line loop in
+  // the test above, whose own comment gives the reason totals are not enough: **"equal totals would also
+  // hold for a reversal that moved the amounts between the wrong accounts."**
+  //
+  // ⚠⚠ *AND THE TWO CLAUSES FAIL IN DIFFERENT DIRECTIONS, WHICH IS WHY BOTH ARE NEEDED: a reversal could
+  // mirror perfectly while stamping the original, or leave the original alone while mirroring wrongly.*
   [Fact]
   [Trait("Decision", "OD-GL-0006")]
+  [Trait("Criterion", "AC-GL-0006")]
   public void The_original_is_untouched_by_being_reversed()
   {
     var original = JournalEntry.Post(BalancedDraft(Guid.NewGuid()), Guid.NewGuid(), Guid.NewGuid(), "1");
@@ -270,7 +293,9 @@ public sealed class JournalEntryDomainTests
   {
     // RowVersion on an append-only type would advertise a mutation that cannot happen and invite someone to
     // write the update path it implies.
-    Assert.Null(typeof(JournalEntry).GetProperty("RowVersion"));
-    Assert.NotNull(typeof(JournalDraft).GetProperty("RowVersion"));
+    // ⚠ BOTH HALVES BOUND (258). They shared a bare string: a rename broke the positive loudly, but a typo
+    // at the NEGATIVE alone left the positive green and this one passing over a lookup that could not hit.
+    Assert.Null(typeof(JournalEntry).GetProperty(nameof(JournalDraft.RowVersion)));
+    Assert.NotNull(typeof(JournalDraft).GetProperty(nameof(JournalDraft.RowVersion)));
   }
 }

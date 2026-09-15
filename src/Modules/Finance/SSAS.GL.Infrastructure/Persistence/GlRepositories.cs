@@ -1,3 +1,4 @@
+using SSAS.BuildingBlocks.Domain;
 using Microsoft.EntityFrameworkCore;
 using SSAS.BuildingBlocks.Infrastructure.Persistence;
 using SSAS.GL.Application.Abstractions;
@@ -72,17 +73,30 @@ internal sealed class FiscalCalendarRepository(ITenantDbContextAccessor contextA
   // so an omitted Include would surface as an empty period collection and a `Gl.FiscalPeriodNotFound` for a
   // date the calendar plainly covers. Loading them is not an optimisation choice here; it is the difference
   // between a correct answer and a confidently wrong one.
-  public async Task<FiscalYear?> GetCoveringAsync(
+  public async Task<Result<FiscalYear?>> GetCoveringAsync(
     Guid companyId, DateTimeOffset instantUtc, CancellationToken cancellationToken = default)
   {
     var context = await contextAccessor.GetRequiredAsync(cancellationToken);
     var instant = instantUtc.ToUniversalTime();
 
-    return await context.Set<FiscalYear>()
+    // ---- TAKE TWO, BECAUSE ONE CANNOT REPORT AMBIGUITY (T-187).
+    //
+    // This was `FirstOrDefaultAsync` WITH NO ORDERING, so with two overlapping years the one returned was
+    // whatever the plan produced — **and could differ between two calls in the same request.** A journal
+    // and its reversal resolve separately, so an entry could land in year A and the entry cancelling it
+    // in year B.
+    //
+    // **Two is the whole cost**: it answers "is there more than one" without loading a calendar's worth
+    // of years, and the second row is never used except to refuse.
+    var covering = await context.Set<FiscalYear>()
       .Include(year => year.Periods)
-      .FirstOrDefaultAsync(
-        year => year.CompanyId == companyId && year.StartUtc <= instant && year.EndUtc > instant,
-        cancellationToken);
+      .Where(year => year.CompanyId == companyId && year.StartUtc <= instant && year.EndUtc > instant)
+      .Take(2)
+      .ToListAsync(cancellationToken);
+
+    return covering.Count > 1
+      ? Result.Failure<FiscalYear?>(CalendarErrors.AmbiguousCoveringYear)
+      : Result.Success<FiscalYear?>(covering.FirstOrDefault());
   }
 
   public async Task<FiscalPeriod?> GetPeriodAsync(
@@ -143,13 +157,50 @@ internal sealed class JournalDraftRepository(ITenantDbContextAccessor contextAcc
     await context.Set<JournalDraft>().AddAsync(draft, cancellationToken);
   }
 
-  // Synchronous because it only marks the tracked graph; the cascade configured on the draft's lines
-  // removes them with it. The context is resolved by the caller's other operations in the same unit of work.
+  // See the port: the platform sets every foreign key to `Restrict` AFTER the module contributors run, so
+  // `JournalDraftConfiguration`'s configured cascade never takes effect and an orphaned line is a row
+  // nothing deletes.
+  //
+  // Marked Deleted BEFORE `ReplaceLines` clears the collection — afterwards, EF's navigation fixer has
+  // already seen the severance and already tried to null a non-nullable foreign key.
+  public async Task RemoveLinesAsync(JournalDraft draft, CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(draft);
+
+    if (draft.Lines.Count == 0)
+    {
+      return;
+    }
+
+    var context = await contextAccessor.GetRequiredAsync(cancellationToken);
+
+    // Materialized before RemoveRange: the navigation and the tracker hold the same objects, and removing
+    // from one while enumerating the other is how this becomes intermittent rather than fixed.
+    context.Set<JournalDraftLine>().RemoveRange([.. draft.Lines]);
+  }
+
+  // Synchronous because it only marks the tracked graph. The context is resolved by the caller's other
+  // operations in the same unit of work.
+  //
+  // ---- THE LINES ARE REMOVED EXPLICITLY, AND THIS COMMENT USED TO SAY OTHERWISE.
+  //
+  // It previously read "the cascade configured on the draft's lines removes them with it". That cascade is
+  // configured and then overwritten: `PersistenceDbContext.OnModelCreating` sets every foreign key in the
+  // composed model to `Restrict` after the contributors run. **Discarding a draft that had lines would
+  // therefore have failed**, on a delete the module believed the database would handle for it.
+  //
+  // The comment described the intent; the model described the truth; nothing tested which one shipped.
   public void Remove(JournalDraft draft)
   {
     ArgumentNullException.ThrowIfNull(draft);
 
     var context = contextAccessor.GetRequiredAsync().GetAwaiter().GetResult();
+
+    if (draft.Lines.Count > 0)
+    {
+      context.Set<JournalDraftLine>().RemoveRange([.. draft.Lines]);
+    }
+
     context.Set<JournalDraft>().Remove(draft);
   }
 }

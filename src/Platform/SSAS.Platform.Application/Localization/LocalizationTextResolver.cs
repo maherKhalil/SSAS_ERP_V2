@@ -201,6 +201,12 @@ public sealed class LocalizationTextResolver(
             token => overrideReadService.ReadAsync(trustedTenantId, culture.Value, tenantKeys, token),
             cancellationToken);
         }
+        // ⚠ THE EXCEPTION IS DISCARDED AND THE EVENT IS NOT: `RecordDegradedTenant` is the record.
+        //
+        // A tenant whose overrides cannot be read falls back to the base catalogue rather than failing the
+        // request, because **a missing override is a wrong WORD and a thrown exception is a broken PAGE.**
+        // The filter keeps cancellation out of that bargain -- a cancelled request is not a degraded
+        // tenant, and counting it as one would make the diagnostic useless exactly when load is highest.
         catch when (!cancellationToken.IsCancellationRequested)
         {
           diagnostics.RecordDegradedTenant(trustedTenantId);

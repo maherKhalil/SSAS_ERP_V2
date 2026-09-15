@@ -34,6 +34,21 @@ public sealed class CompromisedPasswordOptionsValidator(IHostEnvironment environ
         ? ValidateOptionsResult.Success
         : ValidateOptionsResult.Fail("The compromised-password dataset contains no hashes.");
     }
+    // ==============================================================================================
+    // ⚠ THIS LOOKS LIKE FOUR SWALLOWED EXCEPTIONS AND IS THE OPPOSITE (T-241).
+    // ==============================================================================================
+    //
+    // **Every arm below returns `ValidateOptionsResult.Fail`, so an unreadable dataset REFUSES STARTUP.**
+    // Nothing is degraded and compromised-password checking is never silently disabled -- which is what a
+    // reader scanning for discarded exceptions would reasonably assume was happening here.
+    //
+    // **The messages are generic on purpose: the exception text would carry the dataset PATH**, and an
+    // options-validation failure is surfaced at startup and copied into tickets and logs. `InvalidData` is
+    // the one exception whose own message is safe to pass through, because it describes the file's
+    // CONTENTS rather than its location.
+    //
+    // So the exception object is dropped and the fact that it occurred is not. That is the distinction
+    // worth writing down: the information lost is a path, and the information kept is the refusal.
     catch (InvalidDataException exception)
     {
       return ValidateOptionsResult.Fail(exception.Message);

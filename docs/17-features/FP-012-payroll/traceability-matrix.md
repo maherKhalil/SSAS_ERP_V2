@@ -59,6 +59,12 @@ check is mechanical: a scenario absent from this matrix is an orphan whether or 
 requirements are reachable at all. Its absence in FP-011 meant every GL write route returned
 `400 request.invalid` while every layer beneath was correct.
 
+⚠⚠ **CORRECTED 2026-09-01 — `TS-PAY-0016` RETURNS ZERO FILES IN `tests/`, AND THE REACHABILITY PROPERTY IS
+ASSERTED:** `PayrollRouteInventoryTests` holds `The_payroll_route_surface_is_exactly_the_documented_inventory`,
+`Every_payroll_route_requires_a_permission` and `Every_route_requires_the_permission_the_inventory_names`
+(`tests/API.Tests/Payroll/PayrollRouteInventoryTests.cs:58`, `:76`, `:90`). **The paragraph's argument stands;
+the identifier is what does not resolve.**
+
 ## Conventions carried without a requirement of their own
 
 | Decision | Where it binds | Verified by |
@@ -140,8 +146,8 @@ organisation could actually run**, and it belongs in front of the owner before t
 
 **Attendance-derived elements are absent by necessity** (`DEC-PAY-0002`), not by choice.
 
-**Self-service payslip access assumes an identity → employee mapping this package does not assert exists.**
-It must be verified in the repository before any requirement depends on it.
+**Self-service payslip access assumed an identity → employee mapping this package did not assert exists.**
+The mapping exists (`ADR-030`, T-082) and the access shipped under FP-015 — `Payroll.Payslips.ViewOwn`, `GET /me/payslips`.
 
 **`GlReadScope`'s promotion trigger fires here.** FP-011 recorded "a third consumer" as the condition for
 promoting the company-scope type into `SSAS.BuildingBlocks`, written where the type lives because drift in

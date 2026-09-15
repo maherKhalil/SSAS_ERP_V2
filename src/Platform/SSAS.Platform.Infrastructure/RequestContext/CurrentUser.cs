@@ -12,16 +12,6 @@ public sealed class CurrentUser(IHttpContextAccessor httpContextAccessor) : ICur
 
   public string? Email => GetValidatedIdentity()?.FindFirstValue(JwtClaimTypes.Email);
 
-  public Guid? CompanyId
-  {
-    get
-    {
-      var companyIdValue = GetValidatedIdentity()?.FindFirstValue(JwtClaimTypes.CompanyId);
-
-      return Guid.TryParse(companyIdValue, out var companyId) ? companyId : null;
-    }
-  }
-
   public string? SessionId => GetValidatedIdentity()?.FindFirstValue(JwtClaimTypes.SessionId);
 
   public string? TokenId => GetValidatedIdentity()?.FindFirstValue(JwtClaimTypes.JwtId);

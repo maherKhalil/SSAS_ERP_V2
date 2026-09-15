@@ -17,10 +17,12 @@ namespace SSAS.HR.Domain.Departments;
 public static class DepartmentErrors
 {
   public static readonly Error InvalidCode =
-    new("Department.InvalidCode", "The department code is invalid.");
+    new("Department.InvalidCode", "The department code is invalid.",
+    Field: "code");
 
   public static readonly Error InvalidName =
-    new("Department.InvalidName", "The department name is invalid.");
+    new("Department.InvalidName", "The department name is invalid.",
+    Field: "name");
 
   public static readonly Error InvalidActor =
     new("Department.InvalidActor", "A trusted lifecycle actor is required.");
@@ -101,6 +103,13 @@ public static class DepartmentErrors
   public static readonly Error ManagerTerminated =
     new("Department.ManagerTerminated", "A terminated employee cannot manage a department.");
 
+  // `OD-DEP-003` reading (i), closed by the owner 2026-08-20 adopting reading (iii) — "(i) now, (ii) when a
+  // reporting line is introduced". Named for the employee's relation to the department, like the two above,
+  // rather than after `BRULE-DEP-0012`: that identifier is documentation's and whether it is adopted is not
+  // this code's to assume.
+  public static readonly Error ManagerInOwnDepartment =
+    new("Department.ManagerInOwnDepartment", "An employee cannot manage the department they belong to.");
+
   public static readonly Error ManagerNotAssigned =
     new("Department.ManagerNotAssigned", "The department has no manager to clear.");
 
@@ -109,8 +118,23 @@ public static class DepartmentErrors
   public static readonly Error CompanyScopeDenied =
     new("Department.CompanyScopeDenied", "The company is outside the caller's authorized scope.");
 
-  public static readonly Error InvalidPagination =
-    new("Department.InvalidPagination", "The requested page number or page size is out of range.");
+  // ⚠ TWO CODES, BECAUSE ONE CANNOT SAY WHICH PARAMETER TO FIX (T-260).
+  //
+  // The code these replaced covered three conditions -- page below one, page size below one,
+  // page size above the maximum -- and all three answered the same 400 `request.invalid`. **A paging
+  // client that fixes the wrong parameter retries and fails identically**, which is the same argument
+  // that made a malformed identifier a 400 rather than a 404: a caller who cannot tell two conditions
+  // apart cannot act on either.
+  //
+  // TWO rather than three: whether a page size was below one or above the maximum is visible to the
+  // client from its own request. **And there is nowhere to say which bound** -- the problem document
+  // carries `code`, `correlationId` and `resourceKey`, and no message field, so the code is the whole
+  // channel.
+  public static readonly Error InvalidPageNumber =
+    new("Department.InvalidPageNumber", "The requested page number is out of range.");
+
+  public static readonly Error InvalidPageSize =
+    new("Department.InvalidPageSize", "The requested page size is out of range.");
 
   public static readonly Error PermissionDenied =
     new("Department.PermissionDenied", "The caller lacks the required department permission.");

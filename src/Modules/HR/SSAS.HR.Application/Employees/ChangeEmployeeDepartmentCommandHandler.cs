@@ -74,7 +74,7 @@ public sealed class ChangeEmployeeDepartmentCommandHandler(
     // This is where §8's company and branch authorization is applied, by reusing the existing scoping
     // rather than re-deciding it here.
     var employee = await employees.GetByIdAsync(command.EmployeeId, cancellationToken);
-    if (employee is null)
+    if (employee is null || employee.CompanyId != companyId)
     {
       return Result.Failure(EmployeeErrors.NotFound);
     }

@@ -3,6 +3,7 @@ id: ADR-001
 title: Adopt Modular Monolith Architecture
 status: Accepted
 date: YYYY-MM-DD
+depends_on: []
 ---
 
 # Context

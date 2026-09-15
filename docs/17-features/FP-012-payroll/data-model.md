@@ -1,4 +1,4 @@
-# FP-012 — Data Model (RATIFIED)
+# FP-012 — Data Model
 
 **Seven** tables under a `payroll` schema, all in the **Tenant** database.
 

@@ -28,11 +28,13 @@ public static class JournalErrors
 
   public static readonly Error InvalidDescription = new(
     "Gl.JournalDescriptionInvalid",
-    "A journal description is required and must be at most 512 characters.");
+    "A journal description is required and must be at most 512 characters.",
+    Field: "description");
 
   public static readonly Error InvalidReference = new(
     "Gl.JournalReferenceInvalid",
-    "A journal reference must be at most 128 characters.");
+    "A journal reference must be at most 128 characters.",
+    Field: "reference");
 
   public static readonly Error DraftNotFound = new(
     "Gl.JournalDraftNotFound",
@@ -54,10 +56,4 @@ public static class JournalErrors
   public static readonly Error AlreadyReversed = new(
     "Gl.JournalAlreadyReversed",
     "This journal has already been reversed.");
-
-  // Kept for the API surface even though the write boundary is what actually enforces it: a caller who
-  // attempts a mutation deserves a named refusal rather than an infrastructure exception surfacing raw.
-  public static readonly Error Immutable = new(
-    "Gl.JournalImmutable",
-    "A posted journal entry cannot be modified or deleted.");
 }

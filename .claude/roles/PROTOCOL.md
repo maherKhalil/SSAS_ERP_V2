@@ -151,6 +151,7 @@ window polls, sleeps, or busy-waits.
    everything else.** Ruled by the owner 2026-08-25 (`DEC-L-007`). A task with a file under `src/` or
    `tests/` in scope merges itself when every suite ran and passed. A task without one waits for
    `MERGE <task-id>`, because `DEC-L-002` waived its gate and the architect's review is then the only
-   check that exists. Neither role pushes to `main` directly — merging goes through a PR.
+   check that exists. **The integration branch is `ClaudeBranch`, not `main`** (`DEC-L-058`). Neither
+   role pushes to it directly — merging goes through a PR — and neither role writes to `main` at all.
 7. **Files, not chat, carry the detail.** A message that cannot be reconstructed from the
    repository after a restart is a bug in how the loop is being run.

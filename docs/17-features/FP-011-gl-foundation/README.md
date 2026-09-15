@@ -69,6 +69,24 @@ are missing" and stops — leaves the owner with the same blank page and none of
 rather than merged because **a feature package does not get to write the product's requirement catalog by
 filing a pull request.**
 
+> ### ⚠⚠⚠ **THE PARAGRAPH ABOVE IS THE DRAFTING-TIME POSITION AND IS NO LONGER TRUE** *(corrected 2026-09-07)*
+>
+> **It says the `REQ-GL-` lines are `PROPOSED` and *"every one marked `OWNER-DECISION-REQUIRED`"*, in the
+> present tense. ***`OD-GL-0001` RULED, AND THE LINES WERE RATIFIED INTO `Requirement-Catalog/GL.md`. THE
+> MARKERS ARE DISCHARGED.*** Each of `REQ-GL-0001`, `0002`, `0003`, `0004`, `0005`, `0006`, `0007`, `0008`,
+> `0009`, `0010`, `0011`, `0012`, `0013` and `0014` is in the catalog — verified 2026-09-07.**
+>
+> ⚠⚠ ***THIS FILE ALREADY SAID SO, FORTY LINES ABOVE, IN THE SAME PRESENT TENSE:*** *"`REQ-GL-0001`–`0014`
+> ratified into `Requirement-Catalog/GL.md`"*, and again in the ruling table. **So the README asserted
+> ratification and marking simultaneously, unquoted, with no correction block — *a document contradicting
+> itself with no cross-file knowledge required.*** **The original is preserved because the reasoning it
+> carries — why the lines were drafted rather than omitted, and marked rather than merged — remains the
+> correct account of how they came to exist. ONLY THE TENSE HAS ROTTED.**
+>
+> ⚠ **The two summary rows above use ranges — *"`OD-GL-0001` … `OD-GL-0009`"* and *"`REQ-GL-0001`–`0014`"*.
+> ***A RANGE NAMES ITS ENDPOINTS AND IMPLIES ITS INTERIOR.*** They are safe only because both sets are
+> enumerated elsewhere: the nine rulings in the table below them, the fourteen requirements here.**
+
 ## What GL inherits
 
 GL is the first module built after the platform's foundations settled, so it inherits more than any package
@@ -91,7 +109,15 @@ not a rule GL must invent a mechanism for. The mechanism exists, is enforced str
 boundary by `TenantDbContext.PreventAppendOnlyMutation`, and already carries the same reasoning in its own
 comment: *"a correction is another transfer, never a rewrite."* For GL that sentence reads **a correction is
 another journal, never a rewrite** — which is the definition of a reversal. See `DEC-GL-0002`, and
-`OD-GL-0007` for the part that is genuinely undecided: whether a *draft* journal is the same aggregate.
+`OD-GL-0007`, ⚠ ***RULED: two aggregates*** — `JournalDraft` mutable, `JournalEntry` append-only, posting is
+the promotion. *(Corrected 2026-09-07.)*
+
+> ⚠⚠ **THIS SENTENCE SAID `OD-GL-0007` WAS *"for the part that is genuinely undecided: whether a draft
+> journal is the same aggregate."* IT WAS FALSIFIED BY THIS FILE'S OWN TABLE FIFTY-FOUR LINES ABOVE
+> (`:40`), which rules exactly that question — two aggregates.** ***No cross-file knowledge was needed: the
+> document answered the question in a table and called it undecided in a paragraph.*** *The original is
+> preserved here because the reasoning around it — the `IAppendOnlyEntity` argument — is sound and was never
+> in doubt; only the closing clause was stale.*
 
 ## Package contents
 
@@ -120,3 +146,5 @@ module the owner has not yet scoped binds them to reasoning nobody validated.
 answered now, so the build proceeds from here rather than from guesswork.
 
 **No estimate and no sequencing.** Those follow the owner decisions, not the other way round.
+
+status: UNSTARTED

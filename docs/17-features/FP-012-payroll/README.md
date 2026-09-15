@@ -235,3 +235,5 @@ still holds.
 
 **All decisions are ruled; the package is buildable.** One build-site question is recorded OPEN in
 [`domain-model.md`](domain-model.md) — the aggregate split for run lines. See the note there.
+
+status: UNSTARTED

@@ -13,6 +13,8 @@ public sealed class PlatformPermissionCatalog : IPermissionCatalog
       Define(PlatformPermissionNames.UpdateUsers, "Update tenant user profiles"),
       Define(PlatformPermissionNames.DeactivateUsers, "Deactivate tenant users"),
       Define(PlatformPermissionNames.ReactivateUsers, "Reactivate tenant users"),
+      Define(PlatformPermissionNames.LinkEmployees, "Link a tenant user to an employee record"),
+      Define(PlatformPermissionNames.UnlinkEmployees, "Remove a tenant user's link to an employee record"),
       Define(PlatformPermissionNames.AssignUserRoles, "Assign tenant roles to users"),
       Define(PlatformPermissionNames.RemoveUserRoles, "Remove tenant roles from users"),
       Define(PlatformPermissionNames.ViewRoles, "View tenant roles"),
@@ -35,7 +37,14 @@ public sealed class PlatformPermissionCatalog : IPermissionCatalog
       Define(PlatformPermissionNames.ViewTenants, "View platform tenant lifecycle records", PermissionScope.PlatformSupport),
       Define(PlatformPermissionNames.ManageTenants, "Create platform tenants", PermissionScope.PlatformSupport),
       Define(PlatformPermissionNames.TenantLifecycle, "Change platform tenant lifecycle state", PermissionScope.PlatformSupport),
-      Define(PlatformPermissionNames.AdministerPlatformSupport, "Administer platform-support principals and their permission assignments", PermissionScope.PlatformSupport)
+      Define(PlatformPermissionNames.AdministerPlatformSupport, "Administer platform-support principals and their permission assignments", PermissionScope.PlatformSupport),
+      Define(PlatformPermissionNames.ViewPlans, "View subscription plans", PermissionScope.PlatformSupport),
+      Define(PlatformPermissionNames.AdministerPlans, "Administer subscription plans", PermissionScope.PlatformSupport),
+      Define(PlatformPermissionNames.ViewSubscriptions, "View tenant subscriptions", PermissionScope.PlatformSupport),
+      Define(PlatformPermissionNames.AdministerSubscriptions, "Administer tenant subscriptions", PermissionScope.PlatformSupport),
+      Define(PlatformPermissionNames.AdministerEntitlementGrants, "Administer tenant entitlement grants", PermissionScope.PlatformSupport),
+      Define(PlatformPermissionNames.ViewInvoices, "View invoices", PermissionScope.PlatformSupport),
+      Define(PlatformPermissionNames.AdministerInvoices, "Administer invoices", PermissionScope.PlatformSupport)
     }
     .ToDictionary(definition => definition.Name.Value, StringComparer.Ordinal);
 

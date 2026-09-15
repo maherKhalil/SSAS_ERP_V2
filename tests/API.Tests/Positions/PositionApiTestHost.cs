@@ -12,6 +12,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.IdentityModel.Tokens;
 using SSAS.API.Tests.Departments;
 using SSAS.API.Tests.Employees;
+using SSAS.HR.Domain.Positions;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
@@ -267,7 +268,96 @@ public sealed class PositionApiTestHost : IAsyncLifetime
     EmployeeReads.Reset();
     EmployeeRepository.Reset();
     UnitOfWork.Failure = null;
+
+    SeedPositionFamilies();
   }
+
+  // ================================================================================================
+  // ⚠⚠⚠ EVERY TEST STARTS WITH THE THREE FAMILIES SEEDED, BECAUSE NONE OF THEM DID UNTIL 2026-09-02
+  // ================================================================================================
+  //
+  // `Existing` was assigned nowhere, so every `PUT`, `activate` and `deactivate` answered `404` and **the
+  // permission matrix could not distinguish *the caller is authorised* from *the route is broken*** — it
+  // asserts `403` versus not-`403`, and `404` satisfies not-`403`. Seeding here is what makes those routes
+  // reach their handlers at all.
+  //
+  // ---- ⚠⚠ ALL THREE STAMPS ARE LOAD-BEARING AND EACH WAS FOUND BY A FAILING RUN, NOT BY READING.
+  //
+  //   `TenantId`    ownership is checked FIRST (`PositionCommandHandlers:228`), so an UNSTAMPED seed is
+  //                 indistinguishable from NO seed — it answers the same `PositionNotFound`.
+  //   `CompanyId`   the live company-scope re-ask at `:235` runs against the aggregate's OWN company.
+  //   `RowVersion`  a new aggregate carries `[]`, which differs from ANY eight-byte token — so a
+  //                 concurrency test would pass because the seed was EMPTY rather than because the caller
+  //                 was STALE. Green for the wrong reason.
+  //
+  // ⚠ ONE SEEDING PATH, HERE. A test needing a variant mutates what this produced rather than building its
+  // own — two constructions of the same fixture drift, and the stamps above are exactly the kind of detail
+  // that would be copied once and then not updated.
+  private void SeedPositionFamilies()
+  {
+    var now = new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero);
+
+    var position = Position.Create(
+      PositionCode.Create("ACC-SR").Value, PositionTitle.Create("Senior Accountant").Value,
+      jobGradeId: null, "seed", Guid.NewGuid(), now).Value;
+    var jobGrade = JobGrade.Create(
+      JobGradeCode.Create("G7").Value, JobGradeName.Create("Grade 7").Value,
+      rankOrder: 70, salaryGradeId: null, "seed", Guid.NewGuid(), now).Value;
+    var salaryGrade = SalaryGrade.Create(
+      SalaryGradeCode.Create("S7").Value, SalaryGradeName.Create("Band 7").Value,
+      rankOrder: 70, band: null, "seed", Guid.NewGuid(), now).Value;
+
+    foreach (var aggregate in new object[] { position, jobGrade, salaryGrade })
+    {
+      Stamp(aggregate, "TenantId", TenantId);
+      Stamp(aggregate, "CompanyId", CompanyA);
+      Stamp(aggregate, "RowVersion", SeededRowVersion);
+    }
+
+    PositionRepository.Existing = position;
+    JobGradeRepository.Existing = jobGrade;
+    SalaryGradeRepository.Existing = salaryGrade;
+
+    // ---- ⚠⚠ AND THE READ SIDE, BECAUSE EVERY WRITE ROUTE READS BACK BEFORE IT ANSWERS.
+    //
+    // `update`, `activate` and `deactivate` read back BY THE ROUTE'S ID — the one seeded above — so seeding
+    // `Detail` with that id is what turns their `500` into a real answer. Without it the write succeeds and
+    // the endpoint still fails at `PositionEndpointRouteBuilderExtensions:254`.
+    //
+    // ⚠⚠⚠ THE ID MATCH IN THESE STUBS IS DELIBERATE AND LOAD-BEARING — SEE `PositionApiTestStubs:28-57`.
+    // **Every 200 in this suite proves the route passed the RIGHT id**, which is asserted nowhere else in
+    // the API suite for any family. **Do NOT make these answer for ids they were not given** — that is the
+    // `StubDepartmentReads` trade the stub file explicitly forbids, and it would delete that property
+    // silently while looking like a fix.
+    //
+    // The THREE CREATE routes still answer `500` and that is by design, not by omission: they read back an
+    // id the aggregate mints inside the request, which no seed can predict. Measured there as blocking ZERO
+    // acceptance criteria.
+    // ⚠⚠ SEEDED WITH THE **ROUTE** IDS, NOT THE AGGREGATES' MINTED ONES, AND THE DISTINCTION IS THE WHOLE
+    // POINT OF THE ID MATCH. The read stubs answer only for the id they are asked for; the routes ask with
+    // `PositionId`/`JobGradeId`/`SalaryGradeId`, while `Position.Create` mints its own `Guid` that no route
+    // carries. Seeding the minted id leaves every read at `404` — measured, by doing exactly that first.
+    PositionReads.Detail = new PositionDetail(
+      PositionId, CompanyA, "ACC-SR", "Senior Accountant", null, null, position.Status, SeededRowVersion);
+    JobGradeReads.Detail = new JobGradeDetail(
+      JobGradeId, CompanyA, "G7", "Grade 7", 70, null, jobGrade.Status, SeededRowVersion);
+    SalaryGradeReads.Detail = new SalaryGradeDetail(
+      SalaryGradeId, CompanyA, "S7", "Band 7", 70, null, null, null, salaryGrade.Status, SeededRowVersion);
+  }
+
+  // The eight-byte token the seeded aggregates carry; `"AAAAAAAAB9E="` is its base64 form, which is what a
+  // request body sends.
+  public static readonly byte[] SeededRowVersion = [0, 0, 0, 0, 0, 0, 7, 209];
+
+  // ⚠ THROWS RATHER THAN SKIPPING. Ownership and the concurrency token are database-assigned in production;
+  // a rename that turned this into a no-op would put the aggregates back to unstamped, which answers `404`
+  // and is exactly the silent state this seeding exists to end.
+  private static void Stamp(object aggregate, string property, object value) =>
+    (aggregate.GetType().GetProperty(property)
+      ?? throw new InvalidOperationException(
+        $"{aggregate.GetType().Name} has no '{property}' to stamp; the route would answer 404 and every " +
+        "test touching it would pass without reaching its subject."))
+      .SetValue(aggregate, value);
 
   public static HttpRequestMessage Request(
     HttpMethod method,

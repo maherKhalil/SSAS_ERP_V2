@@ -6,11 +6,13 @@ public static class AttendancePeriodErrors
 {
   public static readonly Error CompanyRequired = new(
     "Attendance.PeriodCompanyRequired",
-    "An attendance period must belong to a company.");
+    "An attendance period must belong to a company.",
+    Field: "companyId");
 
   public static readonly Error InvalidName = new(
     "Attendance.PeriodNameInvalid",
-    "An attendance period name is required and must be at most 200 characters.");
+    "An attendance period name is required and must be at most 200 characters.",
+    Field: "name");
 
   public static readonly Error InvalidRange = new(
     "Attendance.PeriodRangeInvalid",

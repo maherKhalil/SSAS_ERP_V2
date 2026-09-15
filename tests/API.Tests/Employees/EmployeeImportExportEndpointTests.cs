@@ -21,6 +21,50 @@ namespace SSAS.API.Tests.Employees;
 // What only this level can establish: which content types are accepted, which permission each route
 // carries, what a refusal looks like on the wire, whether the export's bytes carry a byte order mark, and
 // whether the headers the contract promises are actually set.
+// ==================================================================================================
+// ⚠⚠⚠ `AC-DOC-0017`, `AC-DOC-0018`, `AC-DOC-0019` AND `AC-DOC-0020` EXIST, ARE APPROVED, AND SIT OUTSIDE
+// EVERY COVERAGE NUMBER THIS PROJECT PUBLISHES. CENSUSED 2026-09-05. NONE IS CITED, AND NONE CAN BE.
+// ==================================================================================================
+//
+// **Recorded here because this is where a reader meets the `AC-DOC` prefix**: `AC-DOC-0001`–`0016` are
+// FP-009's and are cited in this file and its siblings. *Four more share the prefix, and nothing in the test
+// tree mentions them.*
+//
+// ---- HOW THEY LEFT THE COUNT, WHICH IS A BOOKKEEPING STORY AND NOT A LOST FEATURE.
+//
+// `FP-009/acceptance-criteria.md:10` — *"**Approved 2026-08-22. Sixteen criteria** — `AC-DOC-0017`–`0020`
+// travelled to FP-010 with the documents material."* — and `:119-123` names all four and where they went.
+// ***THE TRANSFER IS DELIBERATE, DOCUMENTED AT BOTH ENDS, AND KEPT THE IDENTIFIERS.***
+//
+// **FP-010 has no `acceptance-criteria.md`.** It holds a `README.md`, a `carried-analysis.md` — which is where
+// the four are declared, as a first-shape table — and a `decisions-open.md`. ⚠ ***SO THE FEATURE IS PARKED,
+// NOT UNSTARTED, AND THE FOLDER FALLS OUTSIDE A POPULATION FILTER THAT KEYS ON A FILE NAME.*** The gated walk
+// returns 602 declarations and the ungated walk returns 606; **these four are the entire difference.**
+//
+// ---- WHAT THEY REQUIRE, AND WHY NO TEST CAN CARRY THEM TODAY.
+//
+//   `AC-DOC-0017`  content type verified against the BYTES — a PDF renamed `.png` and declared
+//                  `image/png` is refused
+//   `AC-DOC-0018`  metadata visibility does not grant content — `View` without `Download` can list and
+//                  cannot obtain bytes through any route; **the refusal is `403`, not `404`**
+//   `AC-DOC-0019`  document reads inherit the employee's scope — an out-of-scope employee's document
+//                  answers `404` **identically** whether it exists, belongs to another company, or never
+//                  existed
+//   `AC-DOC-0020`  withdrawal is one-way and metadata survives it — a second withdrawal is `409`;
+//                  uploader and timestamp stay readable whatever happened to the bytes
+//
+// ***THE SUBJECT DOES NOT EXIST. `src/` CONTAINS NO `EmployeeDocument` TYPE, NO UPLOAD PATH AND NO WITHDRAWAL
+// PATH*** — zero hits across the whole of `src/` for the document aggregate or either verb. **So all four are
+// correctly uncited: there is nothing to witness.**
+//
+// ⚠⚠ **THESE ARE FOUR CONSIDERED SECURITY DECISIONS, NOT PLACEHOLDERS.** *`0018`'s `403`-not-`404` and
+// `0019`'s `404`-for-everything are opposite disclosure rulings made on purpose for two different questions* —
+// whether a caller may know a document EXISTS, versus whether they may know an EMPLOYEE does. **Whoever
+// builds the subsystem needs both, and neither is discoverable from a coverage report that cannot see them.**
+//
+// ⚠⚠⚠ **AND THE GENERAL POINT, BECAUSE IT IS THE REASON THIS PARAGRAPH EXISTS: A CRITERION DOES NOT LEAVE
+// THE COUNT WHEN IT IS RETIRED. IT LEAVES WHEN THE FILE HOLDING IT IS RENAMED.** *Four approved criteria
+// became invisible to every published figure by an act nobody would recognise as a change to coverage.*
 public sealed class EmployeeImportExportEndpointTests : IClassFixture<EmployeeApiTestHost>
 {
   private const string Header = "employeeNumber,fullName,employmentDate,departmentCode,positionCode";
@@ -109,14 +153,51 @@ public sealed class EmployeeImportExportEndpointTests : IClassFixture<EmployeeAp
   // ================================================================================================
   //
   // `StrictCsvReaderTests` proves the reader's behaviour directly. This proves the ROUTE is wired to it —
-  // that a JSON body reaches a `400 request.invalid` rather than being parsed by something else.
+  // that a JSON body reaches the route's own refusal rather than being parsed by something else.
+  // ⚠ AND THE OTHER SIDE OF THE SPLIT, WITHOUT WHICH THE CHANGE IS HALF-ASSERTED (T-274).
+  //
+  // `ReadStrictCsvAsync` returns null for three failures and cannot say which. Only ONE of them is an
+  // unsupported FORMAT. A body that declares `text/csv` and then carries bytes that are not valid UTF-8
+  // is a **malformed file**, which FP-009 answers with `request.invalid` -- the same row as a bad header
+  // or an unknown column.
+  //
+  // Without this, the test above would pass equally if the route had simply renamed its only refusal.
+  [Fact]
+  [Trait("Decision", "DEC-DOC-0001")]
+  public async Task T4b_A_csv_body_carrying_invalid_utf8_is_a_malformed_file_not_an_unsupported_format()
+  {
+    using var request = EmployeeApiTestHost.CsvRequest(
+      HttpMethod.Post, "/api/hr/employees/import?importKey=t4b",
+      host.TokenWith(HrPermissionNames.ImportEmployees), Csv);
+
+    // 0xFF is not a legal UTF-8 byte in any position. The content type still declares text/csv, so the
+    // FORMAT gate admits it and the DECODER is what refuses.
+    request.Content = new ByteArrayContent([0xFF, 0xFE, 0xFD]);
+    request.Content.Headers.TryAddWithoutValidation("Content-Type", "text/csv; charset=utf-8");
+
+    using var response = await host.Client.SendAsync(request);
+
+    Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    Assert.Equal("request.invalid", await EmployeeApiTestHost.ProblemCodeAsync(response));
+  }
+
+  // ⚠ THE ANSWER NAMES CSV SINCE T-274, AND THAT IS THE CONTRACT RATHER THAN A NEW OPINION.
+  //
+  // This asserted `request.invalid` for every case. **It was not failing -- it pinned the behaviour
+  // T-274 deliberately changed.** `DEC-DOC-0001` reads: *"Import accepts UTF-8 CSV only in V1... The
+  // response to an unsupported format is `400`, naming CSV."* `request.invalid` names nothing, so a
+  // caller sending XLSX got the same answer as one sending a CSV with a bad header -- and FP-009's
+  // contract table separates those two rows deliberately.
+  //
+  // The status is unchanged at 400. Only the code moved, which is the point: the category was always
+  // right and the instruction was missing.
   [Theory]
   [InlineData("application/json")]
   [InlineData("text/plain")]
   [InlineData("multipart/form-data; boundary=x")]
   [InlineData("text/csv; charset=windows-1256")]
   [Trait("Decision", "DEC-DOC-0014")]
-  public async Task T4_A_body_that_is_not_utf8_csv_is_refused_by_the_route(string contentType)
+  public async Task T4_A_body_whose_FORMAT_is_not_utf8_csv_is_refused_by_name(string contentType)
   {
     using var request = EmployeeApiTestHost.CsvRequest(
       HttpMethod.Post, "/api/hr/employees/import?importKey=t4",
@@ -125,7 +206,8 @@ public sealed class EmployeeImportExportEndpointTests : IClassFixture<EmployeeAp
     using var response = await host.Client.SendAsync(request);
 
     Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-    Assert.Equal("request.invalid", await EmployeeApiTestHost.ProblemCodeAsync(response));
+    Assert.Equal("employee_import.format_unsupported",
+      await EmployeeApiTestHost.ProblemCodeAsync(response));
 
     // NO RUN RECORD. A refusal of the REQUEST is not an import attempt, so nothing is recorded and the key
     // is not consumed — unlike a refused FILE, which is.
@@ -220,7 +302,13 @@ public sealed class EmployeeImportExportEndpointTests : IClassFixture<EmployeeAp
 
   // ---- THE ROW-LEVEL CODES ARE THE PROJECTION'S, NOT THE ROUTE MAPPER'S (R8).
   //
-  // A department code that resolves to nothing reports `department.not_found` IN THE REPORT — a code the
+  // ---- THE ROW CODE CHANGED IN T-096, AND THE CHANGE IS THE POINT OF THIS TEST EXISTING.
+  //
+  // It reported `department.not_found`, which `DepartmentApiErrorMapper` also carries — at 404, while this
+  // is 400. **One wire string, two statuses, and a caller sees strings rather than constants.** The row
+  // case now has its own code under this file's `employee_import.` convention.
+  //
+  // A department code that resolves to nothing reports it IN THE REPORT — a code the
   // route mapper never emits, because at route level the same domain error is `request.invalid`.
   [Fact]
   [Trait("Decision", "R8")]
@@ -237,7 +325,7 @@ public sealed class EmployeeImportExportEndpointTests : IClassFixture<EmployeeAp
     var error = document.RootElement.GetProperty("errors").EnumerateArray().Single();
 
     Assert.Equal("departmentCode", error.GetProperty("column").GetString());
-    Assert.Equal("department.not_found", error.GetProperty("code").GetString());
+    Assert.Equal("employee_import.department_not_found", error.GetProperty("code").GetString());
   }
 
   // ---- AND `status=Terminated` REPORTS ITS OWN NAMESPACE (R9, OD-DOC-010).
@@ -375,6 +463,73 @@ public sealed class EmployeeImportExportEndpointTests : IClassFixture<EmployeeAp
     Assert.DoesNotContain("scope", body, StringComparison.OrdinalIgnoreCase);
   }
 
+  // ================================================================================================
+  // ⚠⚠⚠ T23. THE EXPORT RUN RECORD — WRITTEN BY THE PRODUCT, RECORDED BY THE FIXTURE, READ BY NOBODY.
+  // ================================================================================================
+  //
+  // `AC-DOC-0015` — *"Every export writes a run record naming the column set and the scope in force. A
+  // failed export writes none, because nothing left the system."*
+  //
+  // ***`StubExportRunRepository` HAS COLLECTED EVERY EXPORT RUN THIS SUITE HAS EVER PRODUCED, IN A PUBLIC
+  // `Runs` LIST, AND NOT ONE ASSERTION HAS EVER LOOKED AT IT.*** Measured: `host.ImportRuns.Runs` is
+  // asserted in five places — empty after a refusal, `Single()` for the file name, `Outcome` after validate
+  // — and **`host.ExportRuns.Runs` in none.** *A value that is never read cannot be reached by any
+  // assertion, and the twin sitting beside it is what makes the omission visible rather than invisible.*
+  //
+  // ⚠ AND THE STAKES ARE THE ONES THE AGGREGATE ITSELF STATES: *"for an export, the run record is the ONLY
+  // control that survives the data leaving. Everything else — the permission, the scope, the column set —
+  // acted before the bytes went out and cannot be re-applied afterwards."* **An export that answered `200`
+  // and wrote no record would satisfy every existing assertion in this file, including `T11`'s.**
+  //
+  // ⚠⚠ `T15` DOES NOT CARRY THIS AND THE NAMES INVITE THE OPPOSITE READING. It asserts the wire shape
+  // carries the column set **and no scope** (`DEC-DOC-0016`); the criterion says the RECORD names the column
+  // set **and the scope in force**. *Those agree — the scope is recorded server-side and withheld from the
+  // caller — but only one of them is about the record, and `T15` is about the response.*
+  //
+  // ⚠⚠⚠ THE SECOND CLAUSE NEEDS A REFUSAL THAT REACHES THE HANDLER, WHICH IS WHY THE PAGING PARAMETER IS
+  // USED RATHER THAN A PERMISSION FAILURE. **A `403` refused at the authorization filter proves nothing
+  // about the export path — no record would be written by a route that was never entered.** *A `400` on a
+  // rejected paging parameter is refused inside the endpoint, so `Empty` is a statement about the export
+  // deciding not to record rather than about the request never arriving.*
+  [Fact]
+  [Trait("Criterion", "AC-DOC-0015")]
+  public async Task T23_A_successful_export_records_its_column_set_and_scope_and_a_refused_one_records_nothing()
+  {
+    host.Reads.ExportRows =
+    [
+      new("E-1", "Layla Haddad", new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero),
+        "ENG", "DEV", SSAS.HR.Domain.Employees.EmployeeStatus.Active)
+    ];
+
+    using var exported = await host.Client.SendAsync(EmployeeApiTestHost.Request(
+      HttpMethod.Get, "/api/hr/employees/export",
+      host.TokenWith(HrPermissionNames.ExportEmployees, HrPermissionNames.ViewEmployees)));
+
+    Assert.Equal(HttpStatusCode.OK, exported.StatusCode);
+
+    var run = Assert.Single(host.ExportRuns.Runs);
+    Assert.Contains("employeeNumber", run.ColumnSet, StringComparison.Ordinal);
+    Assert.Contains("positionCode", run.ColumnSet, StringComparison.Ordinal);
+    Assert.Equal(1, run.RowCount);
+    Assert.NotEmpty(run.ExecutedBy);
+
+    // ---- THE SCOPE IN FORCE, WHICH IS THE HALF THE COLUMN SET CANNOT SUBSTITUTE FOR.
+    //
+    // "Who exported?" is answerable from the actor; "could that person have exported THIS employee?" is not,
+    // unless the scope at the time is on the record. Scope changes, so reconstructing it later from current
+    // authorization is unsound — the aggregate's own header says so.
+    Assert.NotEmpty(run.ScopeCompanyIds);
+
+    host.ExportRuns.Reset();
+
+    using var refused = await host.Client.SendAsync(EmployeeApiTestHost.Request(
+      HttpMethod.Get, "/api/hr/employees/export?page=1",
+      host.TokenWith(HrPermissionNames.ExportEmployees, HrPermissionNames.ViewEmployees)));
+
+    Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
+    Assert.Empty(host.ExportRuns.Runs);
+  }
+
   [Theory]
   [InlineData("/api/hr/employees/import-runs?pageSize=0")]
   [InlineData("/api/hr/employees/import-runs?pageNumber=0")]
@@ -431,8 +586,90 @@ public sealed class EmployeeImportExportEndpointTests : IClassFixture<EmployeeAp
   // ================================================================================================
   // T18. THE IMPORT KEY REPLAY RETURNS THE ORIGINAL RESULT (DEC-DOC-0004)
   // ================================================================================================
+  // ================================================================================================
+  // ⚠⚠⚠ T24. A REFUSED RUN OCCUPIES ITS KEY, AND THE REPLAY MUST RETURN THE REFUSAL — NOT IMPORT.
+  // ================================================================================================
+  //
+  // `AC-DOC-0009` — *"A refused submission still consumes its key. After a refusal, replaying the same key
+  // returns the refusal rather than importing, so a failed run cannot be silently retried under the key
+  // meant to prevent exactly that."*
+  //
+  // ⚠ TWO EXISTING TESTS BETWEEN THEM ALMOST SAY THIS, AND THE GAP BETWEEN THEM IS THE WHOLE CRITERION.
+  // `ImportExportRunDomainTests.A_refused_run_accepts_nothing_and_still_consumed_its_key` shows a refused
+  // run RECORDS the normalized key — that the key is occupied. `T18` shows a replay returns the original
+  // run — for an APPLIED one. ***NEITHER DRIVES A REFUSED RUN THROUGH A REPLAY, AND "the outcome is
+  // returned unchanged" IS AN INFERENCE FROM READING THE HANDLER RATHER THAN A THING A FIXTURE SAYS.***
+  //
+  // ⚠⚠ AND THE INFERENCE IS THE DANGEROUS KIND, BECAUSE THE OPPOSITE BEHAVIOUR IS THE PLAUSIBLE ONE. *A
+  // reasonable person implementing replay would be tempted to let a FAILED run be retried* — it reads as
+  // helpfulness rather than as a hole. **The criterion exists to forbid exactly that, and it is the clause
+  // no test was making.** `Repository.Added` staying empty is what separates "returned the refusal" from
+  // "returned the refusal and imported anyway".
+  [Fact]
+  [Trait("Criterion", "AC-DOC-0009")]
+  public async Task T24_Replaying_a_refused_import_key_returns_the_refusal_and_imports_nothing()
+  {
+    var refused = EmployeeImportRun.Refused(
+      EmployeeApiTestHost.TenantId, EmployeeApiTestHost.CompanyA,
+      ImportKey.Create("refused-key").Value, "bad.csv", 40_960, 1_000, rejectedCount: 2,
+      DateTimeOffset.UtcNow, "someone-else").Value;
+
+    host.ImportRuns.Existing = refused;
+
+    using var response = await host.Client.SendAsync(EmployeeApiTestHost.CsvRequest(
+      HttpMethod.Post, "/api/hr/employees/import?importKey=refused-key",
+      host.TokenWith(HrPermissionNames.ImportEmployees, HrPermissionNames.CreateEmployees), Csv));
+
+    Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+    using var document = JsonDocument.Parse(await EmployeeApiTestHost.BodyAsync(response));
+    var root = document.RootElement;
+
+    Assert.Equal(refused.Id, root.GetProperty("importRunId").GetGuid());
+    Assert.Equal("Refused", root.GetProperty("outcome").GetString());
+    Assert.Equal(2, root.GetProperty("rejectedCount").GetInt32());
+
+    // The half that makes it a refusal rather than a retry.
+    Assert.Empty(host.Repository.Added);
+
+    // ⚠⚠⚠ THE `Refused` OUTCOME IN THE FIXTURE IS LOAD-BEARING AND THIS TEST MUST NOT BE WIDENED.
+    //
+    // ***CORRECTION, AND IT IS TO A CLAIM THIS COMMENT MADE ITSELF.*** An earlier version of this note said
+    // the short-circuit *"cannot satisfy both criteria"* — `AC-DOC-0005`'s *"a subsequent real import of the
+    // same file succeeds"* against `AC-DOC-0008`'s replay — and called it *"a three-state requirement met by
+    // a two-state model"* and *"an open product decision."* **THAT WAS WRONG, AND IT WAS WRONG WHEN
+    // WRITTEN.**
+    //
+    // ⚠⚠⚠ AND THE SHARPEST FORM IS A DIMENSION ERROR IN THE OLD NOTE, NOT A PRODUCT PROBLEM AT ALL:
+    // ***`AC-DOC-0005` SAYS "A SUBSEQUENT REAL IMPORT OF THE SAME **FILE** SUCCEEDS". THE SHORT-CIRCUIT
+    // KEYS ON THE **IMPORT KEY**.*** Same file, different key, no replay — the two sentences were never
+    // about the same thing, and reading one as constraining the other is what manufactured the conflict.
+    //
+    // ⚠ THE IMPORT KEY IS THE CALLER'S, WHICH IS WHAT DISSOLVES THE CONTRADICTION. `RunHistoryReadModels`
+    // says it plainly — *"`FileName` and `ImportKey` DO ship. Both are values the caller supplied"* — and
+    // `EmployeeApiErrorMapper` classes `InvalidImportKey` as caller input. **A validate-only run and a
+    // subsequent real import carry whatever keys the caller chooses, so both criteria are satisfiable and
+    // the product needs no three-state model under one key.** *The caller separates them.*
+    //
+    // ⚠⚠ WHAT SURVIVES IS A FOOT-GUN, NOT AN UNSATISFIABLE REQUIREMENT: **an operator who reuses ONE key
+    // across a validate run and a real import gets the validated run replayed and imports nothing** — the
+    // replay behaving exactly as `AC-DOC-0008` requires, on a key the operator did not mean to reuse.
+    // *A usability hazard worth recording; not a defect, and not a blocked criterion.*
+    //
+    // ***AND THE INSTRUCTION STILL STANDS, ON A DIFFERENT REASON.*** This test seeds `Refused` and asserts
+    // only about `Refused` because that is its subject. **Widening it to *"ANY existing key short-circuits"*
+    // would restate `AC-DOC-0008`, which `T18_Replaying_an_import_key_returns_the_original_run_over_http`
+    // already owns** — two tests asserting one criterion, with this one's `Refused` fixture no longer doing
+    // any work. *The old reason — that widening would block a fix — is retracted with the claim it rested
+    // on.*
+  }
+
+  // ⚠ CITES `AC-DOC-0008` — *"Submitting a file under an `importKey` already recorded for the company
+  // returns the ORIGINAL run's result and creates no additional employees. The second call answers `200`,
+  // not a conflict status."* **All three clauses.**
   [Fact]
   [Trait("Decision", "DEC-DOC-0004")]
+  [Trait("Criterion", "AC-DOC-0008")]
   public async Task T18_Replaying_an_import_key_returns_the_original_run_over_http()
   {
     var original = EmployeeImportRun.Applied(
@@ -455,6 +692,18 @@ public sealed class EmployeeImportExportEndpointTests : IClassFixture<EmployeeAp
     Assert.Equal(original.Id, root.GetProperty("importRunId").GetGuid());
     Assert.Equal("Applied", root.GetProperty("outcome").GetString());
     Assert.Equal(7, root.GetProperty("rowCount").GetInt32());
+
+    // ⚠⚠⚠ *"CREATES NO ADDITIONAL EMPLOYEES"* — THE CLAUSE THAT MAKES THIS IDEMPOTENCY RATHER THAN A
+    // CACHED RESPONSE, AND IT COULD NOT BE STATED HERE UNTIL THE DOUBLE COULD SPEAK.
+    //
+    // `StubEmployeeRepository.AddAsync` returned `Task.CompletedTask` and discarded the employee, so **the
+    // three assertions above are entirely about the RESPONSE BODY**: a replay that answered with the
+    // original run's numbers AND re-imported every row would have satisfied all of them.
+    //
+    // ⚠⚠ MEASURED, NOT ARGUED. Disabling the replay short-circuit in `ImportEmployeesCommandHandler`
+    // reddens this test WITH THE THREE ASSERTIONS ABOVE SILENCED — so this line is an independent witness
+    // rather than a passenger on theirs.
+    Assert.Empty(host.Repository.Added);
   }
 
   // ================================================================================================
@@ -549,9 +798,34 @@ public sealed class EmployeeImportExportEndpointTests : IClassFixture<EmployeeAp
     Assert.Equal("T22", recorded.NormalizedImportKey);
   }
 
-  // ---- AND THE VALIDATE ROUTE WRITES A `Validated` RUN AND NO EMPLOYEES.
+  // ---- ⚠⚠⚠ THE VALIDATE ROUTE WRITES A `Validated` RUN AND NOTHING ELSE (AC-DOC-0005).
+  //
+  // ***THIS TEST'S NAME PROMISED "AND NO EMPLOYEES" AND ITS BODY DID NOT ASSERT IT.*** The header line
+  // above it read *"writes a `Validated` run and no employees"*; the assertions were the status, the wire
+  // outcome, and the run record. **A validate route that created every employee in the file passed it.**
+  //
+  // ⚠ A NEAR-MISS TEST WITH THE RIGHT NAME is the hardest blindness to see, because the name is what a
+  // reader checks coverage against. *Nothing was wrong with what it asserted; the gap was between the
+  // title and the body, and only reading the body finds that.*
+  //
+  // ---- THE CRITERION HAS FOUR CLAUSES AND THEY ARE INDEPENDENT.
+  //
+  // *"After `FR-DOC-0101` against a wholly valid file, the employee count is unchanged, no
+  // branch-assignment rows exist for the file's employees, and a subsequent real import of the same file
+  // succeeds. A run record with outcome `Validated` exists."*
+  //
+  //   count unchanged            asserted here — the clause the name promised
+  //   no branch-assignment rows  asserted here — and it needed a stub change to be observable AT ALL
+  //   a later real import        `A_validated_file_still_imports_under_a_different_key` below
+  //   a `Validated` run record   asserted here, and was the only clause this test carried
+  //
+  // ⚠⚠ THE SECOND CLAUSE IS NOT IMPLIED BY THE FIRST, WHICH IS WHY IT IS ASSERTED SEPARATELY.
+  // `IEmployeeRepository` exposes `AppendBranchAssignmentAsync` independently of `AddAsync`, so a run
+  // could append assignment rows without creating employees. **Until this commit the stub discarded those
+  // calls, so a validate run that wrote assignments looked identical to one that wrote none.**
   [Fact]
   [Trait("Decision", "FR-DOC-0101")]
+  [Trait("Criterion", "AC-DOC-0005")]
   public async Task T21_The_validate_route_records_a_validated_run()
   {
     using var response = await host.Client.SendAsync(EmployeeApiTestHost.CsvRequest(
@@ -564,5 +838,202 @@ public sealed class EmployeeImportExportEndpointTests : IClassFixture<EmployeeAp
 
     Assert.Equal("Validated", document.RootElement.GetProperty("outcome").GetString());
     Assert.Equal(EmployeeImportOutcome.Validated, host.ImportRuns.Runs.Single().Outcome);
+
+    // ---- AND IT WROTE NOTHING. The two clauses the name promised and the body omitted.
+    Assert.Empty(host.Repository.Added);
+    Assert.Empty(host.Repository.AppendedAssignments);
+  }
+
+  // ---- ⚠⚠⚠ AND A REAL IMPORT OF THE SAME FILE AFTERWARDS SUCCEEDS (AC-DOC-0005, THIRD CLAUSE).
+  //
+  // ***THE CRITERION SAYS "THE SAME FILE". THE REPLAY SHORT-CIRCUIT KEYS ON THE IMPORT KEY.*** Those are
+  // different nouns, and a note in this file once read them as one and recorded a contradiction that did
+  // not exist — corrected at `d69f2f1`. **This test is the positive form of that correction: same bytes,
+  // second key, and the import proceeds.**
+  //
+  // ⚠ THE SECOND KEY IS THE FIXTURE DOING THE DISCRIMINATION. Re-submitting under `t21`'s key would
+  // replay the validated run and create nothing — correct behaviour, and the foot-gun an operator meets
+  // when they reuse one key per batch. *A test that did that would assert the opposite of this clause and
+  // look like it was asserting this one.*
+  //
+  // ⚠⚠ AND IT IS A DECISION, NOT A STORED EFFECT, WHICH IS WHY IT IS GATED. Whether the handler replays
+  // or proceeds is settled before any row is written; only the rows are the database's business, and the
+  // stub repository stands in for them exactly as it does for every other import test here.
+  [Fact]
+  [Trait("Criterion", "AC-DOC-0005")]
+  public async Task A_validated_file_still_imports_under_a_different_key()
+  {
+    using var validated = await host.Client.SendAsync(EmployeeApiTestHost.CsvRequest(
+      HttpMethod.Post, "/api/hr/employees/import/validate?importKey=doc0005-validate",
+      host.TokenWith(HrPermissionNames.ImportEmployees, HrPermissionNames.CreateEmployees), Csv));
+
+    Assert.Equal(HttpStatusCode.OK, validated.StatusCode);
+
+    // THE PREMISE. If validation had written employees the assertion below could not tell the import's
+    // work from the validation's.
+    Assert.Empty(host.Repository.Added);
+
+    using var imported = await host.Client.SendAsync(EmployeeApiTestHost.CsvRequest(
+      HttpMethod.Post, "/api/hr/employees/import?importKey=doc0005-import",
+      host.TokenWith(HrPermissionNames.ImportEmployees, HrPermissionNames.CreateEmployees), Csv));
+
+    Assert.Equal(HttpStatusCode.OK, imported.StatusCode);
+
+    using var document = JsonDocument.Parse(await EmployeeApiTestHost.BodyAsync(imported));
+
+    // ***"SUCCEEDS" IS NOT "ANSWERS 200".*** A replay answers 200 too, carrying the ORIGINAL run's
+    // outcome. The import must have done work: a new run, `Applied`, and the employee actually created.
+    Assert.Equal("Applied", document.RootElement.GetProperty("outcome").GetString());
+    Assert.Single(host.Repository.Added);
+    Assert.Equal(2, host.ImportRuns.Runs.Count);
+  }
+
+  // ================================================================================================
+  // ⚠⚠⚠ TWO MORE UNCITED CRITERIA IN THIS FEATURE, AND WHY (2026-09-05).
+  // ================================================================================================
+  //
+  // ---- `AC-DOC-0007` — **THE PRODUCT DOES NOT SATISFY IT. TWO CLAUSES OF THREE ARE FALSE.**
+  //
+  // *"A file over 10 MB or over 5,000 data rows is refused **with a message naming the limit and the actual
+  // value**, and the refusal happens **without the file being parsed**."*
+  //
+  // ***THE LITERALS MATCH AND THAT PROVED NOTHING.*** `EmployeeImportLimits(int MaximumRows = 5_000,
+  // int MaximumBytes = 10 * 1024 * 1024)` is exactly the criterion's numbers — **and a literal matching a
+  // criterion is evidence about the NUMBER and nothing about the RULE.** *The two failures live at the call
+  // sites, not the declaration:*
+  //
+  //   • ***NO MESSAGE NAMES ANYTHING.*** `ByteLimitExceeded` and `RowLimitExceeded` are `static readonly
+  //     Error` values — *"The submitted file is larger than an import may carry."* **No limit, no actual
+  //     value, and no parameter that could carry either.**
+  //   • ***THE ROW CAP IS CHECKED AFTER THE PARSE.*** The byte cap is tested before
+  //     `EmployeeImportCsvParser.Parse` runs; the row cap is tested after it, **because counting data rows
+  //     requires reading the file.** *So the row half may be UNSATISFIABLE AS WRITTEN rather than merely
+  //     unimplemented — which is a spec repair, not a product fix, and the two have different owners.*
+  //
+  // **Owner's: fix the product, or amend the criterion. Both readings are live and neither is mine to pick.**
+  //
+  // ---- `AC-DOC-0011` — **NOT WITNESSABLE HERE, AND NOT WITNESSED ANYWHERE.**
+  //
+  // *"Two callers with different branch authorizations exporting the same company get different row sets,
+  // and the narrower caller's rows are a **subset** of the wider caller's."*
+  //
+  // ***THE SEAM IS STUBBABLE AND STUBBING IT DESTROYS THE CLAIM.*** `ExportEmployeesQueryHandler` resolves a
+  // scope and hands it to `employees.ExportEmployeesAsync(scope, ...)` — **the handler does not filter, the
+  // read service does, in SQL.** *A gated test faking `IEmployeeReadService` would have to implement the
+  // subset behaviour itself, and would then be asserting my stub.*
+  //
+  // ⚠⚠ **AND NO INTEGRATION TEST COVERS IT EITHER.** `EmployeeBoundarySqlServerTests` is thorough on branch
+  // WRITES (`AC-EMP-0021`–`0025`) and silent on export row-set subsetting. ***SO THE CRITERION IS
+  // UNWITNESSED AT BOTH LEVELS*** — and writing the Integration test today buys a NEVER-EXECUTED citation,
+  // because `GATE_SCOPE=PHASE` is owner-parked. **A citation nobody has ever run is a claim, not a check.**
+  //
+  // ⚠ A gated test that the handler PASSES the resolved scope through unmodified is constructible and is
+  // deliberately not written: *it would witness "the export is scoped", sit beside an uncited `0011`, and
+  // invite the next reader to cite the criterion from it.* **The half it cannot reach is the whole content.**
+
+  // ================================================================================================
+  // AN IMPORT CANNOT CROSS A COMPANY BOUNDARY (AC-DOC-0010, SEC-DOC-0403).
+  // ================================================================================================
+  //
+  // *"Employees are created in the caller's established company context. There is no file value that
+  // changes which company they land in."*
+  //
+  // ---- ⚠⚠⚠ THE SECOND CLAUSE IS AN ABSENCE, AND IT IS ASSERTED AGAINST THE COLUMN SET RATHER THAN
+  // ---- AGAINST A SEARCH FOR "A FILE VALUE THAT CHANGES THE COMPANY".
+  //
+  // **"No file value" quantifies over every possible file, which no test can enumerate.** *What CAN be
+  // enumerated is the closed set of columns an accepted file may carry* — `EmployeeImportColumns.All` —
+  // **and if no member of it names a company, then no accepted file can carry one.** The unknown-column
+  // rule refuses everything else, so the two together close the population.
+  //
+  // ⚠⚠ THE GROUND IS THE COLUMN SET, NOT `AC-DOC-0002`, AND THE DISTINCTION IS DELIBERATE. `0002` states
+  // this same property and **`0002` IS FALSE AS WRITTEN**: it names `status` among columns *"refused by the
+  // unknown-column rule"*, and `status` is a declared optional column that is accepted and validated. *Three
+  // of its four named columns behave as it says; the fourth does not.* ***SO THIS CITES THE MECHANISM `0002`
+  // DESCRIBES WITHOUT CITING `0002` — grounding a true criterion on a false one would poison the true one.***
+  //
+  // ⚠ AND THE ENUMERATION BELOW IS THE REASON THAT DISTINCTION WAS AVAILABLE AT ALL: reading the RULE said
+  // ownership columns are refused; reading the MEMBERS said `status` is not one of them. **A rule being
+  // correct is not the members being in it.**
+  [Fact]
+  [Trait("Criterion", "AC-DOC-0010")]
+  public async Task An_import_stamps_the_callers_company_and_no_column_can_name_a_different_one()
+  {
+    using var response = await host.Client.SendAsync(EmployeeApiTestHost.CsvRequest(
+      HttpMethod.Post, "/api/hr/employees/import?importKey=doc0010",
+      host.TokenWith(HrPermissionNames.ImportEmployees, HrPermissionNames.CreateEmployees), Csv));
+
+    Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+    // ---- NON-VACUITY FIRST. "EVERY created employee" is trivially true of none, and an import that
+    // created nothing would satisfy the company assertion below while witnessing nothing at all.
+    Assert.NotEmpty(host.Repository.Added);
+
+    // ---- CLAUSE 1: THE COMPANY IS THE CALLER'S ESTABLISHED ONE, ASSERTED ON THE ASSIGNMENT.
+    //
+    // ⚠⚠⚠ NOT ON `employee.CompanyId`, AND THE REASON IS A FINDING THIS TEST PRODUCED BY FAILING.
+    //
+    // My first version asserted `employee.CompanyId == CompanyA` and got `Guid.Empty`. **Nothing in `src/`
+    // ever assigns `Employee.CompanyId`** — `Employee.Create` takes no company parameter and the private
+    // constructor sets none, unlike every other aggregate in the tree, which all assign it in their
+    // constructors. ***IT IS STAMPED AT THE PERSISTENCE BOUNDARY: `TenantDbContext` line 465,
+    // `entity.CompanyId = companyId;`, during `SaveChanges`.***
+    //
+    // **This host drives the real endpoint against an in-memory repository, so it never reaches that
+    // stamp.** *So the employee ROW's company is Integration's to witness and cannot be gated here* — the
+    // same shape as `AC-DOC-0011`, found the same way, and I would have reported a product defect if I had
+    // stopped at "no application code assigns it".
+    //
+    // ⚠⚠ WHAT IS GATED, AND IT IS THE CRITERION'S ACTUAL SUBJECT: **the company from `ICurrentCompany`
+    // reaches the aggregate at creation time.** `StampInitialAssignment` carries it onto the branch
+    // assignment from the caller's established context, in domain code, before any persistence. *That is
+    // "created in the caller's established company context" observed at the layer that decides it.*
+    var assignments = host.Repository.Added.SelectMany(employee => employee.BranchAssignments).ToArray();
+    Assert.NotEmpty(assignments);
+    Assert.All(assignments, assignment => Assert.Equal(EmployeeApiTestHost.CompanyA, assignment.CompanyId));
+
+    // ---- CLAUSE 2: NO COLUMN AN ACCEPTED FILE MAY CARRY NAMES A COMPANY, TENANT OR BRANCH.
+    //
+    // Enumerated over the whole declared set rather than spot-checked, and asserted on the SET so a column
+    // added later is caught. The matcher is deliberately broader than the three names AC-DOC-0002 lists:
+    // a future `owningCompany` would defeat a name-equality check and is caught here.
+    Assert.DoesNotContain(
+      EmployeeImportColumns.All,
+      column => column.Contains("company", StringComparison.OrdinalIgnoreCase)
+        || column.Contains("tenant", StringComparison.OrdinalIgnoreCase)
+        || column.Contains("branch", StringComparison.OrdinalIgnoreCase));
+
+    // MATCHER CONTROL: the set really was read, and the predicate really can match. Without this, an empty
+    // or unreadable `All` would satisfy the ban by containing nothing.
+    Assert.Contains("employeeNumber", EmployeeImportColumns.All);
+    Assert.Contains(EmployeeImportColumns.All, column => column.Contains("employee", StringComparison.OrdinalIgnoreCase));
+  }
+
+  // ---- AND A FILE THAT TRIES ANYWAY IS REFUSED, WITH THE REFUSAL SHAPE RECORDED AS IT ACTUALLY IS.
+  //
+  // ⚠⚠⚠ THIS DOES NOT ANSWER `400`. IT ANSWERS **`200 OK` CARRYING A REFUSED RUN**, and that is a
+  // deliberate product decision: the handler's own comment says *"A HEADER FAILURE IS A REFUSED RUN, not
+  // merely a 400. It consumed the key like any other attempt, and the audit trail records that somebody
+  // tried to import a file this company would not accept."*
+  //
+  // ***`AC-DOC-0001` SAYS SUCH A FILE ANSWERS `400 request.invalid`. IT DOES NOT. THAT CRITERION AND THIS
+  // PRODUCT DISAGREE, NEITHER CITES A RATIFICATION, AND THE DISAGREEMENT IS RECORDED HERE RATHER THAN
+  // SILENTLY ACCOMMODATED.*** **This test asserts what the product does; it does NOT cite `AC-DOC-0001`.**
+  [Fact]
+  [Trait("Criterion", "AC-DOC-0010")]
+  public async Task A_file_naming_a_company_column_is_refused_as_an_unknown_column()
+  {
+    using var response = await host.Client.SendAsync(EmployeeApiTestHost.CsvRequest(
+      HttpMethod.Post, "/api/hr/employees/import?importKey=doc0010-company",
+      host.TokenWith(HrPermissionNames.ImportEmployees, HrPermissionNames.CreateEmployees),
+      $"{Header},companyId\n{OneRow},{Guid.NewGuid()}"));
+
+    Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+    using var document = JsonDocument.Parse(await EmployeeApiTestHost.BodyAsync(response));
+    Assert.Equal("Refused", document.RootElement.GetProperty("outcome").GetString());
+
+    // AND NOTHING WAS WRITTEN. A refusal that still created the employee would satisfy the outcome check.
+    Assert.Empty(host.Repository.Added);
   }
 }

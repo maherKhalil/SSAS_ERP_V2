@@ -1,4 +1,4 @@
-﻿using Microsoft.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Persistence;
@@ -57,6 +57,21 @@ public sealed class PlatformAuthenticationSessionFlowSqlServerTests
 
   [Fact]
   [Trait("Decision", "DEC-TEN-0022")]
+  [Trait("AcceptanceCriteria", "AC-TEN-0077")]
+  // `AC-TEN-0077`'s ELIGIBILITY HALF — *"it requires LIVE ACCOUNT ELIGIBILITY, an `Active` PRINCIPAL, and AT
+  // LEAST ONE catalog-valid PERMISSION before issuing a platform access/refresh pair."* **Three conditions,
+  // three cases, and the test name is the criterion's own list** — each refused independently rather than as
+  // a class.
+  //
+  // ⚠ THE CRITERION'S FIRST HALF IS STRUCTURAL AND ELSEWHERE: *"consumes a trusted verified-authentication
+  // result (`VerifiedIdentity`) and NEVER an arbitrary caller-supplied `IdentityId`."* That is a claim about
+  // `PlatformAuthenticationSessionCreator.CreateAsync`'s SIGNATURE — **a caller cannot supply an identity
+  // because the parameter type will not carry one** — and it is the absent-capability form again: not a rule
+  // to obey but a value that cannot be expressed.
+  //
+  // ⚠⚠ AND ITS LAST SENTENCE IS A PHASE-SCOPED HISTORICAL CLAIM, NOT A LIVE ONE: *"No HTTP route is added in
+  // Phase 3C."* Platform auth routes exist NOW, added in 4B — **the criterion is about what 3C did, so it
+  // cannot rot and cannot be witnessed by anything current.**
   public async Task Creation_fails_closed_for_disabled_principal_ineligible_account_or_zero_permissions()
   {
     // Disabled principal.
@@ -89,6 +104,23 @@ public sealed class PlatformAuthenticationSessionFlowSqlServerTests
 
   [Fact]
   [Trait("Decision", "DEC-TEN-0022")]
+  [Trait("AcceptanceCriteria", "AC-TEN-0072")]
+  // `AC-TEN-0072` — *"Platform session-limit accounting is SEPARATE from tenant accounting; a reused
+  // `MaximumActiveSessions` applies INDEPENDENTLY within platform-session persistence, and THE TWO PLANES
+  // ARE NEVER COUNTED AGAINST EACH OTHER."*
+  //
+  //   independent within platform persistence   CARRIED — limit of 1, second creation revokes the first
+  //                                             with `SessionLimitExceeded`.
+  //   never counted against each other          ⚠ NOT CARRIED. The last line asserts the TENANT table is
+  //                                             EMPTY, which proves the platform flow created no tenant
+  //                                             rows — **not that PRE-EXISTING tenant sessions would leave
+  //                                             the platform limit alone.**
+  //
+  // ***A CROSS-COUNTING BUG NEEDS TENANT SESSIONS PRESENT TO MANIFEST, AND THIS FIXTURE HAS NONE.*** The
+  // confound is absent rather than controlled: with zero tenant rows, an implementation counting BOTH
+  // planes and one counting only platform are indistinguishable. **The discriminating fixture seeds a
+  // tenant session first and then shows the platform limit unmoved** — the arm-only lesson again, in a
+  // fixture that looks complete because it checks the other table at all.
   public async Task Session_limit_revokes_oldest_platform_sessions_only()
   {
     await using var db = await PlatformFlowSqlDatabase.CreateAsync();
@@ -105,7 +137,24 @@ public sealed class PlatformAuthenticationSessionFlowSqlServerTests
 
   // ---- Refresh ----
 
+  // ⚠ CITES `AC-TEN-0070` — *"Platform refresh RE-DERIVES permission claims LIVE from
+  // `IPlatformSupportPermissionReadService`; no stale permission snapshot from the prior token/session is
+  // reused."*
+  //
+  // ***THE ARRANGEMENT IS THE PROOF: `ViewTenants` IS GRANTED **AFTER** THE SESSION EXISTS, AND THEN APPEARS
+  // IN THE REISSUED CLAIMS.*** **A permission that was not in the world when the session was created cannot
+  // have come from a snapshot taken at creation** — so its presence is positive evidence of a live read,
+  // which no assertion about the claim set alone could give.
+  //
+  // ⚠⚠ AND `AdministerPlatformSupport` IS ASSERTED BESIDE IT AS THE CONTROL: *without it, a refresh that
+  // returned ONLY the new permission — a re-derivation that had lost the original set — would also pass.*
+  // The pair says the claims were re-derived COMPLETELY rather than merely changed.
+  //
+  // ⚠⚠⚠ ***TIER 2 — UNGATED.*** `Integration.Tests` does not run in `GATE_SCOPE=TASK`: green 2026-09-01,
+  // 862 passing. *And it is tier-2 by CAPABILITY rather than by filing — the test needs a database it can
+  // create and seed a permission grant into, which no gated suite can do.*
   [Fact]
+  [Trait("Criterion", "AC-TEN-0070")]
   [Trait("Decision", "DEC-TEN-0022")]
   public async Task Refresh_rotates_the_token_and_reissues_with_live_permissions()
   {
@@ -158,6 +207,18 @@ public sealed class PlatformAuthenticationSessionFlowSqlServerTests
 
   [Fact]
   [Trait("Decision", "DEC-TEN-0022")]
+  [Trait("AcceptanceCriteria", "AC-TEN-0067")]
+  // `AC-TEN-0067` — *"`PlatformAuthenticationSession.SecurityVersionAtCreation` SNAPSHOTS the global
+  // `AuthenticationAccount.SecurityVersion`; a LIVE MISMATCH on refresh REVOKES and DENIES continuation."*
+  // The account version is bumped in the database after the session exists, refresh fails, and the session's
+  // `RevocationReason` reads `SecurityStateChanged` — **the snapshot half is carried by the mismatch being
+  // detectable at all: if the session had re-read the version instead of snapshotting it, there would be
+  // nothing to mismatch against.**
+  //
+  // ⚠ KEY IS `AcceptanceCriteria` TO MATCH THIS FILE, WHICH USES IT EXCLUSIVELY — and it is the rarest of the
+  // four `AC-`-bearing keys in the repository (3 uses against `Criterion`'s 131). **File consistency beats
+  // suite consistency because a reader of THIS file can only see this file**, but the tension is real and
+  // worth a checker knowing about.
   public async Task Refresh_denies_and_revokes_on_security_version_mismatch()
   {
     await using var db = await PlatformFlowSqlDatabase.CreateAsync();
@@ -176,6 +237,34 @@ public sealed class PlatformAuthenticationSessionFlowSqlServerTests
 
   [Fact]
   [Trait("Decision", "DEC-TEN-0022")]
+  [Trait("AcceptanceCriteria", "AC-TEN-0064")]
+  [Trait("AcceptanceCriteria", "AC-TEN-0062")]
+  [Trait("AcceptanceCriteria", "AC-TEN-0040")]
+  // ⚠⚠ `AC-TEN-0040` IS `AC-TEN-0064` RESTATED IN ANOTHER BLOCK — *"refresh/session continuation RE-READS
+  // LIVE STATUS; a `Disabled` principal's refresh is denied and its platform session is REVOKED; no new
+  // platform token is issued"* against *"at refresh, live principal status is RE-READ; a `Disabled`
+  // principal is denied, the current platform session is REVOKED, and no new token is issued."* **Same
+  // property, same three clauses, same order.** Second duplicated pair in this package after
+  // `0039`/`0063`.
+  //
+  // ⚠ THE PAIRS WERE FOUND BY A SIMILARITY SWEEP OVER ALL 93 BODIES, AND THE SWEEP CANNOT BE TRUSTED ALONE:
+  // it scored `0057`/`0058` HIGHER than this pair, and those are **deliberate MIRRORS** — the same sentence
+  // with the planes swapped, both needed. ***A SIMILARITY METRIC GROUPS AN ACCIDENTAL RESTATEMENT WITH A
+  // DELIBERATE MIRROR, AND ONLY READING SEPARATES THEM.*** Six pairs scored above threshold; two are
+  // duplicates, three are mirrors, one is a containment.
+  // TWO CRITERIA, ONE PER BLOCK OF THIS TEST, AND THEY ARE DELIBERATELY SEPARATE IDS FOR SEPARATE CAUSES.
+  //
+  // `AC-TEN-0064` — *"At refresh, LIVE principal status is re-read; a `Disabled` principal is denied, the
+  // current platform session is REVOKED."* The first block disables the principal by direct SQL AFTER the
+  // session exists, so the token cannot carry the new status — **the denial can only come from a live read**,
+  // which is the criterion's operative word. `RevocationReason` reads `PlatformPrincipalIneligible`.
+  //
+  // `AC-TEN-0062` — the same shape for ZERO active permissions, in the second block, by revoking Administer.
+  //
+  // ⚠ BOTH CRITERIA ALSO SAY *"and NO NEW TOKEN IS ISSUED"*, WHICH IS NOT ASSERTED HERE. The handler returns
+  // a failure and the session is revoked, so no token could be returned to a caller — but **the fixture
+  // holds a `CapturingAccessTokenIssuer` and never asks it whether it was invoked.** The clause is true by
+  // construction and unobserved, and the instrument to observe it is already in the fixture.
   public async Task Refresh_fails_closed_when_principal_disabled_account_ineligible_or_zero_permissions()
   {
     // Principal Disabled at the DB level (backstop independent of proactive revocation).
@@ -242,6 +331,10 @@ public sealed class PlatformAuthenticationSessionFlowSqlServerTests
 
   [Fact]
   [Trait("Decision", "DEC-TEN-0022")]
+  // ⚠ CITED BY ITEM 215, AT THE MOMENT THE MAPPING WAS DISCOVERED. `AC-TEN-0076` -- *"explicitly disabling
+  // a `PlatformSupportPrincipal` revokes that principal's active `PlatformAuthenticationSession`s"* -- was
+  // found while measuring FP-003 and matched against this BODY, not its name.
+  [Trait("AcceptanceCriteria", "AC-TEN-0076")]
   public async Task Disable_revokes_all_active_platform_sessions_of_the_principal_only()
   {
     await using var db = await PlatformFlowSqlDatabase.CreateAsync();
@@ -262,6 +355,17 @@ public sealed class PlatformAuthenticationSessionFlowSqlServerTests
 
   [Fact]
   [Trait("Decision", "DEC-TEN-0022")]
+  [Trait("AcceptanceCriteria", "AC-TEN-0065")]
+  // `AC-TEN-0065` — *"Disabling a `PlatformSupportPrincipal` (and revoking its platform sessions) has NO
+  // EFFECT on the person's tenant `AuthenticationSession`s."* Asserted on all three axes for the SAME
+  // identity: platform sessions go to zero Active, the tenant session stays `Active`, and the account's
+  // `SecurityVersion` is unchanged.
+  //
+  // ⚠ THE THIRD ASSERTION IS WHAT MAKES THIS A CROSS-PLANE CLAIM RATHER THAN TWO UNRELATED OBSERVATIONS.
+  // Bumping `SecurityVersion` is how the tenant plane invalidates sessions wholesale — **so a Disable that
+  // incremented it would leave the tenant session row `Active` while making every tenant token useless, and
+  // the first two assertions would still pass.** The version check closes the route the status check cannot
+  // see.
   public async Task Disable_revokes_platform_sessions_without_touching_tenant_session_or_account_security_version()
   {
     // F3C-1 consolidated: platform Disable must not increment the global account SecurityVersion and must not
@@ -473,6 +577,56 @@ public sealed class PlatformAuthenticationSessionFlowSqlServerTests
   }
 
   // ---- Phase 4B: L1 create-vs-disable serialization (DEC-TEN-0023) ----
+  //
+  // ==================================================================================================
+  // ⚠⚠⚠ `AC-TEN-0083` IS CITED HERE FROM 2026-09-05, AND IT WAS UNCITED FOR ONE REASON ONLY: THE THREE
+  // TESTS BELOW NAMED THE DECISION AND NOT THE CRITERION.
+  // ==================================================================================================
+  //
+  // *"Before platform-session creation is exposed over HTTP (4B), the create-vs-disable concurrency item is
+  // closed by **serialization**… Correctness must **not** depend on `READ_COMMITTED_SNAPSHOT` being disabled
+  // or on deployment isolation settings. Required invariant: once a `Disable` commits, no concurrent creation
+  // may commit an `Active` session for that principal (**both interleavings safe**); proven by a **real
+  // two-connection SQL concurrency test** under actual supported SQL Server settings."*
+  //
+  // ***THE CLAUSE-TO-FIXTURE MAP, WHICH IS WHAT LICENSES THE CITATION — every clause has a test that would
+  // fail if it were false:***
+  //
+  //   *both interleavings safe*      `L1_create_first_commits_the_session_and_the_disable_then_revokes_it`
+  //                                  `L1_disable_first_makes_the_concurrent_creation_fail_closed`
+  //   *no Active session after a
+  //    committed Disable*            the second asserts `PrincipalDisabled` **and** no usable continuation
+  //   *not dependent on RCSI*        `L1_holds_when_read_committed_snapshot_isolation_is_disabled` — asserts
+  //                                  RCSI ON as EF created it, flips it OFF, asserts OFF, re-runs the race.
+  //                                  **Both regimes exercised, not one asserted and one assumed.**
+  //   *real two-connection SQL test* two contexts driven against a SQL `LockGate` over seeded seek volume
+  //
+  // ⚠⚠ **GREEN AT A DATE, NOT GATED. This is `Integration.Tests`, which the merge gate skips** — last green
+  // 2026-09-01. ***A READER MUST NOT TAKE THIS CITATION AS CONTINUOUSLY VERIFIED; it is verified at a commit,
+  // and `src/` has moved since.*** That is a third state, neither "gated" nor "unrun", and it travels with
+  // the citation rather than being discoverable from it.
+  //
+  // ⚠⚠⚠ **AND IT IS GREEN-AT-A-DATE RATHER THAN *PARTIAL-EXECUTION*, WHICH WAS CHECKED RATHER THAN ASSUMED.**
+  // *A method present at the baseline ran at the baseline IN WHATEVER FORM IT THEN HAD* — so a later commit
+  // that adds assertions to an existing method leaves the name, the classifier and the date all unchanged
+  // while the new assertions have never executed. ***THE RCSI TEST IS EXACTLY THAT SHAPE: an isolation-regime
+  // assertion is the kind of thing added to a pre-existing concurrency test months later.***
+  //
+  // **Measured, not reasoned: the 150-line span holding all four L1 methods is BYTE-IDENTICAL between
+  // `ce9b28f1a603b9b7eb3674f76f7ae74721af61c9` and HEAD** — `diff` of the extracted ranges is empty, the RCSI
+  // assertions included. *So every assertion these three tests make did run in the last green Integration
+  // pass.* **Presence would not have shown that; the bodies did.**
+  //
+  // ⚠ AND THE PRECONDITION IS ALREADY CROSSED, WHICH IS WHY THE CITATION MATTERS RATHER THAN BEING TIDINESS:
+  // the criterion says *"before … exposed over HTTP"*, and `PlatformAuthenticationSessionCreator` is reached
+  // from the platform-support login route today. **The gate the criterion describes is behind us; what these
+  // tests hold is the invariant it demanded, and nothing else does.**
+  //
+  // ⚠⚠⚠ HOW THIS WAS NEARLY MISSED, RECORDED BECAUSE THE METHOD GENERALISES: a first pass read this file's
+  // header — *"Closes F3C-1, F3C-2 (Disable-vs-refresh race)"* — found no create-vs-disable, and treated the
+  // header as a statement of scope. ***THIS SECTION IS 250 LINES FURTHER DOWN, PAST THE SEARCH WINDOW.***
+  // **A file header describes what its author had in mind when they wrote the header.** *The absence was
+  // caught by widening the search, not by re-reading — which is the only move that works on a window error.*
 
   // The L1 invariant (DEC-TEN-0023): platform-session creation serializes its Active-eligibility decision against
   // a concurrent principal Disable on a transactionally-effective lock. The GLOBAL LOCK ORDER is
@@ -487,6 +641,7 @@ public sealed class PlatformAuthenticationSessionFlowSqlServerTests
 
   [Fact]
   [Trait("Decision", "DEC-TEN-0023")]
+  [Trait("Criterion", "AC-TEN-0083")]
   public async Task L1_create_first_commits_the_session_and_the_disable_then_revokes_it()
   {
     await using var db = await PlatformFlowSqlDatabase.CreateAsync();
@@ -522,6 +677,7 @@ public sealed class PlatformAuthenticationSessionFlowSqlServerTests
 
   [Fact]
   [Trait("Decision", "DEC-TEN-0023")]
+  [Trait("Criterion", "AC-TEN-0083")]
   public async Task L1_disable_first_makes_the_concurrent_creation_fail_closed()
   {
     await using var db = await PlatformFlowSqlDatabase.CreateAsync();
@@ -558,6 +714,7 @@ public sealed class PlatformAuthenticationSessionFlowSqlServerTests
 
   [Fact]
   [Trait("Decision", "DEC-TEN-0023")]
+  [Trait("Criterion", "AC-TEN-0083")]
   public async Task L1_holds_when_read_committed_snapshot_isolation_is_disabled()
   {
     // The guarantee must come from the UPDLOCK/HOLDLOCK reads, NOT the deployment isolation level. EF Core's SQL
@@ -962,7 +1119,7 @@ public sealed class PlatformAuthenticationSessionFlowSqlServerTests
   private sealed class TestPlatformUnitOfWork(PlatformDbContext context)
     : SSAS.Platform.Application.Abstractions.Persistence.IPlatformUnitOfWork
   {
-    private readonly PlatformUnitOfWork inner = new(context, new NoOpDomainEventDispatcher());
+    private readonly PlatformUnitOfWork inner = TestUnitOfWork.Platform(context, new NoOpDomainEventDispatcher());
 
     public Task<Result<int>> SaveChangesAsync(CancellationToken cancellationToken = default) => inner.SaveChangesAsync(cancellationToken);
 
@@ -1103,7 +1260,6 @@ public sealed class PlatformAuthenticationSessionFlowSqlServerTests
     public string? UserId => "integration-actor";
     public string? UserName => null;
     public string? Email => null;
-    public Guid? CompanyId => null;
     public string? SessionId => null;
     public string? TokenId => null;
     public IReadOnlyCollection<string> Roles => [];

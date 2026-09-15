@@ -84,7 +84,20 @@ public enum JournalPostingStatus
   Unbalanced = 4,
 
   // The journal named for reversal does not exist, or has already been reversed.
-  ReversalTargetUnavailable = 5
+  ReversalTargetUnavailable = 5,
+
+  // ---- 249. THE PERIOD'S STATE IS BEING CHANGED RIGHT NOW. RETRY.
+  //
+  // Named for the SITUATION and not for the mechanism. A poster takes a shared fence before reading the
+  // period and a period-state change takes it exclusively; this is what a caller is told when the fence
+  // could not be taken in time. ⚠ THE NAME MUST NOT MENTION THE FENCE: a consumer needs its own next
+  // action, not `sp_getapplock`, and the day the mechanism changes a mechanism-shaped name becomes a lie
+  // that other modules switch on. An internal name is a rename; a contract member is a migration.
+  //
+  // ⚠⚠ AND IT IS THE ONE MEMBER WHOSE DISTINCTION IS ACTIONABLE. For the others a generic refusal is
+  // merely unhelpful; for this one it is WRONG, because the caller's correct response is to do the same
+  // thing again, and "the ledger refused the posting" tells them to stop.
+  PeriodStateChanging = 6
 }
 
 // ---- THE OUTCOME.
@@ -126,7 +139,32 @@ public enum PostingWindowStatus
 {
   Open = 0,
   PeriodClosed = 1,
-  PeriodNotFound = 2
+  PeriodNotFound = 2,
+
+  // ---- TWO FISCAL YEARS COVER THIS DATE (T-188).
+  //
+  // ⚠ **THIS EXISTS BECAUSE `PeriodNotFound` PRESCRIBES A HARMFUL REMEDY HERE, NOT MERELY AN UNHELPFUL
+  // ONE.** `JournalPostingStatus.PeriodNotFound` states the remedy in its own comment: *"define the
+  // calendar rather than reopen a period."* **An operator whose real problem is that TWO years already
+  // cover the date, following that instruction, defines a THIRD.**
+  //
+  // This contract's design rule is that anything Payroll could not act on differently is not worth
+  // distinguishing — and by that rule alone this would not qualify, because Payroll refuses the run
+  // either way. **But the rule was already broken here once, deliberately:** `PeriodNotFound` is distinct
+  // from `PeriodClosed` for OPERATOR REMEDY, not for caller action. Operator remedy is therefore already
+  // a ratified reason to distinguish in this contract, and it is the reason that applies.
+  //
+  // ---- ADDING A VALUE IS SAFE HERE, AND THAT WAS MEASURED AT EVERY CONSUMER RATHER THAN ASSUMED.
+  //
+  // `PayrollRunCommandHandlers` reads this in two places. One tests `PeriodNotFound || FiscalPeriodId is
+  // null`, and every field but `Status` is null on a refusal by this record's own rule. The other tests
+  // `PeriodClosed` then `!IsOpen`, and `IsOpen` is `Status == Open`. **Both refuse an unknown status**,
+  // so a widening degrades safely rather than falling through as open.
+  //
+  // ⚠ **PAYROLL STILL REPORTS THE MISLEADING REMEDY.** Both sites answer
+  // `PayrollErrors.FiscalPeriodNotFound`, so the GL side is now honest and the payroll-facing message is
+  // not. Distinguishing it there is the same argument one layer out and is NOT done here.
+  CalendarAmbiguous = 3
 }
 
 // Carries the period's IDENTITY AND BOUNDS as well as its status, because Payroll needs both and asking

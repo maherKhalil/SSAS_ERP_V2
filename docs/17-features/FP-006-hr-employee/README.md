@@ -118,7 +118,7 @@ FP-005 defines conventions. Where FP-005's own architecture has been superseded 
 
 FP-006 realizes `REQ-HR-0001` (Create Employee), `REQ-HR-0002` (Update Employee), `REQ-HR-0003` (Terminate Employee), `REQ-HR-0004` (Transfer Employee), `REQ-HR-0007` (Employee Status), and `REQ-HR-0008` (Employee Search).
 
-It realizes the **branch-assignment portion** of `REQ-HR-0006` (Employee History) through `EmployeeBranchAssignment`. Broader employee history — profile field history, department history, position history — is acknowledged and deferred.
+It realizes the **branch-assignment portion** of `REQ-HR-0006` (Employee History) through `EmployeeBranchAssignment`. Broader employee history — profile field history, department history, position history — is acknowledged and deferred. ⚠ **FORWARD POINTER ADDED 2026-09-06: *department history is no longer deferred anywhere.*** `OD-DEP-004` reversed that deferral on 2026-08-20 and **FP-007 Phase 1 shipped `EmployeeDepartmentAssignment`** as append-only department-change history. *The sentence above remains true of what FP-006 itself builds; it is no longer true of the system.* **Profile and position history are still deferred.**
 
 ## Explicit exclusions
 
@@ -163,3 +163,5 @@ These are carried commitments that inspection of the codebase will not reveal, b
 > real Employee read authorized by nothing but the resulting access-token claims.
 
 No migration is created by this documentation package.
+
+status: UNSTARTED

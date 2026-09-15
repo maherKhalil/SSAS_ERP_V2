@@ -53,7 +53,7 @@ warning about miscounts — which is why counting is now mechanical here.
 | `REQ-ATT-0020` summary contract | `BR-ATT-0011` | `AC-ATT-0023`, `AC-ATT-0026`, `AC-ATT-0027` | `TS-ATT-0032`, `TS-ATT-0037`, `TS-ATT-0043` | `DEC-ATT-0002`, `OD-ATT-0009` |
 | `REQ-ATT-0021` inspect the period | — | `AC-ATT-0024`, `AC-ATT-0025` | `TS-ATT-0041`, `TS-ATT-0042` | `OD-ATT-0010` |
 | `REQ-ATT-0022` **Payroll follow-up** | — | `AC-ATT-0044` | `TS-ATT-0038`, `TS-ATT-0039`, `TS-ATT-0051` | `DEC-ATT-0001`, `DEC-ATT-0012` |
-| `REQ-ATT-0023` self-service — **BLOCKED** | — | `AC-ATT-0032` | `TS-ATT-0036` | `OD-ATT-0013` |
+| `REQ-ATT-0023` self-service — **DELIVERED under FP-015** | — | `AC-ATT-0032` | `TS-ATT-0036` — **asserts the absence `AC-ATT-0032` no longer claims; superseded and unruled** | `OD-ATT-0013` |
 | `REQ-ATT-0024` read within authority | `BR-ATT-0012` | `AC-ATT-0031` | `TS-ATT-0045` | `OD-ATT-0011`, `OD-ATT-0013` |
 | `REQ-ATT-0025` leave type sensitivity | — | `AC-ATT-0045` | `TS-ATT-0052` | `OD-ATT-0013` |
 
@@ -89,7 +89,7 @@ and `DEC-ATT-0014`, and to `TS-ATT-0018`, `TS-ATT-0025`, `TS-ATT-0026`, `TS-ATT-
 | `OD-ATT-0010` close discipline | `REQ-ATT-0021`; whether Payroll can read an open period |
 | **`OD-ATT-0011` branch** | every table, the read scope, the calendar, the contract grain |
 | **`OD-ATT-0012` corrections** | `REQ-ATT-0019`; **the aggregate split**, and the attendance-record unique index |
-| `OD-ATT-0013` read permissions | `REQ-ATT-0023`, `REQ-ATT-0024`, `REQ-ATT-0025`; the self-service blocker |
+| `OD-ATT-0013` read permissions | `REQ-ATT-0023`, `REQ-ATT-0024`, `REQ-ATT-0025`; self-service delivered under FP-015 (T-089) |
 | `OD-ATT-0014` module home | project layout; moves with `OD-ATT-0002`(1) |
 | `OD-ATT-0015` `OD-PAY-0007` reopen | nothing in this package — **it moves Payroll** |
 | `OD-ATT-0016` device integration | `OD-ATT-0003`'s shape if ruled in |

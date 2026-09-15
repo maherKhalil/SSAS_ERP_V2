@@ -12,23 +12,86 @@ namespace SSAS.Payroll.API;
 //
 // ---- AN OUT-OF-SCOPE RECORD IS A 404, AND ON THIS SURFACE THAT MATTERS MOST.
 //
-// `Payroll.CompensationNotFound` covers both "no such record" and "a record you may not reach". Reporting
-// the second as 403 would let a caller enumerate who is paid what, one probe at a time — ask for an employee
-// identifier, read the status, learn whether compensation exists. GL made this argument about a chart of
-// accounts; here the directory being denied is people's pay.
+// The 404 covers both "no such record" and "a record you may not reach". Reporting the second as 403 would
+// let a caller enumerate who is paid what, one probe at a time — ask for an employee identifier, read the
+// status, learn whether compensation exists. GL made this argument about a chart of accounts; here the
+// directory being denied is people's pay.
+//
+// ⚠ **THIS USED TO NAME `Payroll.CompensationNotFound`, AND THAT CODE IS GONE (T-168).** The decision is
+// not: the route answers the 404 DIRECTLY at `GetCompensationCurrentAsync`, which returns
+// `PayrollApiErrorMapper.NotFound` when the read is null and never touches a domain code. **The behaviour
+// shipped; only the unused domain code went.** Kept here because deleting the arm would have taken the
+// only written trace of a deliberate non-disclosure decision with it.
 public static class PayrollApiErrorMapper
 {
+  // ============================================================================================
+  // ⚠ THE UNCLASSIFIED UNIQUE VIOLATION, WHICH USED TO BE A 500 (T-244).
+  // ============================================================================================
+  //
+  // `Persistence.UniqueConstraint` is raised by the unit of work when SQL Server refuses a write with
+  // 2601 or 2627. **It is not a domain error of this module**, so the exhaustiveness argument in this
+  // file's header never covered it: the mapper-arm tests check that this module's own errors are mapped,
+  // and a Platform persistence code arriving from below is outside what they look at. It fell to the
+  // default arm and answered **500 `request.failed`** for a plain business conflict.
+  //
+  // Measured before the fix: two callers adding the same holiday, the loser got a 500.
+  //
+  // ---- ⚠ A DISTINCT CODE, NOT THIS MODULE'S GENERIC `Conflict`, AND THAT IS THE POINT.
+  //
+  // Handlers that anticipate a specific race translate the code themselves — `WorkingCalendarErrors
+  // .DuplicateName`, `LeaveBalance` entitlement convergence — and those tell a caller WHICH constraint
+  // lost and whether a retry can succeed. **This arm is the floor for the paths nobody classified**, and
+  // giving it its own code means an operator can see how often an unclassified one fires. Folding it into
+  // `Conflict` would hide exactly the signal that says another handler needs a translation.
+  //
+  // ---- WHAT THIS CODE DOES NOT PROMISE.
+  //
+  // A 409 usually implies the caller can do something about it. **On a path where a unique violation
+  // means an internal invariant broke, that is not true**, and this arm cannot tell the difference — it
+  // has only the code, not the index. That is the reason it is a floor rather than a replacement: the
+  // right fix for any specific path is still a handler-level translation naming its constraint.
+  public static readonly ApiError UniqueConflict = new(409, "payroll.unique_conflict");
+
   public static readonly ApiError NotFound = new(404, "payroll.not_found");
+
+  // FP-015 (T-088). 404 because the route exists, the caller is authenticated and permitted, and what is
+  // absent is the SUBJECT of the read. Not 403 — nothing is forbidden. Not a 4xx-invalid — the request was
+  // well formed. A distinct code from `payroll.not_found`, which answers about a thing the caller named.
+  public static readonly ApiError NoLinkedEmployee = new(404, "payroll.no_linked_employee");
   public static readonly ApiError Conflict = new(409, "payroll.conflict");
   public static readonly ApiError PeriodClosed = new(409, "payroll.period_closed");
   public static readonly ApiError ElementUnmapped = new(409, "payroll.element_unmapped");
   public static readonly ApiError RunStateInvalid = new(409, "payroll.run_state_invalid");
   public static readonly ApiError LedgerRefused = new(409, "payroll.ledger_refused");
+  public static readonly ApiError FiscalPeriodUndefined = new(409, "payroll.fiscal_period_undefined");
   public static readonly ApiError NothingToCalculate = new(422, "payroll.nothing_to_calculate");
   public static readonly ApiError AttendancePeriodOpen = new(409, "payroll.attendance_period_open");
   public static readonly ApiError CompanyScopeDenied = new(403, "company.scope_denied");
 
-  public static ApiError Map(Error error)
+  // ---- T-095. A GL CODE REACHING A PAYROLL MAPPER, AND IT KEEPS GL'S STRING.
+  //
+  // `PostPayrollRunCommandHandler` posts through `IJournalPoster`, which returns `Gl.AccountNotFound` when a
+  // mapped account is gone. `DEC-L-079` fixes the STATUS at GL's 404; the string is `gl.not_found` rather
+  // than `payroll.not_found` because **what was not found is the GL account, and answering `payroll.not_found`
+  // would name the wrong missing thing.**
+  //
+  // The literal is repeated rather than referenced: `SSAS.Payroll.API` does not reference `SSAS.GL.API` and
+  // must not. `The_same_code_answers_the_same_status_at_every_site_that_maps_it` is what keeps the two from drifting.
+  public static readonly ApiError LedgerAccountNotFound = new(404, "gl.not_found");
+
+  // ⚠ THE DOMAIN MESSAGE IS ATTACHED HERE BECAUSE THIS IS THE LAST PLACE IT EXISTS (T-261).
+  //
+  // Ninety-six call sites hand an already-mapped `ApiError` straight to `ApiProblems.Problem` and never
+  // see the original `Error`. Attaching the message to the result is one edit per mapper; passing it
+  // alongside would have been ninety-six.
+  //
+  // `ApiError.ShowsDetail` decides whether it reaches the caller: an authorization refusal (401/403)
+  // drops it unless that code opted in, because `branch.scope_denied` has nine different messages behind
+  // it and showing them would separate a branch that does not exist from one that is forbidden.
+  public static ApiError Map(Error error) =>
+    MapCore(error).Explaining(error.Message, error.Field);
+
+  private static ApiError MapCore(Error error)
   {
     ArgumentNullException.ThrowIfNull(error);
 
@@ -41,6 +104,20 @@ public static class PayrollApiErrorMapper
       "Payroll.PayElementCalculationOrderInvalid" => ApiErrors.RequestInvalid,
       "Payroll.PayElementCompanyRequired" => ApiErrors.RequestInvalid,
       "Payroll.PayElementAccountRequired" => ApiErrors.RequestInvalid,
+
+      // ---- OVERTIME TIER (T-080). BOTH 400, AND THE SECOND IS NOT A CONFLICT.
+      //
+      // `OvertimeTierInvalid` is a length-and-control-character check on a caller-sent string, and
+      // `Attendance.OvertimeTierInvalid` — the identical concept in another module — is already 400
+      // (`AttendanceApiErrorMapper.cs:67`).
+      //
+      // `OvertimeTierNotApplicable` refuses a tier on an element whose behaviour is not `OvertimeHourly`.
+      // That is NOT `PayElementInactive`'s shape, which is 409 because inactivity is a state that changes
+      // over time and the caller could not have known. Behaviour is intrinsic and visible: the domain calls
+      // this *"a caller who has misunderstood the model, not a harmless extra"* at `PayElement.cs:346`,
+      // the same phrase `PayElementErrors` uses for the negative-amount case, which is 400.
+      "Payroll.PayElementOvertimeTierInvalid" => ApiErrors.RequestInvalid,
+      "Payroll.PayElementOvertimeTierNotApplicable" => ApiErrors.RequestInvalid,
       "Payroll.CompensationCompanyRequired" => ApiErrors.RequestInvalid,
       "Payroll.CompensationEmployeeRequired" => ApiErrors.RequestInvalid,
       "Payroll.CompensationBaseAmountNegative" => ApiErrors.RequestInvalid,
@@ -57,16 +134,28 @@ public static class PayrollApiErrorMapper
 
       // ---- ABSENT, OR NOT REACHABLE. Deliberately indistinguishable.
       "Payroll.PayElementNotFound" => NotFound,
-      "Payroll.CompensationNotFound" => NotFound,
-      "Payroll.CompensationNoneInForce" => NotFound,
       "Payroll.PeriodNotFound" => NotFound,
       "Payroll.RunNotFound" => NotFound,
       "Payroll.FiscalPeriodNotFound" => NotFound,
 
       // ---- STATE CONFLICTS. The caller is not wrong; the world is not ready.
       "Payroll.PayElementCodeConflict" => Conflict,
-      "Payroll.PayElementCodeImmutable" => Conflict,
       "Payroll.CompensationAssignmentDuplicate" => Conflict,
+
+      // ---- CONFLICT, NOT `RequestInvalid`: THE REQUEST IS WELL FORMED AND THE STATE REFUSES IT (T-153).
+      //
+      // Nothing about the payload is wrong. The same body succeeds unchanged once HR changes the
+      // employment type, which is the distinction `Conflict` carries here and `RequestInvalid` does not.
+      "Payroll.CompensationNotAvailableForContract" => Conflict,
+
+      // `NotFound` on the non-disclosure reading this mapper states in its header: an employee id that
+      // HR cannot resolve is indistinguishable from one this caller may not reach, and the mapper has
+      // deliberately not tried to separate those since it was written.
+      //
+      // ⚠ **This cited `Payroll.CompensationNotFound` until T-179.** That code was removed in T-168 and
+      // the citation outlived it — **a stale pointer is the same failure as a stale claim**, and it
+      // survived the removal because nothing checks that a comment names something real.
+      "Payroll.CompensationEmployeeNotInHr" => NotFound,
       "Payroll.PeriodConflict" => Conflict,
       "Payroll.RunConflict" => Conflict,
       "Payroll.PayElementInactive" => Conflict,
@@ -84,8 +173,29 @@ public static class PayrollApiErrorMapper
       "Payroll.RunNotApprovable" => RunStateInvalid,
       "Payroll.RunNotPostable" => RunStateInvalid,
       "Payroll.RunNotReversible" => RunStateInvalid,
+
+      // ---- ⚠ THE SIXTH SIBLING, AND IT ANSWERED 500 UNTIL T-198.
+      //
+      // `PayrollRun.MarkReversed()` returns exactly two errors — `RunNotReversible` above and this one —
+      // and the handler PROPAGATES both without naming either. **One was mapped and one was not**, so
+      // reversing an already-reversed run answered `request.failed` while reversing an unposted one
+      // answered a clean 409.
+      //
+      // `Every_error_a_site_is_responsible_for_is_mapped_rather_than_falling_through` walks the errors a HANDLER NAMES, and an error
+      // arriving as `result.Error` from an aggregate appears in no handler's source. Same seam as
+      // `Attendance.LeaveSubmissionBusy`, which reached its mapper from an Infrastructure lock (T-197).
+      "Payroll.RunAlreadyReversed" => RunStateInvalid,
       "Payroll.RunHasNoLines" => RunStateInvalid,
 
+      // 249. The ledger was busy, not refusing: 409 and retry, never 500.
+      "Payroll.LedgerPostingRetryable" => Conflict,
+      // ---- 254. 409, NOT THE 404 ITS APPROVAL-TIME NAMESAKE ANSWERS.
+      //
+      // The request is well formed and the run is postable; the world is not ready. The same body
+      // succeeds unchanged once Finance defines the fiscal year, which is the distinction `Conflict`
+      // carries and `NotFound` does not — and its sibling `Payroll.FiscalPeriodClosed` is 409 for the
+      // same reason.
+      "Payroll.LedgerHasNoFiscalPeriod" => FiscalPeriodUndefined,
       "Payroll.LedgerRefusedPosting" => LedgerRefused,
       "Payroll.LedgerRefusedReversal" => LedgerRefused,
 
@@ -94,11 +204,75 @@ public static class PayrollApiErrorMapper
       "Payroll.NoIncludedEmployees" => NothingToCalculate,
       "Payroll.UnbalancedPosting" => NothingToCalculate,
 
+      // ---- A DAILY SALARY WITH NO WORKING DAYS TO PRICE (T-115). 409, not 422.
+      //
+      // **The request is well-formed and the world is not ready** — the company has no working calendar, or
+      // the employee's attendance summary did not arrive — which is `AttendancePeriodOpen`'s shape rather
+      // than `NothingToCalculate`'s. There IS something to compute; the input it needs is absent.
+      //
+      // **Unmapped, this fell through to a 500** for what is a business refusal, and the error-mapping
+      // register caught it. It had been unmapped since T-107 declared the constant.
+      "Payroll.DailySalaryHasNoWorkingDays" => RunStateInvalid,
+
+      // ---- A ONE-OFF NAMING AN ELEMENT THE RUN IS NOT PRICING (T-118). 422, not 409.
+      //
+      // **Different from the line above, and the difference is whether waiting would help.** A daily salary
+      // with no working days is `RunStateInvalid` because the world is not ready — close the attendance
+      // period, or give the company a calendar, and the same request succeeds.
+      //
+      // **This one never succeeds by waiting.** The instruction names an element that is inactive, or the
+      // net-pay element, which is derived rather than configured. **Somebody must change the instruction or
+      // the element** — a semantic refusal of a well-formed request, which is `NothingToCalculate`'s shape.
+      //
+      // ---- IT WAS A 500 FROM T-110 UNTIL T-118, AND THE GUARD DID NOT SAY SO.
+      //
+      // `PayrollCalculator` is a `static` class, and the error-mapping register's closure walks CONSTRUCTOR
+      // PARAMETERS — so the calculator has never been in any site's closure, and every refusal it returns
+      // was invisible to the guard (T-117). This one fell through to a 500 for what is a business refusal:
+      // no exception anybody reads, no log entry, and a handler that reads correctly.
+      "Payroll.OneOffPaymentElementNotPayable" => NothingToCalculate,
+
+      // ---- CONTRADICTORY ATTENDANCE (T-121). 409, like the attendance-period gate and unlike the one above.
+      //
+      // **Waiting does not help, but neither does changing the request** — somebody must correct the
+      // attendance records or the employment dates. It is `AttendancePeriodOpen`'s shape: the request is
+      // well-formed and the world is inconsistent.
+      "Payroll.AttendanceContradictsEmployment" => RunStateInvalid,
+
+      // Same shape and the same status: the request is well-formed, and the world is not ready because
+      // an overtime tier the employee worked is priced by none of their assigned elements. Assigning the
+      // element or correcting the tier makes the identical request succeed, which is what distinguishes
+      // this from a 422 (T-149).
+      "Payroll.OvertimeTierHasNoPricedElement" => RunStateInvalid,
+
+      // ---- ONE-OFF PAY INSTRUCTIONS (T-125). UNMAPPED SINCE T-110 CREATED THE ROUTE.
+      //
+      // **`POST /employees/{id}/one-off-payments` with `amount: 0` answered 500** — a validation refusal
+      // arriving as a server fault, with no exception anybody reads. The register could not see it because
+      // T-110 added the route and its handler and **never added the handler to the seed list**, so every
+      // code it returns was outside every closure (T-117, T-124).
+      //
+      // 400 for the five shape refusals: the request is malformed and no state will make it succeed.
+      "Payroll.OneOffPaymentCompanyRequired" => ApiErrors.RequestInvalid,
+      "Payroll.OneOffPaymentEmployeeRequired" => ApiErrors.RequestInvalid,
+      "Payroll.OneOffPaymentPeriodRequired" => ApiErrors.RequestInvalid,
+      "Payroll.OneOffPaymentPayElementRequired" => ApiErrors.RequestInvalid,
+      "Payroll.OneOffPaymentAmountNotPositive" => ApiErrors.RequestInvalid,
+
+      // ---- AND 409 FOR THE TWO CONSUMPTION REFUSALS, WHICH ARE ABOUT STATE RATHER THAN SHAPE.
+      //
+      // Both arrive from APPROVAL, not from the instruction's own route: the run is already holding this
+      // instruction, or it is a run for another period. **The request is well-formed and the world disagrees
+      // with it**, which is `RunStateInvalid`'s shape.
+      "Payroll.OneOffPaymentAlreadyConsumed" => RunStateInvalid,
+      "Payroll.OneOffPaymentConsumingRunIsForAnotherPeriod" => RunStateInvalid,
+
       // FP-013, OD-ATT-0010. A 409 rather than a 422: the request is well-formed and the world is not ready
       // — somebody has to close the attendance period, which is the same shape as `PeriodClosed` above.
       "Payroll.AttendancePeriodOpen" => AttendancePeriodOpen,
 
       // ---- AUTHORIZATION. Naming no company, no tenant and no topology.
+      "Payroll.NoLinkedEmployee" => NoLinkedEmployee,
       "Payroll.InvalidActor" => ApiErrors.Forbidden,
       "Payroll.ReadPermissionDenied" => ApiErrors.Forbidden,
       "Payroll.WritePermissionDenied" => ApiErrors.Forbidden,
@@ -106,12 +280,24 @@ public static class PayrollApiErrorMapper
 
       // Company-context establishment shares the platform's codes, so they are mapped by the same names GL
       // uses — wire-equivalence across modules is the contract where errors must match (`ADR-012`).
-      "Company.ContextRequired" => ApiErrors.RequestInvalid,
+      // ---- 403, CORRECTED IN T-096. IT ANSWERED 400 HERE AND 403 AT FOUR OTHER SITES.
+      //
+      // Found by `The_same_code_answers_the_same_status_at_every_site_that_maps_it` on its first run, and
+      // ruled on the distinction the product already draws rather than on a head-count:
+      // `Company.SelectionRequired` is 400 because THE CALLER MUST SELECT ONE, while this one is *"a
+      // trusted company context is required"* — **an authorization context that could not be established,
+      // which no change to the request can fix.**
+      "Company.ContextRequired" => ApiErrors.Forbidden,
       "Company.ScopeDenied" => CompanyScopeDenied,
 
       // ---- EXHAUSTIVE BY CONSTRUCTION. A new domain error with no line here becomes a 500 and fails the
       // mapper-arm test, rather than being quietly served as a 400 that tells a caller to fix something
       // they did not get wrong.
+      "Gl.AccountNotFound" => LedgerAccountNotFound,
+
+      // See `UniqueConflict` above: the floor for a unique violation nobody classified. Better than the
+      // 500 it replaces, and worse than a handler translation that names the constraint.
+      "Persistence.UniqueConstraint" => UniqueConflict,
       _ => ApiErrors.WriteFailure
     };
   }

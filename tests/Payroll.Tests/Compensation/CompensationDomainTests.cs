@@ -13,6 +13,11 @@ public sealed class CompensationDomainTests
 
   [Fact]
   [Trait("Decision", "OD-PAY-0003")]
+  // ⚠ CITED BY B18 pass 08, after I recorded `AC-PAY-0002` UNRESOLVED in pass 07 and was wrong.
+  // Four POSITIVE assertions, including the boundary date itself (`Apr` -> 2000), which is what makes
+  // "not after" inclusive. I read the two `Assert.Null` edge cases seven lines BELOW this and
+  // concluded nothing asserted the rule -- a true statement about two tests, generalised to the file.
+  [Trait("Criterion", "AC-PAY-0002")]
   public void The_record_in_force_is_the_latest_one_not_after_the_date()
   {
     var history = new[]
@@ -48,6 +53,27 @@ public sealed class CompensationDomainTests
 
   [Fact]
   [Trait("Decision", "OD-PAY-0003")]
+  // ---- ⚠⚠⚠ THE `AC-PAY-0001` CITATION WAS REMOVED HERE ON 2026-09-05. THE TEST STAYS; THE CLAIM DOES NOT.
+  //
+  // *"Creating a compensation record… stores it with its effective date **and does not alter any prior
+  // record**."* **The second clause is what this test was cited for and it is not what this test shows.**
+  //
+  // ***THE TWO AGGREGATES ARE INDEPENDENT. `EmployeeCompensation.Create` RETURNS A STANDALONE OBJECT AND
+  // THERE IS NO SHARED STORE, SO CONSTRUCTING `second` CANNOT REACH `first`.*** Two of the three assertions
+  // below are about an object nothing touched. **This test would pass identically if the product had an
+  // update path that mutated prior records, because it never exercises a write path at all.**
+  //
+  // ⚠⚠ ***THE PROPERTY HOLDS. THE CITATION DID NOT ESTABLISH IT.*** `EmployeeCompensation` exposes exactly
+  // ONE public mutator — `RecordGradeBandObservation`, which records an observation — so there is no update
+  // path to alter a prior record. *That is a different item from "the criterion is false", and the two get
+  // merged unless the difference is written down.*
+  //
+  // ⚠ The removed comment read *"the earlier record keeps its amount AND its effective date **after a second
+  // is recorded**"* — **"after a second is recorded" asserts a temporal and causal sequence the fixture never
+  // creates.** *Nothing is recorded into anything.* **The words describe a test somebody imagined writing.**
+  //
+  // **What clause 1 needs is a witness that a record is STORED with its effective date; what clause 2 needs
+  // is a write path to attempt and fail. Neither exists here. Owner's to schedule.**
   public void Recording_a_change_leaves_every_earlier_record_intact()
   {
     // The whole reason a past run can be reproduced. There is no update path to test, and that absence is
@@ -85,6 +111,9 @@ public sealed class CompensationDomainTests
 
   [Fact]
   [Trait("Decision", "OD-PAY-0004")]
+  // ⚠ CITED BY B18, body-confirmed: all three clauses: the amount is STORED, `WasOutsideGradeBand` is true, and an observation is
+  // surfaced -- "accepted and recorded, and the out-of-band condition is surfaced to the caller".
+  [Trait("Criterion", "AC-PAY-0004")]
   public void An_out_of_band_amount_is_recorded_and_warned_never_refused()
   {
     // The band is INFORMATIONAL. Promoting it to a control would change what `DEC-POS-0027` said a band is,

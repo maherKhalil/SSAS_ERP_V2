@@ -149,6 +149,19 @@ public sealed class PlatformSupportAuthorityEndToEndTests(PlatformSupportAuthori
   // ---- DEC-TEN-0026 : self-mutation and last-admin ----
 
   [Fact]
+  [Trait("Criterion", "AC-TEN-0090")]
+  // `AC-TEN-0090` — *"After self-disable or SELF-REVOKE, the already-issued short-lived platform access JWT
+  // MAY RETAIN ITS AUTHORITY UNTIL NATURAL EXPIRY … no immediate access-token revocation is introduced."*
+  //
+  // ⚠⚠ THIS IS A CRITERION THAT REQUIRES SOMETHING TO **KEEP WORKING**, WHICH IS RARE AND FRAGILE. The
+  // assertion that matters is the SECOND request: the same token, after its `Administer` grant is gone, is
+  // still accepted. **A reviewer hardening this endpoint would read that 200 as a bug and "fix" it into a
+  // 403 — and the criterion says that fix is wrong.** The test's own comment says so in as many words, which
+  // is why the trait belongs here rather than on a denial test somewhere.
+  //
+  // ⚠ THE OTHER HALVES ARE ELSEWHERE: *"Disable PROACTIVELY REVOKES platform sessions"* is
+  // `Self_disable_succeeds_revokes_platform_sessions_and_leaves_security_version_untouched` below, and
+  // *"a permission revoke is reflected at the NEXT REFRESH"* is a refresh-path claim, unasserted here.
   public async Task Self_revoke_of_administer_succeeds_and_the_issued_token_keeps_its_claim_until_expiry()
   {
     // The caller revokes their OWN Administer. This MUST succeed: authorization is evaluated from the valid
@@ -168,6 +181,20 @@ public sealed class PlatformSupportAuthorityEndToEndTests(PlatformSupportAuthori
   }
 
   [Fact]
+  [Trait("Criterion", "AC-TEN-0089")]
+  // `AC-TEN-0089` — *"Self-disable, self-revoke of `Platform.Support.Administer`, and REMOVAL OF THE LAST
+  // USABLE ADMINISTRATOR are permitted WITH NO PREVENTIVE GUARD. Loss of the final usable ADMINISTRATIVE
+  // authority … activates [bootstrap recovery]."*
+  //
+  // Both halves in one test, and the fixture is what makes them separable: the actor is the ONLY usable
+  // `Administer` holder **and also holds `View`**, so after the revoke GENERAL authority survives while
+  // ADMINISTRATIVE authority does not. **That is the `DEC-TEN-0026` lockout state constructed deliberately**,
+  // and it is why the test can assert recovery becomes eligible rather than merely that nothing blocked the
+  // revoke.
+  //
+  // ⚠ THE *NO PREVENTIVE GUARD* CLAUSE IS CARRIED BY A SUCCESS, WHICH IS THE ONLY WAY TO CARRY IT. A
+  // criterion demanding the ABSENCE of a guard cannot be witnessed by a refusal — **it is witnessed by the
+  // operation being allowed in exactly the state where a guard would have fired.**
   public async Task Revoking_the_last_administer_succeeds_and_makes_administrative_recovery_eligible()
   {
     // Actor is the ONLY usable Administer and also holds View, so general authority survives the revoke while
@@ -187,6 +214,12 @@ public sealed class PlatformSupportAuthorityEndToEndTests(PlatformSupportAuthori
   }
 
   [Fact]
+  [Trait("Criterion", "AC-TEN-0089")]
+  [Trait("Criterion", "AC-TEN-0090")]
+  // `AC-TEN-0089`'s SELF-DISABLE clause and `AC-TEN-0090`'s *"Disable PROACTIVELY REVOKES platform sessions
+  // (blocking refresh)"* clause. The `SecurityVersion`-untouched assertion is `AC-TEN-0065`'s cross-plane
+  // leg seen from the API rather than from persistence — **the same property with a different witness, which
+  // is worth having because this one exercises the real route and that one the real database.**
   public async Task Self_disable_succeeds_revokes_platform_sessions_and_leaves_security_version_untouched()
   {
     var actor = await host.SeedActorAsync(PlatformPermissionNames.AdministerPlatformSupport);
@@ -350,6 +383,10 @@ public sealed class PlatformSupportAuthorityEndToEndHost : IAsyncLifetime
       .AddHostPermissionAuthorization()
       .AddHostAuthenticationTransport(builder.Configuration, builder.Environment)
       .AddHostProblemDetails();
+
+    builder.Services.AddScoped<SSAS.Platform.Application.Subscriptions.ITenantEntitlementReader, SSAS.Platform.Infrastructure.Subscriptions.TenantEntitlementReader>();
+    builder.Services.AddSingleton<SSAS.Platform.Application.Subscriptions.ITenantEntitlementCache, SSAS.Platform.Infrastructure.Subscriptions.InMemoryTenantEntitlementCache>();
+    builder.Services.AddScoped<SSAS.BuildingBlocks.Api.Authorization.ITenantModuleEntitlement, SSAS.Platform.API.Subscriptions.TenantModuleEntitlement>();
 
     application = builder.Build();
     await using (var scope = application.Services.CreateAsyncScope())

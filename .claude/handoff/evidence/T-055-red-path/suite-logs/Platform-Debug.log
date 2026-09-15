@@ -1,0 +1,5 @@
+Test run for C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\tests\Platform.Tests\bin\Debug\net8.0\SSAS.Platform.Tests.dll (.NETCoreApp,Version=v8.0)
+A total of 1 test files matched the specified pattern.
+Results File: C:\Users\User\Documents\SSAS_ERP_V2\SSAS_gate_red\TestResults\gate\Platform-Debug.trx
+
+Passed!  - Failed:     0, Passed:  1032, Skipped:     0, Total:  1032, Duration: 5 s - SSAS.Platform.Tests.dll (net8.0)

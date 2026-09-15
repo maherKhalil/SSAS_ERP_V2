@@ -1,5 +1,6 @@
 using SSAS.BuildingBlocks.Api.Transport;
 using SSAS.BuildingBlocks.Domain;
+using SSAS.HR.API.Employees;
 
 namespace SSAS.HR.API.Positions;
 
@@ -45,6 +46,20 @@ public static class PositionApiErrorMapper
   public static readonly ApiError PositionNotFound = new(404, "position.not_found");
   public static readonly ApiError PositionCodeConflict = new(409, "position.code_conflict");
   public static readonly ApiError PositionGradeInvalid = new(422, "position.grade_invalid");
+
+  // ⚠ 422 AND ITS OWN CODE, BECAUSE THE CONTRACT SAYS SO AND NOTHING RECORDED A REASON TO DIFFER (T-274).
+  //
+  // `FP-008 api-contracts.md:167` gives `PositionUnchanged (change to the current position)` as
+  // **`422 position.unchanged`**, and `AC-POS-0034` reads *"A change to the position the employee already
+  // holds is refused with `position.unchanged`, and no history record is written."*
+  //
+  // Both arms answered `400 request.invalid` -- **the status AND the code differed from the published
+  // contract**, so a client branching on `position.unchanged` would never see it and would receive a 400
+  // it had no reason to expect. A missing code answers nothing; a diverging one answers something wrong.
+  //
+  // 422 rather than 400 is the contract's own distinction and it is the right one: the body is
+  // well-formed and every field is valid. What is refused is the REQUEST'S MEANING against current state.
+  public static readonly ApiError PositionUnchanged = new(422, "position.unchanged");
   public static readonly ApiError PositionTransitionInvalid = new(409, "position.transition_invalid");
 
   // ---- JOB GRADE.
@@ -82,7 +97,25 @@ public static class PositionApiErrorMapper
   // and a race on either index means the same thing to the caller — somebody got there first. The code
   // conflict is the honest default for that, and no analog of the department's `TranslateManagerConflict`
   // is needed because no route here has a second unique constraint with a different meaning.
-  public static ApiError MapPosition(Error error)
+  // ⚠ THE DOMAIN MESSAGE IS ATTACHED HERE BECAUSE THIS IS THE LAST PLACE IT EXISTS (T-261).
+  //
+  // Ninety-six call sites hand an already-mapped `ApiError` straight to `ApiProblems.Problem` and never
+  // see the original `Error`. Attaching the message to the result is one edit per mapper; passing it
+  // alongside would have been ninety-six.
+  //
+  // `ApiError.ShowsDetail` decides whether it reaches the caller: an authorization refusal (401/403)
+  // drops it unless that code opted in, because `branch.scope_denied` has nine different messages behind
+  // it and showing them would separate a branch that does not exist from one that is forbidden.
+  public static ApiError MapPosition(Error error) =>
+    MapPositionCore(error).Explaining(error.Message, error.Field);
+
+  public static ApiError MapJobGrade(Error error) =>
+    MapJobGradeCore(error).Explaining(error.Message, error.Field);
+
+  public static ApiError MapSalaryGrade(Error error) =>
+    MapSalaryGradeCore(error).Explaining(error.Message, error.Field);
+
+  private static ApiError MapPositionCore(Error error)
   {
     ArgumentNullException.ThrowIfNull(error);
 
@@ -106,7 +139,7 @@ public static class PositionApiErrorMapper
     };
   }
 
-  public static ApiError MapJobGrade(Error error)
+  private static ApiError MapJobGradeCore(Error error)
   {
     ArgumentNullException.ThrowIfNull(error);
 
@@ -134,7 +167,7 @@ public static class PositionApiErrorMapper
     };
   }
 
-  public static ApiError MapSalaryGrade(Error error)
+  private static ApiError MapSalaryGradeCore(Error error)
   {
     ArgumentNullException.ThrowIfNull(error);
 
@@ -174,7 +207,8 @@ public static class PositionApiErrorMapper
   private static ApiError MapShared(Error error) =>
     error.Code switch
     {
-      "Position.InvalidPagination" => ApiErrors.RequestInvalid,
+      "Position.InvalidPageNumber" => ApiErrors.PageNumberInvalid,
+      "Position.InvalidPageSize" => ApiErrors.PageSizeInvalid,
       "Position.InvalidActor" => ApiErrors.RequestInvalid,
       "Position.InvalidGradeReference" => ApiErrors.RequestInvalid,
 
@@ -199,6 +233,33 @@ public static class PositionApiErrorMapper
       "Persistence.ConcurrencyConflict" => ApiErrors.ConcurrencyConflict,
 
       "Position.InvalidPositionAssignment" => ApiErrors.RequestInvalid,
+
+      // ================================================================================================
+      // TEN `Employee.*` CODES THIS SITE CAN RECEIVE (T-095, `DEC-L-079`).
+      // ================================================================================================
+      //
+      // T-094's derived register found them: this site's routes invoke `ChangeEmployeePositionCommandHandler`
+      // and the position-history read, both of which return `Employee.*` refusals directly. **Until now every
+      // one of them answered `500 request.failed`.**
+      //
+      // ---- THE STATUSES ARE COPIED FROM `EmployeeApiErrorMapper`, NOT CHOSEN HERE.
+      //
+      // `DEC-L-079`: a status is a property of the CODE, not of the SITE. **`Employee.NotFound` answering 404
+      // on an employee route and 500 here is a disclosure and an inconsistency at once** — a caller could
+      // learn which surface refused them from the status alone.
+      //
+      // The CODE STRINGS are reused too: `employee.not_found` on a position route is accurate, because what
+      // was not found is the employee. `The_same_code_answers_the_same_status_at_every_site_that_maps_it` asserts the statuses.
+      "Employee.NotFound" => EmployeeApiErrorMapper.NotFound,
+      "Employee.InvalidTransition" => EmployeeApiErrorMapper.TransitionInvalid,
+      "Employee.CompanyScopeDenied" => EmployeeApiErrorMapper.CompanyScopeDenied,
+      "Employee.BranchScopeDenied" => EmployeeApiErrorMapper.BranchScopeDenied,
+      "Employee.ConcurrencyConflict" => ApiErrors.ConcurrencyConflict,
+      "Employee.InvalidActor" => ApiErrors.Forbidden,
+      "Employee.ReadPermissionDenied" => ApiErrors.Forbidden,
+      "Employee.WritePermissionDenied" => ApiErrors.Forbidden,
+      "Employee.InvalidReadScope" => ApiErrors.RequestInvalid,
+      "Employee.PositionUnchanged" => PositionApiErrorMapper.PositionUnchanged,
 
       // Everything else, including genuine storage and routing failure, keeps server semantics.
       _ => ApiErrors.WriteFailure

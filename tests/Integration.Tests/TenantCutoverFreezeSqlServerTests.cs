@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+﻿using SSAS.BuildingBlocks.Domain;
+using System.Diagnostics;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -267,6 +268,13 @@ public sealed class TenantCutoverFreezeSqlServerTests
     Assert.Equal(0, await fixture.ActiveOperationCountAsync(fixture.TenantA));
   }
 
+  // ================================================================================================
+
+  // A gate that permits this write and has never seen one, over a store whose write-once observation loses
+  // its race. Only the two members the fence actually calls are implemented — **the other eight throw
+  // rather than returning empty, so a future fence that starts calling one is loud rather than silently
+  // fenced against nothing.**
+
   private sealed class CutoverFixture : IAsyncDisposable
   {
     private const string ServerKey = "PrimarySqlServer";
@@ -532,7 +540,6 @@ public sealed class TenantCutoverFreezeSqlServerTests
     public string? UserId => "cutover-freeze-tests";
     public string? UserName => null;
     public string? Email => null;
-    public Guid? CompanyId => null;
     public string? SessionId => null;
     public string? TokenId => null;
     public IReadOnlyCollection<string> Roles => [];

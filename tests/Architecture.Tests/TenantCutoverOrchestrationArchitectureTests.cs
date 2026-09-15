@@ -11,6 +11,11 @@ namespace SSAS.Architecture.Tests;
 // The orchestrator's value is ORDER, OWNERSHIP and RESUMABILITY. Every correctness decision belongs to a
 // component that already owns it and has already been reviewed, so the thing most worth guarding is that it
 // keeps composing them rather than growing its own copy of a freeze, a copy engine, or a routing mutation.
+// ---- PLANT RECORD (T-249): collapsing the file walk to `*.csx` reddens this file.
+//
+// Checked rather than assumed, after an audit found no recorded plant. The mutation leaves every
+// directory in place and makes the pattern match nothing, which is the failure mode a missing
+// directory does NOT produce -- that one throws.
 public sealed class TenantCutoverOrchestrationArchitectureTests
 {
   private static readonly Assembly InfrastructureAssembly = typeof(TenantCutoverWriteFence).Assembly;
@@ -64,9 +69,13 @@ public sealed class TenantCutoverOrchestrationArchitectureTests
   {
     var source = SourceOf("TenantCutoverOrchestrator.cs");
 
-    Assert.Equal(1, Occurrences(source, "AcquireForSessionAsync"));
-    Assert.DoesNotContain("TryAcquireForSessionAsync", source, StringComparison.Ordinal);
-    Assert.DoesNotContain("TryAcquireForTransactionAsync", source, StringComparison.Ordinal);
+    // ⚠ COMPILE-CHECKED AGAINST THE LOCK THAT DECLARES THEM (252). As bare strings these asserted
+    // nothing the day any of the three was renamed: the orchestrator would not mention the OLD name
+    // either, so the search went quiet and the test stayed green while the rule stopped being enforced.
+    // THE RENAME IS THE RISK HERE, NOT THE TYPO — a rename is routine, tool-driven and silent.
+    Assert.Equal(1, Occurrences(source, nameof(TenantCutoverOperationLock.AcquireForSessionAsync)));
+    Assert.DoesNotContain(nameof(TenantCutoverOperationLock.TryAcquireForSessionAsync), source, StringComparison.Ordinal);
+    Assert.DoesNotContain(nameof(TenantCutoverOperationLock.TryAcquireForTransactionAsync), source, StringComparison.Ordinal);
 
     // Every phase after acquisition runs under it: the copy and flip are entered through their
     // under-ownership paths, never their standalone ones.
@@ -140,7 +149,7 @@ public sealed class TenantCutoverOrchestrationArchitectureTests
     // comments first keeps the guard exactly as strong against a real reversal call.
     var source = CodeOf("TenantCutoverOrchestrator.cs");
 
-    Assert.DoesNotContain("ReleaseFreeze", source, StringComparison.Ordinal);
+    Assert.DoesNotContain(nameof(TenantCutoverOperation.ReleaseFreeze), source, StringComparison.Ordinal);
 
     foreach (var reversal in ReversalVerbs)
     {
@@ -156,6 +165,34 @@ public sealed class TenantCutoverOrchestrationArchitectureTests
 
   // ---- NO SOURCE CLEANUP, ANYWHERE. Retention is a separate operational capability that does not exist,
   // and a cutover that could delete the source is a cutover that can lose data to tidy up after itself.
+  //
+  // ==================================================================================================
+  // ⚠⚠⚠ THIS BAN IS AN ENUMERATED VOCABULARY, AND THE ESCAPE IS MEASURED RATHER THAN ARGUED (2026-09-06).
+  // ==================================================================================================
+  //
+  // Two plants, same file, same declaration, same line — the only difference is the word:
+  //
+  //     a schema-level drop, spelled with the one DDL noun this list does not name  ->  ***GATE GREEN***
+  //     a listed token in the identical position                                    ->  ***GATE RED***, here
+  //
+  // ***THE RED IS THE CONTROL FOR THE GREEN.*** A dead guard, or one reading a file the plant never landed
+  // in, could not have produced it — so the green is a vocabulary escape and not a reach failure. This ban
+  // names two members of one DDL family and does not know the third.
+  //
+  // **NOT A DEFECT IN THIS GUARD SPECIFICALLY — it is the deny-list idiom.** An enumeration of forbidden
+  // terms is N cases, and the N+1st is free to whoever picks a synonym the author did not think of. The
+  // remedy is not a longer list; it is a *derived* population where one exists, and this subject has none.
+  //
+  // ---- ⚠⚠ AND A FALSE RED IS WAITING IN THIS TEST, WHICH THE PLANT FOUND BY ALMOST CAUSING IT.
+  //
+  // `SourceOf` returns RAW source. This file offers `WithoutComments`-style access for "guards whose subject
+  // is what the code DOES" and this guard does not use it. **So a COMMENT in the orchestrator that merely
+  // mentions a banned token reddens this test.** The plant's own explanatory comment named two of them and
+  // would have failed the guard for describing the rule it was testing.
+  //
+  // Left as it is: reading raw source is defensible for a destructive-SQL ban, since a token inside a
+  // string literal is exactly what must be caught and comment-stripping can cut a literal containing `//`.
+  // Recorded so the next red here is read before it is fixed.
   [Fact]
   [Trait("Decision", "ADR-020")]
   public void The_orchestrator_deletes_nothing()

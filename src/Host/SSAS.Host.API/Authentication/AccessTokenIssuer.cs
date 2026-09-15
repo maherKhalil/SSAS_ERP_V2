@@ -10,9 +10,33 @@ using SSAS.Platform.Domain;
 
 namespace SSAS.Host.API.Authentication;
 
-public sealed class AccessTokenIssuer(ISigningKeyProvider keyProvider, IOptions<JwtOptions> optionsAccessor)
+public sealed class AccessTokenIssuer(
+  ISigningKeyProvider keyProvider,
+  IOptions<JwtOptions> optionsAccessor,
+  ILogger<AccessTokenIssuer> logger)
   : IAccessTokenIssuer
 {
+  // ==============================================================================================
+  // ⚠ THE SIGNING FAILURE IS OPAQUE OUTWARD AND DIAGNOSABLE INWARD, AND THE ASYMMETRY IS THE POINT.
+  // ==============================================================================================
+  //
+  // Both `Issue` overloads wrap their whole body in `catch (Exception)` and return the generic
+  // `AccessTokenIssuanceUnavailable`. **That must not change**: telling a caller why signing failed
+  // is a real leak, and a missing key, an unusable algorithm and an oversized token are all things
+  // an attacker would like distinguished.
+  //
+  // **But until T-241 nobody learned anything either.** This file had no logger at all, so a signing
+  // key that failed to load and a routine refusal produced the same silence, and the only signal an
+  // operator got was authentication failing for everyone with no reason recorded anywhere.
+  //
+  // So the exception is logged with its cause and the response is left exactly as it was. The catch
+  // stays broad on purpose: the point is that ANY failure here is worth an operator's attention, and
+  // narrowing it would put the unanticipated ones back into silence.
+  private static readonly Action<ILogger, Exception?> LogIssuanceFailure = LoggerMessage.Define(
+    LogLevel.Error,
+    new EventId(1, nameof(LogIssuanceFailure)),
+    "Access token issuance failed");
+
   private readonly JwtOptions options = optionsAccessor.Value;
 
   public Result<IssuedAccessToken> Issue(AccessTokenClaims claims, DateTimeOffset issuedUtc)
@@ -58,8 +82,9 @@ public sealed class AccessTokenIssuer(ISigningKeyProvider keyProvider, IOptions<
       if (encoded.Length > options.MaximumEncodedTokenSize) return Failure();
       return Result.Success(new IssuedAccessToken(new SensitiveAccessToken(encoded), expires));
     }
-    catch (Exception)
+    catch (Exception exception)
     {
+      LogIssuanceFailure(logger, exception);
       return Failure();
     }
   }
@@ -107,8 +132,9 @@ public sealed class AccessTokenIssuer(ISigningKeyProvider keyProvider, IOptions<
       if (encoded.Length > options.MaximumEncodedTokenSize) return Failure();
       return Result.Success(new IssuedAccessToken(new SensitiveAccessToken(encoded), expires));
     }
-    catch (Exception)
+    catch (Exception exception)
     {
+      LogIssuanceFailure(logger, exception);
       return Failure();
     }
   }

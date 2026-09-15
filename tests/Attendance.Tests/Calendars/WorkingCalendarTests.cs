@@ -19,8 +19,15 @@ public sealed class WorkingCalendarTests
   // `BR-ATT-0001` exists because the weekend is not universal, and a single-case test is exactly how a
   // hardcoded constant survives review: it would pass, and it would be wrong for a large share of this
   // product's market in a way that produces plausible numbers rather than an error.
+  // ⚠ CITES `AC-ATT-0001` — *"A calendar with a Fri/Sat weekend reports Sunday as a working day and Friday
+  // as not — **the weekend pattern is read from data, and no test may pass by assuming Sat/Sun**."* The
+  // first two rows are the criterion's own example; the Sat/Sun rows are its complement and the Thu/Fri
+  // rows are a third pattern the criterion does not require. ***THE CRITERION'S LAST CLAUSE IS A CLAIM
+  // ABOUT THE TEST SUITE, AND THIS THEORY IS WHAT MAKES IT TRUE: a single-case test is exactly what a
+  // hardcoded constant survives*** — which the header above already said before any criterion was attached.
   [Theory]
   [Trait("Requirement", "REQ-ATT-0001")]
+  [Trait("Criterion", "AC-ATT-0001")]
   // Fri/Sat: Sunday works, Friday does not.
   [InlineData(DayOfWeek.Friday, DayOfWeek.Saturday, "2026-09-13", true)]
   [InlineData(DayOfWeek.Friday, DayOfWeek.Saturday, "2026-09-11", false)]
@@ -37,8 +44,13 @@ public sealed class WorkingCalendarTests
     Assert.Equal(isWorking, calendar.IsWorkingDay(DateOnly.Parse(date, System.Globalization.CultureInfo.InvariantCulture)));
   }
 
+  // ⚠ CITES `AC-ATT-0002` — *"Adding a holiday on an existing working day reduces `WorkingDaysBetween` for
+  // a range containing it by exactly one."* **The quantity is PINNED, not bracketed: the assertion is the
+  // exact delta, so a change that reduced the count by two would fail here rather than satisfying a
+  // "fewer than before" reading.**
   [Fact]
   [Trait("Requirement", "REQ-ATT-0002")]
+  [Trait("Criterion", "AC-ATT-0002")]
   public void A_holiday_on_a_working_day_reduces_the_count_by_exactly_one()
   {
     var calendar = Calendar(DayOfWeek.Saturday, DayOfWeek.Sunday);
@@ -57,8 +69,13 @@ public sealed class WorkingCalendarTests
   // never a working day. This falls out of COUNTING WORKING DAYS rather than counting days and subtracting
   // non-working ones — which is why the loop is written that way round, and why this test would catch it
   // being rewritten the other way.
+  //
+  // ⚠ THE CITATION WAS IN THIS COMMENT AND NOT IN A TRAIT, so every count derived from traits read this
+  // criterion as uncovered. One clause, and the assertion pair IS it: 5 before, a Saturday holiday added,
+  // 5 after. A count that subtracted the weekend holiday would answer 4 and fail here.
   [Fact]
   [Trait("Requirement", "REQ-ATT-0003")]
+  [Trait("Criterion", "AC-ATT-0003")]
   public void A_holiday_falling_on_a_weekend_day_does_not_reduce_the_count_further()
   {
     var calendar = Calendar(DayOfWeek.Saturday, DayOfWeek.Sunday);
@@ -79,8 +96,18 @@ public sealed class WorkingCalendarTests
   //
   // Off-by-one at the range ends is the defect this class of code actually has, and it is invisible in
   // review: `<` versus `<=` reads identically and is wrong by one day per request, forever.
+  //
+  // ⚠ CITES `AC-ATT-0005` — *"`WorkingDaysBetween(d, d)` for a single working day returns 1, and for a
+  // single weekend day returns 0."* **Both clauses are asserted, one line each**, and the criterion's own
+  // reason is this file's: off-by-one at the range ends is what this class of code gets wrong. The two
+  // assertions below them — a range bounded by weekends at both ends, and an inverted range — go beyond the
+  // criterion and are not part of the claim.
+  //
+  // ⚠⚠ THE CITATION ALREADY EXISTED IN THE HEADING ABOVE AND NOWHERE A COUNT COULD SEE IT. A trait-derived
+  // count read this as uncovered while the test that covers it named the criterion in prose four lines up.
   [Fact]
   [Trait("Requirement", "REQ-ATT-0003")]
+  [Trait("Criterion", "AC-ATT-0005")]
   public void The_range_is_inclusive_at_both_ends()
   {
     var calendar = Calendar(DayOfWeek.Saturday, DayOfWeek.Sunday);

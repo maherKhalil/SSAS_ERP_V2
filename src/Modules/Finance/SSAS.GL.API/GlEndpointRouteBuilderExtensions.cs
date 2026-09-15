@@ -65,15 +65,15 @@ public static class GlEndpointRouteBuilderExtensions
       .RequirePermission(GlPermissionNames.CreateAccounts).WithName("GlAccountsCreate");
     group.MapGet("/accounts", SearchAccountsAsync)
       .RequirePermission(GlPermissionNames.ViewAccounts).WithName("GlAccountsSearch");
-    group.MapGet("/accounts/{accountId:guid}", GetAccountAsync)
+    group.MapGet("/accounts/{accountId}", GetAccountAsync)
       .RequirePermission(GlPermissionNames.ViewAccounts).WithName("GlAccountsGet");
-    group.MapPut("/accounts/{accountId:guid}", RenameAccountAsync)
+    group.MapPut("/accounts/{accountId}", RenameAccountAsync)
       .RequirePermission(GlPermissionNames.UpdateAccounts).WithName("GlAccountsRename");
-    group.MapPost("/accounts/{accountId:guid}/deactivation", DeactivateAccountAsync)
+    group.MapPost("/accounts/{accountId}/deactivation", DeactivateAccountAsync)
       .RequirePermission(GlPermissionNames.DeactivateAccounts).WithName("GlAccountsDeactivate");
-    group.MapPost("/accounts/{accountId:guid}/activation", ActivateAccountAsync)
+    group.MapPost("/accounts/{accountId}/activation", ActivateAccountAsync)
       .RequirePermission(GlPermissionNames.DeactivateAccounts).WithName("GlAccountsActivate");
-    group.MapGet("/accounts/{accountId:guid}/balance", GetAccountBalanceAsync)
+    group.MapGet("/accounts/{accountId}/balance", GetAccountBalanceAsync)
       .RequirePermission(GlPermissionNames.ViewReports).WithName("GlAccountsBalance");
 
     // ---- FISCAL CALENDAR. Company-level (`OD-GL-0004`), so these are company-scoped writes.
@@ -81,30 +81,53 @@ public static class GlEndpointRouteBuilderExtensions
       .RequirePermission(GlPermissionNames.ManagePeriods).WithName("GlFiscalYearsDefine");
     group.MapGet("/fiscal-periods", GetFiscalPeriodsAsync)
       .RequirePermission(GlPermissionNames.ViewPeriods).WithName("GlFiscalPeriodsList");
-    group.MapPost("/fiscal-periods/{fiscalPeriodId:guid}/closure", CloseFiscalPeriodAsync)
+    group.MapPost("/fiscal-periods/{fiscalPeriodId}/closure", CloseFiscalPeriodAsync)
       .RequirePermission(GlPermissionNames.ClosePeriods).WithName("GlFiscalPeriodsClose");
-    group.MapPost("/fiscal-periods/{fiscalPeriodId:guid}/reopening", ReopenFiscalPeriodAsync)
+    group.MapPost("/fiscal-periods/{fiscalPeriodId}/reopening", ReopenFiscalPeriodAsync)
       .RequirePermission(GlPermissionNames.ClosePeriods).WithName("GlFiscalPeriodsReopen");
 
     // ---- DRAFTS. The mutable half (`OD-GL-0007`).
     group.MapPost("/journal-drafts", CreateJournalDraftAsync)
       .RequirePermission(GlPermissionNames.ManageDrafts).WithName("GlJournalDraftsCreate");
-    group.MapPut("/journal-drafts/{journalDraftId:guid}", UpdateJournalDraftAsync)
+    group.MapPut("/journal-drafts/{journalDraftId}", UpdateJournalDraftAsync)
       .RequirePermission(GlPermissionNames.ManageDrafts).WithName("GlJournalDraftsUpdate");
-    group.MapPost("/journal-drafts/{journalDraftId:guid}/discard", DiscardJournalDraftAsync)
+    group.MapPost("/journal-drafts/{journalDraftId}/discard", DiscardJournalDraftAsync)
       .RequirePermission(GlPermissionNames.ManageDrafts).WithName("GlJournalDraftsDiscard");
 
     // Posting is on the DRAFT, because posting is the one-way promotion of that draft into a ledger entry.
     // Placing it under `/journals` would suggest a journal exists before it does.
-    group.MapPost("/journal-drafts/{journalDraftId:guid}/posting", PostJournalDraftAsync)
+    group.MapPost("/journal-drafts/{journalDraftId}/posting", PostJournalDraftAsync)
       .RequirePermission(GlPermissionNames.PostJournals).WithName("GlJournalDraftsPost");
+
+    // ================================================================================================
+    // READING A DRAFT (T-098). THE HALF THAT WAS MISSING FOR THE WHOLE OF FP-011.
+    // ================================================================================================
+    //
+    // Create, update, discard and post all shipped. **Nothing could read a draft** — the create route above
+    // returns a `Location` header and an id for a resource no route could fetch, so a preparer could not
+    // see what they were editing and a poster could not see what they were about to post.
+    //
+    // ---- `GL.Drafts.View`, AND NOTHING IMPLIES IT.
+    //
+    // The preparer holds `GL.Drafts.Manage`; the reviewer holds `GL.Journals.Post`. **Neither grants this
+    // one.** An implied permission makes the explicit one optional and its absence unenforceable —
+    // `AC-SS-0005`, and the third time this codebase has refused the shape (T-088, T-089).
+    //
+    // **Naming a draft by id is not authority to read it**, which is exactly the payslip question T-088
+    // answered no. And two grants for two jobs is not friction: the point of a separate `View` is that
+    // someone can hold it WITHOUT `Manage` — which is the separation of duties the permission was declared
+    // for, in its own words, *"a user who may prepare work for someone else to post"*.
+    group.MapGet("/journal-drafts", SearchJournalDraftsAsync)
+      .RequirePermission(GlPermissionNames.ViewDrafts).WithName("GlJournalDraftsSearch");
+    group.MapGet("/journal-drafts/{journalDraftId}", GetJournalDraftAsync)
+      .RequirePermission(GlPermissionNames.ViewDrafts).WithName("GlJournalDraftsGetById");
 
     // ---- POSTED JOURNALS. Read-only, plus the one route that creates a correction.
     group.MapGet("/journals", SearchJournalsAsync)
       .RequirePermission(GlPermissionNames.ViewJournals).WithName("GlJournalsSearch");
-    group.MapGet("/journals/{journalEntryId:guid}", GetJournalAsync)
+    group.MapGet("/journals/{journalEntryId}", GetJournalAsync)
       .RequirePermission(GlPermissionNames.ViewJournals).WithName("GlJournalsGet");
-    group.MapPost("/journals/{journalEntryId:guid}/reversals", ReverseJournalAsync)
+    group.MapPost("/journals/{journalEntryId}/reversals", ReverseJournalAsync)
       .RequirePermission(GlPermissionNames.ReverseJournals).WithName("GlJournalsReverse");
 
     // ---- REPORTING.
@@ -506,6 +529,66 @@ public static class GlEndpointRouteBuilderExtensions
   // ================================================================================================
   // POSTED JOURNALS
   // ================================================================================================
+
+  private static async Task<IResult> SearchJournalDraftsAsync(
+    HttpContext context, IGlScopeResolver resolver, IGlReadService reads, ICurrentTenant currentTenant,
+    ICurrentCompany currentCompany, ITenantCompanyCurrencyLookup currencies, CancellationToken cancellationToken)
+  {
+    if (!TryReadFilters(context, ["fromUtc", "toUtc", "reference"], out var filters))
+    {
+      return Problem(context, ApiErrors.RequestInvalid);
+    }
+
+    if (!TryReadInstant(filters, "fromUtc", out var fromUtc) ||
+      !TryReadInstant(filters, "toUtc", out var toUtc))
+    {
+      return Problem(context, ApiErrors.RequestInvalid);
+    }
+
+    var scope = await resolver.ResolveAsync(GlPermissionNames.ViewDrafts, cancellationToken);
+    if (scope.IsFailure)
+    {
+      return Problem(context, GlApiErrorMapper.Map(scope.Error));
+    }
+
+    filters.TryGetValue("reference", out var reference);
+    var drafts = await reads.SearchJournalDraftsAsync(
+      scope.Value, currentCompany.CompanyId, fromUtc, toUtc, reference, cancellationToken);
+
+    var currency = await ResolveCurrencyAsync(currentTenant, currentCompany, currencies, cancellationToken);
+
+    return Results.Ok(drafts
+      .Select(draft => new JournalDraftSummaryResponse(
+        draft.JournalDraftId, draft.CompanyId, draft.EntryDateUtc,
+        draft.Description, draft.Reference, currency, draft.TotalDebits))
+      .ToArray());
+  }
+
+  private static async Task<IResult> GetJournalDraftAsync(
+    HttpContext context, Guid journalDraftId, IGlScopeResolver resolver, IGlReadService reads,
+    ICurrentTenant currentTenant, ICurrentCompany currentCompany, ITenantCompanyCurrencyLookup currencies,
+    CancellationToken cancellationToken)
+  {
+    var scope = await resolver.ResolveAsync(GlPermissionNames.ViewDrafts, cancellationToken);
+    if (scope.IsFailure)
+    {
+      return Problem(context, GlApiErrorMapper.Map(scope.Error));
+    }
+
+    var draft = await reads.GetJournalDraftAsync(scope.Value, journalDraftId, cancellationToken);
+    if (draft is null)
+    {
+      return Problem(context, GlApiErrorMapper.NotFound);
+    }
+
+    var currency = await ResolveCurrencyAsync(currentTenant, currentCompany, currencies, cancellationToken);
+
+    return Results.Ok(new JournalDraftResponse(
+      draft.JournalDraftId, draft.CompanyId, draft.EntryDateUtc, draft.Description, draft.Reference, currency,
+      [.. draft.Lines.Select(line => new JournalLineResponse(
+        line.LineNumber, line.AccountId, line.AccountCode, line.AccountName,
+        line.Debit, line.Credit, line.Description))]));
+  }
 
   private static async Task<IResult> SearchJournalsAsync(
     HttpContext context, IGlScopeResolver resolver, IGlReadService reads, ICurrentTenant currentTenant, ICurrentCompany currentCompany,

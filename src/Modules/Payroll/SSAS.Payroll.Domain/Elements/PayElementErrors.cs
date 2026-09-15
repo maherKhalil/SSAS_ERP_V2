@@ -12,11 +12,13 @@ public static class PayElementErrors
 
   public static readonly Error InvalidCode = new(
     "Payroll.PayElementCodeInvalid",
-    "A pay element code is required, must be at most 64 characters, and cannot contain control characters.");
+    "A pay element code is required, must be at most 64 characters, and cannot contain control characters.",
+    Field: "code");
 
   public static readonly Error InvalidName = new(
     "Payroll.PayElementNameInvalid",
-    "A pay element name is required and must be at most 256 characters.");
+    "A pay element name is required and must be at most 256 characters.",
+    Field: "name");
 
   public static readonly Error DuplicateCode = new(
     "Payroll.PayElementCodeConflict",
@@ -40,19 +42,18 @@ public static class PayElementErrors
   // a caller who has misunderstood the model, not a smaller number.
   public static readonly Error NegativeAmount = new(
     "Payroll.PayElementAmountNegative",
-    "A pay element amount or rate cannot be negative; whether it earns or deducts is decided by its kind.");
+    "A pay element amount or rate cannot be negative; whether it earns or deducts is decided by its kind.",
+    Field: "defaultRateOrAmount");
 
   public static readonly Error InvalidCalculationOrder = new(
     "Payroll.PayElementCalculationOrderInvalid",
-    "A pay element calculation order cannot be negative.");
+    "A pay element calculation order cannot be negative.",
+    Field: "calculationOrder");
 
   public static readonly Error AccountRequired = new(
     "Payroll.PayElementAccountRequired",
-    "A ledger account is required to map a pay element.");
-
-  public static readonly Error CodeIsImmutable = new(
-    "Payroll.PayElementCodeImmutable",
-    "A pay element's code cannot be changed after it is created.");
+    "A ledger account is required to map a pay element.",
+    Field: "glAccountId");
 
   // ---- WHY THIS NAMES THE ELEMENT (OD-PAY-0012).
   //

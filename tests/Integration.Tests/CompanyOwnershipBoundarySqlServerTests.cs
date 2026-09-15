@@ -1,4 +1,4 @@
-﻿using Microsoft.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
@@ -56,6 +56,9 @@ public sealed class CompanyOwnershipBoundarySqlServerTests
   // ---- A. AN ADDED COMPANY-OWNED ENTITY IS STAMPED WITH THE TRUSTED COMPANY, and the authorizer is
   // genuinely reached on the real save path — not merely available to be called.
   [Fact]
+  // ⚠ CITED BY B18 pass 12, body-confirmed: the "adopted only from the validated company context" clause: the authorizer is called and the
+  // stored company is the trusted one.
+  [Trait("Criterion", "AC-EMP-0003")]
   public async Task An_added_company_owned_entity_is_stamped_with_the_trusted_company()
   {
     await using var fixture = await CompanyFixture.CreateAsync();
@@ -101,6 +104,9 @@ public sealed class CompanyOwnershipBoundarySqlServerTests
   // Quietly correcting it would hide the attempt, which is the whole reason a supplied value is CONFIRMED
   // rather than trusted.
   [Fact]
+  // ⚠ CITED BY B18 pass 12, body-confirmed: ⚠ the criterion's exact words -- "refused rather than SILENTLY REWRITTEN" -- and the probe
+  // confirms no row was written under the spoofed company.
+  [Trait("Criterion", "AC-EMP-0003")]
   public async Task A_spoofed_company_on_create_is_refused_rather_than_rewritten()
   {
     await using var fixture = await CompanyFixture.CreateAsync();
@@ -253,6 +259,32 @@ public sealed class CompanyOwnershipBoundarySqlServerTests
 
   // ---- A DEACTIVATED COMPANY IS NOT ACCESS EITHER, even with the assignment row intact.
   [Fact]
+  // CITED BY B18 pass 20 for `AC-DEP-0009` (*deactivating the company mid-session refuses the next
+  // DEPARTMENT write*), and the citation is a JOIN OF TWO ASSERTIONS rather than a direct reading.
+  // Stated here because a reader who did not know that would be misled by the trait.
+  //
+  // This test writes `CompanyOwnedProbe`, not `Department`. It shows the interceptor refuses ANY
+  // company-owned write once the company is deactivated, and the probe is exactly the device that
+  // makes the population derived rather than hand-picked. The second half -- that Department IS
+  // company-owned -- is `Department_is_tenant_and_company_owned_but_never_branch_owned`
+  // (`AC-DEP-0051`).
+  //
+  // The two together entail the criterion. Neither alone puts a deactivated company and a
+  // department in the same assertion, and no test does.
+  [Trait("Criterion", "AC-DEP-0009")]
+  // ⚠ CITED BY 269 FOR `AC-POS-0010` ON THE SAME TERMS. The entailment is: this test asserts the RULE for
+  // company-owned entities, and `PositionDomainTests.The_position_aggregate_is_tenant_and_company_owned_
+  // and_never_branch_owned` asserts that Position IS one. Neither alone carries the criterion, and no test
+  // puts a deactivated company and a Position in the same assertion.
+  //
+  // ⚠⚠ BOTH LINKS ARE EXECUTABLE, WHICH IS WHY THIS IS CITED AND `AC-POS-0055` IS NOT. There the second
+  // premise — that a `Position → Employee` key forms a cycle — is a READING of the model that nothing
+  // reddens if it stops being true. Here, if Position ceased to be company-owned, its classification test
+  // goes red. Cite the set when every link is asserted; annotate covered-by-mechanism when a link is argued.
+  //
+  // And SHARED IS NOT INCIDENTAL: this reddens for exactly one reason — company deactivation stopped
+  // refusing writes — which is the criterion itself, for every company-owned entity at once.
+  [Trait("Criterion", "AC-POS-0010")]
   public async Task Deactivating_the_company_mid_session_refuses_the_next_write()
   {
     await using var fixture = await CompanyFixture.CreateAsync();
@@ -545,6 +577,56 @@ public sealed class CompanyOwnershipBoundarySqlServerTests
   // ================================================================================================
   // FIXTURE
   // ================================================================================================
+
+
+  // ================================================================================================
+  // THE LAST TWO NEVER-EXECUTED TYPES (item 238).
+  // ================================================================================================
+  //
+  // Item 237 measured every production type with coverage and found six query-bearing types with ZERO
+  // executed lines. `UserCompanyAccessRepository` and `TenantCompanyCurrencyLookup` are the last two, and
+  // this file already builds everything either of them needs -- a `PlatformDbContext`, a
+  // `TenantDbContextFactory` and companies seeded with a base currency.
+  //
+  // ⚠ **Both helpers were already here and PRIVATE.** Nothing was built to reach these types; the seam
+  // existed and no test had walked through it, which is the same shape as
+  // `InternalsVisibleTo("SSAS.Integration.Tests")` sitting unused on three infrastructure assemblies.
+  [Fact]
+  public async Task The_user_company_access_repository_reads_the_grants_for_one_user()
+  {
+    await using var fixture = await CompanyFixture.CreateAsync();
+
+    // ⚠ NO GRANT IS ADDED HERE. The fixture already assigns the normal user to `CompanyA`, and adding
+    // it again is refused by `UX_UserCompanyAccess_TenantId_TenantUserId_CompanyId` -- which is the
+    // uniqueness rule doing its job and the first thing this test found.
+    await using var platform = fixture.PlatformContext(fixture.Tenant);
+    var repository = new UserCompanyAccessRepository(platform);
+
+    Assert.Equal(
+      [fixture.CompanyA],
+      await repository.GetCompanyIdsAsync(fixture.Tenant, fixture.NormalUserId));
+
+    // ⚠ THE CONTROL, PER KEY PART. The query filters on TENANT and USER, and a lookup that dropped
+    // either would still find the row from the other. Each case below moves exactly one.
+    Assert.Empty(await repository.GetCompanyIdsAsync(fixture.OtherTenant, fixture.NormalUserId));
+    Assert.Empty(await repository.GetCompanyIdsAsync(fixture.Tenant, fixture.AdministratorUserId));
+  }
+
+  [Fact]
+  public async Task The_company_currency_lookup_opens_the_tenant_database_and_answers()
+  {
+    await using var fixture = await CompanyFixture.CreateAsync();
+
+    var lookup = new TenantCompanyCurrencyLookup(fixture.TenantContextFactory(fixture.Tenant));
+
+    Assert.Equal("SAR", await lookup.FindBaseCurrencyCodeAsync(fixture.Tenant, fixture.CompanyA));
+
+    // ⚠ THE CONTROLS. The query filters on BOTH company and tenant, and this type is the one place a
+    // currency is resolved ACROSS the tenant boundary -- answering for the wrong tenant's company would
+    // put one tenant's currency on another's money.
+    Assert.Null(await lookup.FindBaseCurrencyCodeAsync(fixture.Tenant, Guid.NewGuid()));
+    Assert.Null(await lookup.FindBaseCurrencyCodeAsync(fixture.Tenant, Guid.Empty));
+  }
 
   private sealed class CompanyFixture : IAsyncDisposable
   {
@@ -852,7 +934,7 @@ public sealed class CompanyOwnershipBoundarySqlServerTests
       return tenant.Id;
     }
 
-    private PlatformDbContext PlatformContext(Guid? tenantId = null)
+    public PlatformDbContext PlatformContext(Guid? tenantId = null)
     {
       var options = new DbContextOptionsBuilder<PlatformDbContext>()
         .UseSqlServer(ConnectionFor(platformCatalog))
@@ -860,7 +942,7 @@ public sealed class CompanyOwnershipBoundarySqlServerTests
       return new PlatformDbContext(options, new TestUser(), new TestTenant(tenantId), new TestClock());
     }
 
-    private TenantDbContextFactory TenantContextFactory(Guid tenantId)
+    public TenantDbContextFactory TenantContextFactory(Guid tenantId)
     {
       var platform = PlatformContext(tenantId);
       return new TenantDbContextFactory(
@@ -912,7 +994,6 @@ public sealed class CompanyOwnershipBoundarySqlServerTests
 
       public string? Email => null;
 
-      public Guid? CompanyId => null;
 
       public string? SessionId => null;
 

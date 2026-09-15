@@ -27,13 +27,43 @@ public sealed class DepartmentApiArchitectureTests
   [Fact]
   public void The_api_layer_never_holds_the_department_read_service()
   {
-    var offenders = HrApiAssembly.GetTypes()
-      .SelectMany(type => type.GetFields(
-        BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static)
-        .Select(field => (Type: type, Member: field.Name, field.FieldType))
-        .Concat(type.GetProperties(
-          BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static)
-          .Select(property => (Type: type, Member: property.Name, FieldType: property.PropertyType))))
+    // ⚠ FOUR TESTS HERE PASSED OVER AN EMPTY TYPE SET (T-258). The floor is on the assembly's types,
+    // which is what both offender scans read.
+    var hrApiTypes = HrApiAssembly.GetTypes();
+    Assert.True(hrApiTypes.Length >= 10,
+      $"only {hrApiTypes.Length} HR API types were scanned; the assembly reference is wrong or the " +
+      "enumeration collapsed, and an empty offender list below would mean nothing.");
+
+    // ⚠ FLOOR THE MEMBERS, NOT THE TYPES (T-263). The floor above proves types were found; the assertion
+    // reads MEMBERS of those types. Wrong binding flags yield an empty member list from a healthy type
+    // list, and `Assert.Empty` then passes having inspected nothing.
+    var fields = hrApiTypes
+      .SelectMany(type => type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static)
+        .Select(field => (Type: type, Member: field.Name, field.FieldType)))
+      .ToArray();
+
+    var properties = hrApiTypes
+      .SelectMany(type => type.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static)
+        .Select(property => (Type: type, Member: property.Name, FieldType: property.PropertyType)))
+      .ToArray();
+
+    // ⚠ FLOORED SEPARATELY BECAUSE THEY ARE TWO WALKS, AND A PLANT PROVED ONE FLOOR CANNOT SEE BOTH.
+    //
+    // These were concatenated under a single floor of 20. Breaking the FIELD walk's binding flags left the
+    // property walk healthy, the combined count still cleared 20, and the ban went green -- **a field-held
+    // offender would have gone undetected while this test reported success.** The rule spans fields AND
+    // properties, so both layers need a floor, not their sum.
+    Assert.True(fields.Length >= 5,
+      $"{hrApiTypes.Length} HR API types yielded only {fields.Length} fields; the field walk has collapsed " +
+      "and a field-held offender would not be seen.");
+
+    Assert.True(properties.Length >= 20,
+      $"{hrApiTypes.Length} HR API types yielded only {properties.Length} properties; the property walk " +
+      "has collapsed and a property-held offender would not be seen.");
+
+    var members = fields.Concat(properties).ToArray();
+
+    var offenders = members
       .Where(member => member.FieldType == typeof(IDepartmentReadService))
       .Select(member => $"{member.Type.Name}.{member.Member}")
       .ToArray();
@@ -50,11 +80,28 @@ public sealed class DepartmentApiArchitectureTests
   {
     var forbidden = new[] { typeof(IDepartmentScopeResolver), typeof(DepartmentReadScope) };
 
-    var offenders = HrApiAssembly.GetTypes()
+    var hrApiTypes = HrApiAssembly.GetTypes();
+    Assert.True(hrApiTypes.Length >= 10,
+      $"only {hrApiTypes.Length} HR API types were scanned; an empty offender list below would mean " +
+      "nothing.");
+
+    // ⚠ FLOOR THE PARAMETERS, NOT THE TYPES (T-263). The assertion reads method PARAMETERS; a type walk
+    // that stays healthy while `DeclaredOnly` or the flags stop yielding methods gives an empty list and a
+    // green ban. `forbidden` is asserted too -- an empty forbidden set makes `Contains` match nothing.
+    Assert.NotEmpty(forbidden);
+
+    var parameters = hrApiTypes
       .SelectMany(type => type.GetMethods(
         BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static |
         BindingFlags.DeclaredOnly))
       .SelectMany(method => method.GetParameters().Select(parameter => (method, parameter.ParameterType)))
+      .ToArray();
+
+    Assert.True(parameters.Length >= 20,
+      $"{hrApiTypes.Length} HR API types yielded only {parameters.Length} method parameters; the walk has " +
+      "collapsed and the ban below reads nothing.");
+
+    var offenders = parameters
       .Where(entry => forbidden.Contains(entry.ParameterType))
       .Select(entry => $"{entry.method.DeclaringType?.Name}.{entry.method.Name}")
       .ToArray();
@@ -66,9 +113,40 @@ public sealed class DepartmentApiArchitectureTests
   //
   // A DbContext or a repository in transport would let a route compose its own query, which is every scope
   // guarantee in this module undone in one line that would look perfectly ordinary in review.
+  //
+  // ⚠⚠ BOTH READINGS SINCE 272, BECAUSE *references no persistence type* IS A CLAIM ABOUT WHAT THE PROJECT
+  // CAN SEE. `GetReferencedAssemblies()` reads EMITTED metadata and the compiler omits a reference no type
+  // is taken from — so `SSAS.HR.API.csproj` could declare `SSAS.HR.Infrastructure`, build, and pass this
+  // until somebody first used a type from it. Measured in `269` (`3b9728c`), where exactly that plant left
+  // the equivalent assertion green.
+  //
+  // The declared reading catches the CAPABILITY at the moment the `.csproj` merges; the emitted reading
+  // catches CONSUMPTION, including through a transitive path no `.csproj` of ours names.
+  //
+  // ⚠ BOTH STAY, BECAUSE THEY FAIL ON DIFFERENT DAYS AND NEITHER SUBSUMES THE OTHER. Two assertions that
+  // both mention "references" read as duplication, and that is what a later tidy-up deletes one of. The
+  // declared one alone would miss a transitive use; the emitted one alone would miss a merged capability
+  // until somebody first exercised it.
   [Fact]
   public void The_api_layer_references_no_persistence_type()
   {
+    var declared = DeclaredDependencies.Of(HrApiAssembly);
+
+    // ⚠ THE PREDICATES ARE PROVEN TO MATCH BEFORE ANY ABSENCE IS READ AS COMPLIANCE. `SSAS.Host.API` is
+    // the composition root and legitimately declares HR's infrastructure; `SSAS.BuildingBlocks.Infrastructure`
+    // is where EF lives. Without these two the bans below would hold over a parse that recognises nothing.
+    var host = DeclaredDependencies.Of("SSAS.Host.API");
+
+    Assert.Contains(host, name => name.StartsWith("SSAS.HR.Infrastructure", StringComparison.Ordinal));
+    Assert.Contains(
+      DeclaredDependencies.Of("SSAS.BuildingBlocks.Infrastructure"),
+      name => name.StartsWith("Microsoft.EntityFrameworkCore", StringComparison.Ordinal));
+
+    Assert.DoesNotContain(
+      declared, name => name is "Microsoft.EntityFrameworkCore" or "Microsoft.Data.SqlClient");
+    Assert.DoesNotContain(
+      declared, name => name.StartsWith("SSAS.HR.Infrastructure", StringComparison.Ordinal));
+
     Assert.DoesNotContain(
       HrApiAssembly.GetReferencedAssemblies(),
       reference => reference.Name is "Microsoft.EntityFrameworkCore" or "Microsoft.Data.SqlClient");
@@ -84,9 +162,21 @@ public sealed class DepartmentApiArchitectureTests
   // Phase 4: the department error mapper first translated to Platform's `Persistence.ConcurrencyConflict`,
   // and the compiler refused. HR's own error maps to the same problem code, so the wire answer is
   // unchanged and the boundary holds.
+  //
+  // ⚠ AND `AC-POS-0067` STATES THE STRONGER FORM THIS NOW ASSERTS: *a build in which `HR.API` CAN SEE
+  // `SSAS.Platform.Domain` fails REGARDLESS OF WHAT IT READS.* The emitted check alone cannot say that.
   [Fact]
   public void The_hr_api_references_no_platform_assembly()
   {
+    // The predicate matches a real Platform reference where one legitimately exists.
+    Assert.Contains(
+      DeclaredDependencies.Of("SSAS.Host.API"),
+      name => name.StartsWith("SSAS.Platform", StringComparison.Ordinal));
+
+    Assert.DoesNotContain(
+      DeclaredDependencies.Of(HrApiAssembly),
+      name => name.StartsWith("SSAS.Platform", StringComparison.Ordinal));
+
     Assert.DoesNotContain(
       HrApiAssembly.GetReferencedAssemblies(),
       reference => reference.Name?.StartsWith("SSAS.Platform", StringComparison.Ordinal) ?? false);

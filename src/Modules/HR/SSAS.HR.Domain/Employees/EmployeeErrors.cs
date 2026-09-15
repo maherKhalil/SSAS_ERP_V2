@@ -10,29 +10,50 @@ namespace SSAS.HR.Domain.Employees;
 public static class EmployeeErrors
 {
   public static readonly Error InvalidEmployeeNumber =
-    new("Employee.InvalidEmployeeNumber", "The employee number is invalid.");
+    new("Employee.InvalidEmployeeNumber", "The employee number is invalid.",
+    Field: "employeeNumber");
 
   public static readonly Error InvalidNationalId =
-    new("Employee.InvalidNationalId", "The national identifier is invalid.");
+    new("Employee.InvalidNationalId", "The national identifier is invalid.",
+    Field: "nationalId");
 
   public static readonly Error InvalidFullName =
-    new("Employee.InvalidFullName", "The employee name is invalid.");
+    new("Employee.InvalidFullName", "The employee name is invalid.",
+    Field: "fullName");
 
   public static readonly Error InvalidActor =
     new("Employee.InvalidActor", "A trusted lifecycle actor is required.");
 
   public static readonly Error InvalidEmploymentDate =
-    new("Employee.InvalidEmploymentDate", "The employment date is invalid.");
+    new("Employee.InvalidEmploymentDate", "The employment date is invalid.",
+    Field: "employmentDate");
 
   // BR-HR-0003. Employment Date cannot be later than Termination Date.
   public static readonly Error TerminationBeforeEmployment =
-    new("Employee.TerminationBeforeEmployment", "The termination date cannot precede the employment date.");
+    new("Employee.TerminationBeforeEmployment", "The termination date cannot precede the employment date.",
+    Field: "terminationDate");
+
+  // ---- THE ONE HALF-STATE T-091 CAN REACH, NAMED SO THE OPERATOR KNOWS WHICH REPAIR TO RUN.
+  //
+  // Termination and account closure are two databases and no transaction spans them (`ADR-017`). The
+  // handler orders them so the COMMON failure rolls everything back — but if the tenant commit fails AFTER
+  // the account was closed, the employee is unchanged and the account is not.
+  //
+  // **A generic write failure would be true and useless.** It would tell an operator to retry, and a retry
+  // succeeds (the deactivation is idempotent) — but until they do, someone cannot sign in and nothing says
+  // why. **The message names the state and the repair**, which is why `Platform.Users.Reactivate` had to
+  // get transport in the same task.
+  public static readonly Error TerminationIncomplete = new(
+    "Employee.TerminationIncomplete",
+    "The employee was not terminated, but their tenant user account was deactivated. Retry the " +
+    "termination, or reactivate the account if the termination is no longer intended.");
 
   public static readonly Error InvalidTransition =
     new("Employee.InvalidTransition", "The employee lifecycle transition is invalid.");
 
   public static readonly Error InvalidTransitionReason =
-    new("Employee.InvalidTransitionReason", "The lifecycle reason is invalid for this transition.");
+    new("Employee.InvalidTransitionReason", "The lifecycle reason is invalid for this transition.",
+    Field: "reasonCode");
 
   public static readonly Error NotFound = new("Employee.NotFound", "The employee was not found.");
 
@@ -51,7 +72,8 @@ public static class EmployeeErrors
 
   // A transfer to the branch the employee is already in is not a transfer.
   public static readonly Error TransferDestinationUnchanged =
-    new("Employee.TransferDestinationUnchanged", "The transfer destination is the employee's current branch.");
+    new("Employee.TransferDestinationUnchanged", "The transfer destination is the employee's current branch.",
+    Field: "destinationBranchId");
 
   public static readonly Error InvalidTransferReason =
     new("Employee.InvalidTransferReason", "The transfer reason is invalid.");
@@ -91,8 +113,27 @@ public static class EmployeeErrors
   public static readonly Error InvalidReadScope =
     new("Employee.InvalidReadScope", "The requested employee scope is not valid.");
 
-  public static readonly Error InvalidPagination =
-    new("Employee.InvalidPagination", "The requested page number or page size is out of range.");
+  // ⚠ TWO CODES, BECAUSE ONE CANNOT SAY WHICH PARAMETER TO FIX (T-260).
+  //
+  // The code these replaced covered three conditions -- page below one, page size below one,
+  // page size above the maximum -- and all three answered the same 400 `request.invalid`. **A paging
+  // client that fixes the wrong parameter retries and fails identically**, which is the same argument
+  // that made a malformed identifier a 400 rather than a 404: a caller who cannot tell two conditions
+  // apart cannot act on either.
+  //
+  // TWO rather than three: whether a page size was below one or above the maximum is visible to the
+  // client from its own request. **And there is nowhere to say which bound** -- the problem document
+  // carries `code`, `correlationId` and `resourceKey`, and no message field, so the code is the whole
+  // channel.
+  // The export row ceiling, which shared `InvalidPagination` until T-260 despite not being a page of
+  // anything. Its own code, because its own parameter is what a caller must fix.
+  public static readonly Error InvalidExportCeiling =
+    new("Employee.InvalidExportCeiling", "The requested export row ceiling is out of range.");
+  public static readonly Error InvalidPageNumber =
+    new("Employee.InvalidPageNumber", "The requested page number is out of range.");
+
+  public static readonly Error InvalidPageSize =
+    new("Employee.InvalidPageSize", "The requested page size is out of range.");
 
   // ---- DEPARTMENT (FP-007 Phase 3, REQ-HR-0102).
   //
@@ -124,7 +165,8 @@ public static class EmployeeErrors
   // request to move an employee where they already are is a malformed request, and answering it with
   // success would either append a history row describing no movement or return a success that did nothing.
   public static readonly Error DepartmentUnchanged =
-    new("Employee.DepartmentUnchanged", "The destination is the employee's current department.");
+    new("Employee.DepartmentUnchanged", "The destination is the employee's current department.",
+    Field: "departmentId");
 
   public static readonly Error DepartmentHistoryImmutable =
     new(
@@ -161,7 +203,8 @@ public static class EmployeeErrors
     new("Employee.PositionRequired", "A position is required.");
 
   public static readonly Error PositionUnchanged =
-    new("Employee.PositionUnchanged", "The destination is the employee's current position.");
+    new("Employee.PositionUnchanged", "The destination is the employee's current position.",
+    Field: "positionId");
 
   public static readonly Error PositionHistoryImmutable =
     new(

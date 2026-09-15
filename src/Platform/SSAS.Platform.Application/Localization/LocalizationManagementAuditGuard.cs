@@ -23,6 +23,16 @@ internal static class LocalizationManagementAuditGuard
         ? Result.Success()
         : Result.Failure(LocalizationManagementErrors.AuditReadinessUnavailable);
     }
+    // ⚠ THE PAIR IS THE REASON, AND NEITHER HALF MAKES SENSE ALONE.
+    //
+    // Cancellation is the one failure that must NOT become `AuditReadinessUnavailable`: the caller asked
+    // to stop, and reporting that as a readiness fault would make every cancelled request look like a
+    // degraded audit trail. It is rethrown so it stays cancellation.
+    //
+    // Everything else is discarded ON PURPOSE. **This guard's answer is binary** -- readiness is either
+    // established or it is not -- and a caller cannot act differently on a timeout than on a broken
+    // connection. Narrowing the catch would let an unanticipated failure reach the caller as an unhandled
+    // exception, which is the one outcome worse than reporting unavailable.
     catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
     {
       throw;

@@ -53,6 +53,24 @@ public sealed class PlatformAccessTokenClaimsTests
   // ---- Claims provider eligibility + sourcing ----
 
   [Fact]
+  [Trait("Acceptance", "AC-TEN-0074")]
+  // ***SUPPORTING (STRENGTH) AND NARROWEST-BUT-ONE (BREADTH) SITE FOR `AC-TEN-0074`'s POSITIVE HALF. The
+  // LOAD-BEARING one is
+  // `JwtInfrastructureTests.Platform_token_issuer_emits_the_platform_profile_and_no_tenant_claims`***, which
+  // asserts the ISSUED TOKEN carries `security_plane=platform` exactly once. This test asserts the CLAIMS
+  // RECORD is populated, which is a PRECONDITION for that token rather than the criterion's subject.
+  //
+  // ⚠ THE RANKING IS WRITTEN DOWN BECAUSE A TRAIT CANNOT CARRY IT. **Two sites of unequal strength look
+  // identical to any census; deleting the load-bearing one leaves this id here, still green, covering less.**
+  //
+  // *"it carries … `identity_id`, `session_id`, `client_id`, `security_version`, and one or more active
+  // catalog-valid PlatformSupport permission claims."* The ban half is on `PlatformPlaneAuthorizationArchi
+  // tectureTests.Platform_access_token_claims_carry_no_tenant_or_role_shaped_fields`, same trait.
+  //
+  // ⚠ **THE TWO HALVES CANNOT LIVE IN ONE TEST**: a ban is a claim about the TYPE's members and the positive
+  // is a claim about a produced INSTANCE's values. Splitting them across a structural and a behavioural site
+  // is not duplication — **neither could make the other's assertion** — and the id is on both so that
+  // deleting either leaves the criterion visibly half-carried rather than silently so.
   public async Task Eligible_active_principal_with_permissions_prepares_platform_claims()
   {
     var provider = Build(
@@ -102,6 +120,28 @@ public sealed class PlatformAccessTokenClaimsTests
   }
 
   [Fact]
+  [Trait("Acceptance", "AC-TEN-0063")]
+  [Trait("Acceptance", "AC-TEN-0039")]
+  // ⚠⚠⚠ `AC-TEN-0039` AND `AC-TEN-0063` ARE THE SAME CRITERION WRITTEN TWICE, IN TWO BLOCKS.
+  //   `0039` *"Platform token issuance performs a LIVE PRINCIPAL-STATUS CHECK and denies issuance for a
+  //          `Disabled` principal; NO TOKEN-CARRIED STATUS IS AUTHORITATIVE."*
+  //   `0063` *"At issuance, a LIVE STATUS CHECK denies a platform token when `...Status == Disabled`;
+  //          NO TOKEN-CARRIED STATUS IS AUTHORITATIVE."*
+  // Same property, same trailing clause verbatim; `0039` sits in the principal-lifecycle block and `0063` in
+  // the token-profile block. **One test satisfies both because there is only one property.**
+  //
+  // ⚠ THAT MATTERS FOR THE DENOMINATOR, NOT JUST FOR THE TRAITS: **a package of 93 criteria containing a
+  // duplicated property describes fewer than 93 distinct behaviours**, so criterion-coverage and
+  // property-coverage are different numbers. Recorded rather than silently double-counted.
+  // `AC-TEN-0063` — *"At issuance, a LIVE STATUS CHECK denies a platform token when
+  // `PlatformSupportPrincipal.Status == Disabled`; no token-carried status is authoritative."*
+  //
+  // ⚠ THE *LIVE* IN THIS CRITERION IS EXPRESSIBLE AND `AC-TEN-0070`'s IS NOT, WHICH IS A DISTINCTION WORTH
+  // KEEPING. Here *live* means the decision is taken from the PRINCIPAL RECORD rather than from the token —
+  // a claim about the SOURCE, and the fake can present a disabled principal. `0070`'s *re-derived live on
+  // refresh* is a claim about REPEATING the read, and this file's permission fake answers identically on
+  // every call, so a cache and a re-read are indistinguishable. **A constant-returning double can express a
+  // STATE and cannot express a CHANGE.**
   public async Task Disabled_principal_denies()
   {
     var disabled = ActivePrincipal();
@@ -127,6 +167,10 @@ public sealed class PlatformAccessTokenClaimsTests
   }
 
   [Fact]
+  [Trait("Acceptance", "AC-TEN-0061")]
+  // `AC-TEN-0061` — *"A principal with ZERO active catalog-valid `PermissionScope.PlatformSupport`
+  // permissions is not eligible; platform token issuance is DENIED."* Expressible for the same reason as
+  // `0063`: the fake's array is fixed per test but CHOSEN per test, so an empty set is a state it can hold.
   public async Task Zero_valid_permissions_fails_closed()
   {
     var provider = Build(EligibleAccount(), ActivePrincipal(), permissions: []);
@@ -147,7 +191,44 @@ public sealed class PlatformAccessTokenClaimsTests
     Assert.True(result.IsFailure);
   }
 
+  // ⚠ CITES `AC-TEN-0071` — *"Platform token issuance reads ONLY `Identity`, `AuthenticationAccount`,
+  // `PlatformSupportPrincipal`, and `PlatformPermissionAssignment`; bootstrap subject lists/configuration
+  // NEVER participate."* **The criterion's four sources are this constructor's four parameters, in order, and
+  // the second half is the absence the exact list enforces.**
+  //
+  // ⚠⚠ AN EXACT LIST IS A BIND, NOT A BAN, WHICH IS WHY IT DISCHARGES BOTH HALVES AT ONCE: *a
+  // `DoesNotContain("Bootstrap…")` would pass on any newly-invented configuration type nobody thought to
+  // name* — **here an ADDED dependency of any kind reddens as loudly as a removed one.**
+  //
+  // ⚠⚠⚠ AND THE FAILURE IT GUARDS IS TEMPTING RATHER THAN HYPOTHETICAL, WHICH IS WHAT EARNS A GUARD.
+  // ***THE BOOTSTRAP PARADOX — "how does the FIRST platform administrator obtain claims before a principal row
+  // exists?" — HAS AN OBVIOUS WRONG ANSWER: consult the bootstrap subject list here.*** *That would make
+  // issuance depend on configuration rather than on persisted state, which is exactly what this forbids.*
+  //
+  // ⚠ The compiler notices such an addition (the tests below construct this provider directly) — **but only
+  // until the call sites are repaired, which is ordinary work that looks like nothing.** *This is what still
+  // objects afterwards.*
+  // ---- ⚠⚠⚠ THE LIMIT OF EVERY DEPENDENCY-LIST GUARD, INCLUDING THIS ONE.
+  //
+  // ***A DEPENDENCY GUARD WATCHES WHO YOU CAN REACH. IT IS BLIND TO WHAT ARRIVES THROUGH WHAT YOU
+  // ALREADY REACH.*** The dependency set stays constant while the payload grows, so a field added to a type this provider already receives could carry
+  // the configuration this list is asserted to deny, and the list would not move.
+  //
+  // ⚠⚠ AND THE REMEDY THAT CLOSES THIS ELSEWHERE DOES NOT APPLY HERE, WHICH IS WORTH STATING RATHER
+  // THAN LEAVING AS A GAP SOMEBODY LATER "FIXES". `PayrollArchitectureTests` pins the EXACT MEMBER SET of
+  // every payload on its contract surface, and that works there because `SSAS.GL.Contracts` is a **frozen
+  // cross-module contract** — five small records that change by deliberate act.
+  //
+  // ***THE TYPES REACHED HERE ARE DOMAIN AGGREGATES, AND THEY CHANGE LEGITIMATELY AND OFTEN.*** An exact
+  // member set over one would redden on ordinary work most weeks, and **a tripwire that fires constantly
+  // is not a strict guard but a disabled one.** *An exact set is the right instrument across a contract
+  // boundary and the wrong one inside a module.*
+  //
+  // So the limit below is real and stays open, with its reason recorded. **Closing it needs an assertion
+  // about a specific forbidden CAPABILITY rather than about a member list, and no such instrument exists
+  // in this tree yet.**
   [Fact]
+  [Trait("Criterion", "AC-TEN-0071")]
   public void Provider_consumes_no_bootstrap_or_options_configuration()
   {
     // Durable: the platform claims provider must not depend on bootstrap subjects/options or the
@@ -214,6 +295,31 @@ public sealed class PlatformAccessTokenClaimsTests
     field!.SetValue(entity, id);
   }
 
+  // ==================================================================================================
+  // ⚠⚠⚠ WHAT THE DOUBLES BELOW CANNOT EXPRESS — READ BEFORE CITING A CRITERION HERE.
+  // ==================================================================================================
+  //
+  //   LIVENESS / RE-DERIVATION   `FakePermissionReadService` returns a FIXED array and IGNORES the principal
+  //                              id it is asked about. Every call answers identically, so **a provider that
+  //                              CACHED permissions and one that RE-READ them are indistinguishable.**
+  //                              `AC-TEN-0070` — *"platform refresh RE-DERIVES permission claims LIVE; no
+  //                              stale snapshot is reused"* — is therefore NOT CITABLE HERE. Its witness
+  //                              needs a double whose answer MOVES between two calls.
+  //
+  //   WHAT THE PROVIDER READS    `AC-TEN-0071` — *"issuance reads only Identity, Account, Principal and
+  //                              Assignment; BOOTSTRAP CONFIGURATION NEVER PARTICIPATES"* — is not citable
+  //                              either, for the opposite reason: **there is no configuration double here to
+  //                              record an access**, so a provider that also read configuration would be
+  //                              invisible. A capability no double offers is one no test can prove is unused.
+  //
+  //   LOCK / FOR-UPDATE          `GetByIdentityIdForUpdateAsync` returns exactly the unlocked result.
+  //
+  //   EVERYTHING ELSE            every other repository member throws `NotSupportedException`.
+  //
+  // ⚠ NONE OF THIS IS A DEFECT — these are correct choices for a claims-provider test. **And note the two
+  // failures are OPPOSITE: `0070` fails because a double answers too CONSTANTLY, `0071` because a double is
+  // ABSENT.** Too much stability and too little presence both produce a criterion that cannot be witnessed
+  // in the file that looks like its home.
   private sealed class FakeIdentityRepository : IIdentityRepository
   {
     public Task<Identity?> GetByIdAsync(long identityId, CancellationToken cancellationToken = default) =>

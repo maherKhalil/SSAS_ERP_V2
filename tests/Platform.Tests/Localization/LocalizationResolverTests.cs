@@ -16,12 +16,249 @@ using SSAS.Platform.Infrastructure.Persistence.Queries;
 
 namespace SSAS.Platform.Tests.Localization;
 
+// ==================================================================================================
+// FP-004's UNCITED CRITERIA — THE RESOLVER-LAYER CELLS, CENSUSED 2026-09-05. NONE IS CITED.
+// ==================================================================================================
+//
+// **FP-004 declares 64 and cites 44. All twenty uncited were read against the product; this records the ones
+// whose subject is the resolver.** The route and transport cells are recorded in
+// `LocalizationOpenApiContractTests`; `AC-LOC-0039`/`0040` in `LocalizationAuditReadinessInfrastructureTests`.
+//
+// ---- ⚠ THE PLACEMENT CONVENTION, DECIDED ONCE SO A LATER READER FINDS A RULE RATHER THAN FIFTEEN CHOICES.
+//
+// ***A DISPOSITION GOES BESIDE THE NEAREST TEST THAT TOUCHES THE CRITERION'S SUBJECT — the mechanism, the
+// type, or the guard. WHERE NOTHING TOUCHES THE SUBJECT AT ALL, IT GOES BESIDE THE TEST A READER AUDITING
+// THAT CRITERION WOULD OPEN, AND SAYS SO IN THOSE WORDS.*** *That is not invented here — it is what
+// `AuthenticationSecurityTests` already does for `AC-IAM-0024` (**"this file is where a reader would look for
+// it"**), and a convention already in use beats a better one nobody follows.*
+//
+// ---- ⚠⚠⚠ `AC-LOC-0060` IS **TRUE BY INERTNESS**, AND IT IS A CLASS THIS TREE HAD NOT NAMED.
+//
+// *"Changing text culture alone changes neither timezone nor currency/number/date context."*
+//
+// **`FormattingContext` EXISTS** — `BuildingBlocks.Localization/FormattingContext.cs`, five nullable fields
+// (`TimeZone`, `DateCulture`, `NumberCulture`, `CurrencyCulture`, `CurrencyCode`), every one defaulting to
+// `null`. It appears in **six files in the whole repository**: its declaration, three documents, the three
+// request records that carry it as an optional parameter, and **ONE forwarding line** —
+// `LocalizationTextResolver:51` passes it from the single request into the batch request.
+//
+// ***NO FIELD OF IT IS EVER READ. ZERO OCCURRENCES IN `tests/`.*** **So the criterion is true the way a
+// deleted feature is true: text culture cannot affect the formatting context because nothing CONSUMES the
+// formatting context, and no test could distinguish a correct implementation from removing the type.**
+//
+// ⚠⚠ **DISTINCT FROM THE UNIVERSAL-OVER-AN-EMPTY-SET DEFECT, AND THE DISTINCTION IS WHAT MAKES IT A CLASS.**
+// There the quantified set is empty. **Here the set is non-empty — five fields, declared, plumbed three
+// layers deep — and the criterion is unfalsifiable because the values are never consumed.** ***A CARRIER
+// NOBODY READS LOOKS EXACTLY LIKE A FEATURE FROM EVERY ANGLE EXCEPT THE ONE THAT MATTERS.***
+//
+// ⚠ **AND IT WAS NEARLY FILED AS UNBUILT**: the token search over the Localization DOMAIN returned nothing,
+// and widening to `src/` found it. *An absence over the wrong scope, caught by widening rather than by
+// publishing.* **This is recorded here because `LocalizationResolutionRequest` is constructed throughout this
+// file and its `FormattingContext` parameter is never supplied — which is the observation, not a gap.**
+//
+// ---- THE CONJUNCTIVE CELLS: PARTLY WITNESSED, AND CITING ONE WOULD CLAIM ALL.
+//
+// ---- ⚠⚠ CHECKED AGAINST THE REQUIREMENTS 2026-09-05, AND THESE THREE HOLD — WHICH IS ITSELF THE FINDING.
+//
+// **Five verdicts elsewhere dissolved when their fuller documents were opened. ***THESE DID NOT, AND THE
+// REASON SEPARATES TWO KINDS OF VERDICT WE HAD BEEN TREATING ALIKE:***
+//
+//   ***A VERDICT ABOUT THE CRITERION*** — malformed · vacuous · decayed · not-a-criterion · specified-nowhere
+//     **is a reading of the WORDING, so a précis can make it wrong. All five that dissolved were these.**
+//   ***A VERDICT ABOUT COVERAGE*** — *partially witnessed*, *asserted by nothing*
+//     **is grounded in `tests/`. The criteria wording sets only the CLAUSE COUNT, so a précis can move the
+//     denominator and never the finding.**
+//
+// `AC-LOC-0003` — *"An eligible Tenant can maintain compatible `en` and `ar` overrides independently without
+// changing defaults."* Override resolution is asserted throughout this file; **the INDEPENDENCE clause and
+// the defaults-unchanged clause are not.** ⚠ **And the précis is LOSSY: `requirements.md:20` (`FR-LOC-0105`)
+// adds a third dimension — *"without changing system defaults **or another Tenant's text**"* — which IS
+// witnessed, by `AC-LOC-0004`'s cited tenant-isolation tests.** *So the criterion is better covered than its
+// own sentence suggests, through a sibling; the denominator moved and the verdict did not.*
+//
+// `AC-LOC-0006` — *"A wording-only default release changes unoverridden/restored results and preserves
+// compatible overrides."* The wording-only half is witnessed at the TOOL layer by
+// `LocalizationCatalogToolTests.Compatibility_fingerprint_ignores_wording_and_changes_with_policy` (untagged);
+// **the claim about RESOLUTION RESULTS changing is asserted nowhere.**
+//
+// ⚠ **CHECKED AGAINST THE REQUIREMENTS 2026-09-05 AND THE VERDICT STANDS, BUT ITS SHAPE IS SHARPER.** The
+// criterion's two clauses live in two layers: *"preserves compatible overrides"* is `requirements.md:122`, a
+// CATALOG VALIDATION property; *"changes unoverridden/restored results"* is `FR-LOC-0106`'s resolution chain.
+// ***SO IT IS A TWO-LAYER CRITERION LIKE `AC-LOC-0058`, AND THE UNWITNESSED HALF IS THE RESOLUTION ONE.***
+//
+// **What is missing is specific and buildable: no test RELEASES a second catalog version and re-resolves.**
+// *Every resolution test in this file reads one catalog. A wording-only release is a two-version scenario,
+// and the fixture for it does not exist.*
+//
+// ---- ⚠⚠⚠ `AC-LOC-0016` — UPGRADED 2026-09-05 FROM A CORPUS CLAIM TO A SUBJECT ONE. THERE IS NO PRECEDENCE.
+//
+// *"Anonymous/authenticated precedence is exact, unsupported values fall through, switch needs no logout, and
+// formatting is independent."*
+//
+// **The first version of this note said *`precedence` appears in no localization test* — a WORD grep, and a
+// test witnessing language precedence need never use the word.** ***REPLACED BY A CLOSED POPULATION: every
+// consumer of `ILocalizationTextResolver` in `src/`.***
+//
+//   `LocalizationEndpointRouteBuilderExtensions:200`  `EffectiveGroupAsync`
+//   `LocalizationEndpointRouteBuilderExtensions:225`  `EffectiveBatchAsync`
+//   `GetTenantLocalizationResourceQueryHandler:15`
+//   (`LocalizationOpenApiOperationFilter` touches only the static batch-size constants — not a call site)
+//
+// ***AT EVERY ONE THE CULTURE IS `request.RequestedCulture` — IT ARRIVES ON THE CALLER'S REQUEST OBJECT.***
+// **Nothing derives it: no `Accept-Language` negotiation, no per-identity preference, no chooser of any kind
+// exists in `src/`.** *Precedence requires something to CHOOSE between candidate cultures. Nothing chooses —
+// the caller states it.*
+//
+// ⚠⚠⚠ **AND THE SECOND CANDIDATE WAS CHASED DOWN RATHER THAN ASSUMED AWAY, BECAUSE IT IS THE OBVIOUS
+// OBJECTION: `TenantLocalizationSettings.TenantDefaultCulture` EXISTS.** If the resolver fell back to it,
+// there WOULD be a precedence rule. ***IT DOES NOT. `TenantDefaultCulture` APPEARS IN THE DOMAIN PROPERTY,
+// ONE EF CONFIGURATION AND THE MIGRATIONS — AND NOWHERE ELSE IN `src/` OR `tests/`.*** **A persisted column
+// with its own SQL check constraint, written at settings creation, and read by nothing that resolves
+// anything.** *Third inert carrier in this feature, after `FormattingContext` and the audit projector.*
+//
+// **The ONE culture substitution that exists is `:293-294` — Arabic requested AND that resource's Arabic
+// default empty → English.** ***THAT IS CONTENT-DRIVEN, NOT IDENTITY-DRIVEN: it depends on the resource, not
+// on who is asking.*** A precedence rule between anonymous and authenticated callers is a different thing and
+// there is none.
+//
+// ---- ⚠⚠⚠ AND THE DEAD COLUMN IS NOT AN OVERSIGHT. IT IS THE RESIDUE OF A DESIGN M1 DID NOT WIRE.
+//
+// **A first draft of this note said clause 2 — *"unsupported values fall through"* — was CONTRADICTED,
+// because `LocalizationCulture.Create` is a three-arm switch whose third arm is
+// `Result.Failure(UnsupportedCulture)`, and a refusal is not a fall-through.** ***THAT WAS WRONG, AND IT WAS
+// WRONG BECAUSE I QUOTED THE CRITERIA FILE.***
+//
+// **`FP-004/acceptance-criteria.md` is one line per criterion; every line SUMMARISES something fuller.** The
+// rule itself is `requirements.md:114`:
+//
+//   *"Anonymous precedence is explicit browser/session choice, **supported Accept-Language**, `en`.
+//   Authenticated precedence is explicit current-session choice, persisted user preference when that future
+//   boundary exists, ***Tenant default***, `en`."*
+//
+// **and `requirements.md:50` gives fall-through its destination — *"unsupported values fall through APPROVED
+// PRECEDENCE"*.** ***SO THE CHAIN IS SPECIFIED, AND `TenantDefaultCulture` IS A STEP IN IT.***
+//
+// ***AND THE RECONCILIATION IS WRITTEN DOWN TOO — `localization-resolution-model.md:22`: "Until the
+// user-profile boundary exists, MILESTONE 1 ACCEPTS REQUESTED CULTURE EXPLICITLY."***
+//
+// **So clause 1 is DEFERRED BY MILESTONE with the decision recorded — not *"no mechanism was ever
+// intended"* — and clause 2 is NOT contradicted: refusing an unsupported culture is consistent with M1's
+// stated scope, because the chain it would fall through to is not built.** ⚠ **`TenantDefaultCulture` is a
+// persisted step of a half-built design, which is a far better description than *a dead column*.**
+//
+// ⚠⚠ **THE READING LESSON, KEPT BECAUSE IT APPLIES TO EVERY CRITERION IN THIS FEATURE: the one-liner is a
+// SUMMARY OF A REQUIREMENT IN ANOTHER FILE.** *Any verdict of MALFORMED, VACUOUS or CONTRADICTED reached on
+// the strength of this file's wording must be re-checked against `requirements.md` before it is published;
+// verdicts reached against `src/` are unaffected.*
+//
+// **NET: clause 1 deferred-by-milestone, clause 2 consistent with that deferral, clause 3 trivial once
+// culture is a per-request parameter, clause 4 `AC-LOC-0060`'s subject and unfalsifiable for the same
+// reason.** *Uncited, and now for a documented reason rather than an inferred one.*
+//
+// `AC-LOC-0013` (restore semantics) and `AC-LOC-0030` (version types) are each observed INSIDE tests carrying
+// a neighbouring criterion's trait — `LocalizationDomainTests.Restore_default_is_a_deterministic_no_op_when_
+// already_inactive` and `LocalizationPrimitiveTests.Positive_versions_do_not_wrap`, both untagged.
+// `AC-LOC-0041` (retirement, five clauses) has **only** the release tool's `CatalogImpactKind.Retired`
+// classification; none of *stays in history · cannot receive overrides · leaves ordinary groups · never
+// reused · transfers nothing* is asserted.
+//
+// ---- AND TWO THAT ARE NOT ACCEPTANCE CRITERIA AT ALL.
+//
+// ---- ⚠⚠⚠ `AC-LOC-0010` — CORRECTED 2026-09-05. I CALLED IT "NOT AN ACCEPTANCE CRITERION". IT IS ONE.
+//
+// **The one-liner reads *"Localization changes no code, key, status/type, authorization, validation, claim,
+// permission, or control flow"*, and I read *changes* as being about a DIFF — a statement about the commit,
+// which no running system could satisfy or violate.**
+//
+// ***`requirements.md:232` SETTLES IT: "Localization never changes technical codes, HTTP status/type,
+// authorization, validation, claims, permission names, resource keys, or control flow."***
+//
+// **That is a STANDING PROPERTY OF THE SUBSYSTEM, not a property of a changeset.** *A resolved message must
+// not alter the `Error.Code` it decorates; a localized response keeps its HTTP status; resolution does not
+// reach a permission name or a resource key.* ***IT IS TESTABLE, AND IT IS UNCITED BECAUSE I MISREAD THE
+// VERB IN A ONE-LINE PRÉCIS.***
+//
+// ⚠ **Left uncited rather than hastily cited: the criterion names EIGHT things localization must not change,
+// and a witness for one of eight would be the partial-citation error.** *Recorded as a live, buildable
+// criterion — which is a completely different disposition from "not an acceptance criterion".*
+//
+// ---- `AC-LOC-0024` — NOT DECAY. A PHASE BOUNDARY, CORRECTLY STATED, SUBSEQUENTLY CROSSED ON SCHEDULE.
+//
+// *"M1 contains only approved backend core/migration/tests; HTTP/OpenAPI stay M2."* **`README.md:43-51`
+// spells both phases out: *"Milestone 1 excludes HTTP endpoints, OpenAPI, Angular runtime/screens…"* and
+// *"Milestone 2 implements the nine approved routes, the three code-owned permissions, exact ProblemDetails
+// mappings, OpenAPI…"*.**
+//
+// ***SO THE CRITERION STATED AN M1 BOUNDARY THAT M2 WAS ALWAYS PLANNED TO CROSS, AND M2 SHIPPED.*** **A first
+// draft called this DECAYED, which implies rot. It is completion, and both phases are documented.** *The
+// criterion is uncitable now for the same reason a passed milestone gate is uncitable — not because anything
+// went wrong.*
 public sealed class LocalizationResolverTests
 {
   private static readonly Guid TenantId = Guid.Parse("9b7fc347-a31f-4724-8bf1-3dc83fac6c85");
   private static readonly DateTimeOffset InitialTime = new(2026, 8, 1, 12, 0, 0, TimeSpan.Zero);
 
+  // ⚠ CITES `AC-LOC-0005` — *"The four-step chain reports exact source/cultures and neutral Production
+  // output never exposes ResourceKey."* — WITH TWO BOUNDS, BOTH ON THE SAME LINE OF THE CRITERION.
+  //
+  // **Reports exact source**: `SystemDefault` for a known key and `KeyFallback` for an unknown one, plus
+  // the direction each culture implies. ⚠ TWO OF THE CHAIN'S FOUR STEPS. A tenant override resolving to
+  // `TenantOverride` is exercised by the batch tests below, not here, so this carries the *reports its
+  // source* property over the two sources it visits and not over the chain.
+  //
+  // ==================================================================================================
+  // ⚠⚠⚠ THE CHAIN ENUMERATED, AND THE FOURTH STEP IS ASSERTED BY NOTHING **BECAUSE IT CANNOT HAPPEN**.
+  // ==================================================================================================
+  //
+  // The *"four-step chain"* is not a prose figure — **it is `LocalizationResolutionSource` member for
+  // member**, which makes the population completable rather than a matter of reading:
+  //
+  //   `TenantOverride`   `Active_tenant_batch_uses_one_override_query…`:101 — now cited there
+  //   `SystemDefault`    here, `:66`
+  //   `EnglishFallback`  ⚠ **ASSERTED NOWHERE IN `tests/`** — searched by enum member across the whole tree
+  //   `KeyFallback`      here, `:69`
+  //
+  // ⚠ AND THE ABSENCE IS CORRECT, WHICH IS THE PART WORTH WRITING DOWN. `LocalizationTextResolver:293` sets
+  // `useEnglishFallback` only when **the requested culture is Arabic AND that resource's Arabic default is
+  // empty** — and `LocalizationCatalogTests:56` asserts `NotEmpty(resource.ArabicDefault)` over **all six**
+  // catalog resources. **So the branch is unreachable through `GeneratedLocalizationCatalog`, and a guard
+  // in another file is what makes it unreachable.**
+  //
+  // **A reader auditing *four steps, are all four tested?* finds three and infers a gap. The true answer is
+  // that the fourth is excluded by an invariant asserted somewhere else entirely** — which no amount of
+  // reading this file could reveal.
+  //
+  // ⚠⚠ THE ALARM IS REAL RATHER THAN SILENT, AND THAT IS THE GOOD OUTCOME: a seventh resource shipped
+  // without an Arabic default reddens `LocalizationCatalogTests` FIRST, before anything reaches this
+  // resolver. So the exclusion announces itself. **What is NOT covered is what happens next** —
+  // `EnglishFallback` also sets `resolvedCulture` to English (`:294`), so it changes the reported culture
+  // **and the text direction**: an Arabic caller would receive `Ltr`. **The day the catalog guard is
+  // relaxed, that path runs for the first time with nothing asserting it.** Recorded, not built: writing a
+  // test for it needs a catalog the product does not produce, which is a fixture decision rather than a
+  // citation.
+  //
+  // **Never exposes ResourceKey**: `platform.unknown.key` does not appear in the returned text.
+  // ⚠⚠ AND THE NEGATIVE ASSERTION HAS A PROPER POSITIVE COMPANION, WHICH IS RARE ENOUGH TO NAME:
+  // `Diagnostics.MissingKeys` is asserted to CONTAIN that exact key. **So the key demonstrably exists in
+  // the system at that moment and is absent only from the OUTPUT** — the ban cannot pass because the
+  // string was never in play, which is how a `DoesNotContain` usually goes quietly vacuous.
+  //
+  // ⚠ THE BOUND I CANNOT DISCHARGE HERE: the criterion says *neutral PRODUCTION output*. This fixture is
+  // anonymous (`ResolverFixture(null, …)`), which supplies the NEUTRAL half; nothing in it establishes the
+  // Production environment condition. Cited for the neutral path, and the environment scoping is not
+  // claimed.
+  //
+  // ⚠⚠⚠ AND THAT QUALIFIER IS NOT DECORATION — DROPPING IT WOULD ASSERT THE OPPOSITE OF THE DESIGN IN THE
+  // OTHER MODE. `AC-LOC-0001` (`acceptance-criteria.md:13`) reads *"incomplete NON-PRODUCTION output is
+  // FLAGGED, DIAGNOSES CULTURE, uses English fallback, and is not promotable."* **So outside Production the
+  // product is specified to surface diagnostic detail, and a bare *never exposes ResourceKey* trait would
+  // claim, for that path, something the design appears to contradict.**
+  //
+  // **A MODE QUALIFIER IS PART OF THE PREDICATE, NOT CONTEXT AROUND IT.** Written here because dropping one
+  // makes the sentence read STRONGER — *never exposes the resource key* is more quotable than the true,
+  // conditional version, which is exactly why it would survive a review.
   [Fact]
+  [Trait("Criterion", "AC-LOC-0005")]
   public async Task Anonymous_resolution_uses_defaults_formats_literally_and_hides_missing_key()
   {
     var fixture = new ResolverFixture(null, TenantStatus.Active);
@@ -44,7 +281,17 @@ public sealed class LocalizationResolverTests
     Assert.Equal(0, fixture.OverrideReader.Calls);
   }
 
+  // ⚠ CARRIES `AC-LOC-0005`'s FIRST CHAIN STEP — the one the citation above explicitly does not reach.
+  // `:101` asserts `TenantOverride` with the overriding text `"Stop"`, so the source is not merely reported
+  // but reported *correctly for the branch that was taken*.
+  //
+  // **Its anti-vacuity control is in the same assertion block and needs no addition**: `:100` asserts
+  // `SystemDefault` for the sensitive key in the SAME batch. A resolver reporting `TenantOverride`
+  // unconditionally passes `:101` and fails `:100`; one reporting `SystemDefault` unconditionally does the
+  // reverse. **Two sources, one call, neither satisfiable by a constant** — and that is a stronger control
+  // than a separate positive test, because the two answers come from one traversal of the chain.
   [Fact]
+  [Trait("Criterion", "AC-LOC-0005")]
   public async Task Active_tenant_batch_uses_one_override_query_and_never_overrides_sensitive_text()
   {
     var fixture = new ResolverFixture(TenantId, TenantStatus.Active);
@@ -81,7 +328,33 @@ public sealed class LocalizationResolverTests
     Assert.Equal(1, fixture.VersionReader.Calls);
   }
 
+  // ⚠ CITES `AC-LOC-0037` FOR THE FIRST OF ITS TWO CLAUSES — *"Suspension after cache population prevents
+  // Tenant override USE and MANAGEMENT on the next authorized path."*
+  //
+  // **USE is what this test judges, and the arrangement is the assertion.** The first resolve populates the
+  // cache while the tenant is Active and is asserted to come back as `TenantOverride`; only then is the
+  // status flipped. ***WITHOUT THAT FIRST RESOLVE THE TEST WOULD PASS ON A RESOLVER THAT NEVER CACHED
+  // ANYTHING*** — "suspended tenants get the default" is a much weaker property than "a suspended tenant
+  // gets the default even though their override is already in the cache", and only the second is the
+  // criterion. ⚠⚠ `OverrideReader.Calls == 1` is what pins it: the second resolve did NOT re-read, so the
+  // cache was live and was declined on status rather than missed.
+  //
+  // ---- MANAGEMENT IS NOT ASSERTED HERE, AND ITS HOME IS WORTH NAMING BECAUSE IT IS TRUE FOR A DIFFERENT
+  // REASON RATHER THAN FOR THE SAME ONE.
+  //
+  // `LocalizationAuditReadinessTests.Locked_live_tenant_denial_precedes_the_audit_gate` states it: a
+  // Suspended tenant invoking `create` is refused `TenantIneligible`, with `LockedCalls == 1`.
+  // ⚠⚠⚠ **AND *AFTER CACHE POPULATION* IS VACUOUS ON THAT PATH BY CONSTRUCTION — THERE IS NO CACHE ON IT TO
+  // GO STALE.** Mutation handlers call `GetEligibilityForUpdateAsync`, and `IRequestTenantEligibility` — the
+  // request-scoped cache's interface — declares only `GetEligibilityAsync`, **so a management caller cannot
+  // reach the cached answer even by mistake.** *Interface separation, not a runtime check.*
+  //
+  // ⚠ A reader chasing that guarantee will find the message *"Request eligibility must never replace the
+  // locked mutation check."* in `RequestTenantEligibilityTests` — **that throw is in a TEST DOUBLE**, and it
+  // guards a real but narrower thing: that the cache never DELEGATES a for-update call to its inner service.
+  // The guarantee consumers rely on is the interface, and the two are easy to confuse from a search hit.
   [Fact]
+  [Trait("Criterion", "AC-LOC-0037")]
   public async Task Cached_override_is_bypassed_immediately_when_tenant_is_suspended()
   {
     var fixture = new ResolverFixture(TenantId, TenantStatus.Active);
@@ -124,7 +397,39 @@ public sealed class LocalizationResolverTests
     Assert.Equal(2, calls);
   }
 
+  // ⚠ CITES `AC-LOC-0059` IN FULL — *"After 60 SECONDS from last successful SQL validation, Tenant
+  // overrides are EXCLUDED and health/telemetry reports DEGRADATION."* Both halves at `:229-232`: the
+  // source drops from `TenantOverride` to `SystemDefault`, and `Diagnostics.DegradedTenants` records the
+  // tenant. **Neither alone is the criterion** — silently serving defaults without reporting is the
+  // failure this sentence exists to prevent, and reporting while still serving stale overrides is the
+  // other one.
+  //
+  // ⚠⚠ THE 60 IS CROSSED IN TWO STEPS AND THAT IS WHAT MAKES IT A BOUND RATHER THAN A DELAY. At `:224` the
+  // version reader starts FAILING and 16s later the override is STILL SERVED — grace holds. At `:229` a
+  // further 45s takes it to 61s since the last success and the override is dropped. **A test that only
+  // advanced past 60 would show exclusion without showing that anything was tolerated first**, and a grace
+  // period that never granted grace would satisfy it.
+  //
+  // ⚠ ALSO CITES `AC-LOC-0019` FOR THREE OF ITS FOUR BOUNDS — *"Version revalidation/eviction observes
+  // 15s/30s/5m/60s bounds and never crosses Tenant/culture."*
+  //
+  //   **15s** `:206-216` — at 14s the version reader is NOT called again (`Calls` still 1); at 16s it is
+  //           (`Calls` 2) and the new version is picked up. The pair is the bound; either row alone is a
+  //           statement about caching.
+  //   **5m**  `:219-222` — absolute lifetime, the override re-read even though the version had not moved.
+  //   **60s** `:224-232` — as above.
+  //
+  // ⚠⚠ THE RESIDUALS, AND THE FIRST MAY NOT BE ASSERTABLE AT ALL. **30s is not exercised here.**
+  // `decisions-approved.md:37` calls it *healthy expected STALENESS* rather than a trigger — it describes
+  // how stale a healthy answer may be, not an action the code takes — so it may have no observable
+  // behaviour to assert. Recorded as unexercised rather than as a gap, because I have not established that
+  // a mechanism exists for it.
+  //
+  // **And *never crosses Tenant/culture* is not here**: it is `Cache_keys_are_tenant_complete_and_
+  // incompatible_overrides_fall_back`, cited for `AC-LOC-0004`. Same clause, two criteria, one test.
   [Fact]
+  [Trait("Criterion", "AC-LOC-0059")]
+  [Trait("Criterion", "AC-LOC-0019")]
   public async Task Version_revalidation_expiry_failure_grace_and_recovery_use_fake_time()
   {
     var fixture = new ResolverFixture(TenantId, TenantStatus.Active);
@@ -191,7 +496,26 @@ public sealed class LocalizationResolverTests
     Assert.Equal(2, fixture.OverrideReader.Calls);
   }
 
+  // ⚠ CITES `AC-LOC-0004`'s CACHE PATH — *"EVERY read/write/history/CACHE path derives TenantId from
+  // trusted context and RETURNS NO OTHER TENANT'S STATE."*
+  //
+  // Two tenants, **the same resource key and the same culture**, different override values, and each
+  // `GetOrCreateAsync` returns its own. The arrangement is the collision: a cache keyed on
+  // key-plus-culture and not on tenant would serve the first tenant's text to the second and pass any test
+  // that used different keys per tenant. **The shared key is what makes this an isolation assertion rather
+  // than a caching one.**
+  //
+  // ⚠⚠ ONE PATH OF FOUR, AND THE CRITERION SAYS *EVERY*. Read, write and history are not touched here.
+  // **A criterion id reads later as covering the sentence it belongs to**, so the clause is named: this is
+  // the CACHE path alone. The other three live in the query handlers, the mutation handlers and the
+  // history query, and are not cited by this test.
+  //
+  // ⚠ NOR DOES IT CARRY *derives TenantId from TRUSTED CONTEXT* — the tenant ids here are passed as
+  // arguments by the test. That half is `LocalizationArchitectureTests.Localization_commands_never_accept_
+  // tenant_or_actor_identity` plus the handlers reading `currentTenant`, and it is the *told, not
+  // discovering* shape again: this test supplies the very value whose provenance the clause is about.
   [Fact]
+  [Trait("Criterion", "AC-LOC-0004")]
   public async Task Cache_keys_are_tenant_complete_and_incompatible_overrides_fall_back()
   {
     var clock = new FakeClock(InitialTime);
@@ -218,6 +542,35 @@ public sealed class LocalizationResolverTests
     Assert.False(resolved.Value.OverrideCompatible);
   }
 
+  // ⚠⚠⚠ EXAMINED FOR `AC-LOC-0062`'s FIFTH CLAUSE — *"expose NO ARBITRARY PUBLIC CATALOG GROUP"* — AND
+  // **NOT CITED**, because what this asserts is the adjacent property.
+  //
+  // It proves a REAL group returns EXACTLY its two active members, ordinally ordered. That is *bounded*.
+  // **The clause is about an ARBITRARY group, and no test asks for one.**
+  //
+  // ⚠ THE DISPOSAL'S SEARCH, SO IT IS FALSIFIABLE BY RE-EXECUTION RATHER THAN RE-READING: `ResolveGroupAsync`
+  // and `ResolveTemplateGroupAsync` across all of `tests/` return **five hits — this line, one
+  // source-TEXT assertion in `LocalizationArchitectureTests:539`, and three STUB IMPLEMENTATIONS in
+  // `LocalizationEffectiveApiTests`.** ⚠⚠ **THIS `:295` IS THE ONLY CALL THAT REACHES THE REAL RESOLVER,
+  // and it passes a valid module and group.** A hit, so the disposal confirms strongly.
+  //
+  // ⚠⚠ AND WHAT THE PRODUCT ACTUALLY DOES IS NOT WHAT THE ERROR NAME SUGGESTS. `LocalizationTextResolver:122`
+  // returns `InvalidGroup` **only for empty, whitespace or untrimmed module/group — a FORMATTING check.**
+  // An unknown-but-well-formed group falls through to `catalog.GetActiveGroup`, which **returns an EMPTY
+  // list**, so the caller gets `200` with zero items. ***The clause is satisfied by disclosing nothing
+  // rather than by refusing*** — and a reader who saw `InvalidGroup` would reasonably assume the opposite.
+  //
+  // ⚠ NEITHER BEHAVIOUR IS ASSERTED ANYWHERE. The `:122-127` arm is entered by no test, and the
+  // unknown-group-yields-empty path by none either. **`InvalidGroup` appears in `tests/` exactly once — as
+  // a STUB'S CANNED RETURN at `LocalizationEffectiveApiTests:325`, which tests the TRANSPORT MAPPING of
+  // that error and, by stubbing the resolver, subtracts itself from the witness set for the validation
+  // that produces it.**
+  //
+  // ⚠⚠⚠ AND THE `ar` CULTURE HERE IS QUIETLY LOAD-BEARING FOR THE CHAIN NOTE AT THE TOP OF THIS FILE.
+  // `Assert.All(… Rtl)` holds **because every catalog resource has a non-empty Arabic default**. Give any
+  // one of them an empty Arabic default and `EnglishFallback` fires, `resolvedCulture` becomes English, and
+  // **this assertion flips to `Ltr` — so this test is an unwitting second alarm on that invariant**, in a
+  // file that never mentions it.
   [Fact]
   public async Task Group_batch_is_active_bounded_and_ordinally_ordered()
   {

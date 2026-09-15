@@ -131,12 +131,15 @@ public sealed record LeaveTypeActivationRequest(
 
 // ---- BALANCES AND REQUESTS.
 //
-// `employeeId` is MANDATORY and never inferred from the caller. `OD-ATT-0013` deferred self-service because
-// no identity-to-employee mapping exists (verified: `Employee` carries no user identifier), so this route is
-// an administrator acting on an employee's behalf.
+// `employeeId` is MANDATORY and never inferred from the caller. The mapping exists (`UserEmployeeLink`,
+// `ADR-030`, T-082) but NOTHING ON THIS ROUTE READS IT, so this route is an administrator acting on an
+// employee's behalf.
 //
-// **If that mapping is later built, this field becomes optional and the route gains a self-service
-// meaning** — a change worth anticipating here rather than retrofitting.
+// **The anticipation recorded here was that the field would become optional and this route would gain a
+// self-service meaning. It did not happen that way.** FP-015 delivered self-service as separate `/me/`
+// routes with their own permissions (T-089), because a route that infers its subject when a field is
+// absent and accepts one when it is present is two authorization rules wearing one contract. `employeeId`
+// here is still mandatory.
 public sealed record SetLeaveEntitlementRequest(
   [property: JsonPropertyName("companyId")] Guid CompanyId,
   [property: JsonPropertyName("employeeId")] Guid EmployeeId,

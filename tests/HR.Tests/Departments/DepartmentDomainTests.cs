@@ -18,6 +18,13 @@ public sealed class DepartmentDomainTests
   private const string Actor = "tester";
 
   [Fact]
+  // CITED BY B18 pass 17, body-confirmed. TWO criteria, ONE assertion, and they sit in DIFFERENT
+  // sections of the specification: `AC-DEP-0001` is *creating with a code, a name and no parent
+  // produces an Active root*; `AC-DEP-0025` is *a new department is Active*. The mechanism
+  // grouping found them together; the document's own headings would have searched twice and
+  // found this same test twice.
+  [Trait("Criterion", "AC-DEP-0001")]
+  [Trait("Criterion", "AC-DEP-0025")]
   public void A_valid_department_is_created_active_at_the_root()
   {
     var department = CreateDepartment("SALES", "Sales");
@@ -31,6 +38,9 @@ public sealed class DepartmentDomainTests
   }
 
   [Fact]
+  // CITED BY B18 pass 17, body-confirmed: a department created with a parent in the same company
+  // is placed beneath it.
+  [Trait("Criterion", "AC-DEP-0010")]
   public void A_department_may_be_created_beneath_a_parent()
   {
     var parentId = Guid.NewGuid();
@@ -60,6 +70,10 @@ public sealed class DepartmentDomainTests
   [InlineData(null)]
   [InlineData("")]
   [InlineData("   ")]
+  // CITED BY B18 pass 17, body-confirmed: `AC-DEP-0005` is *a blank or whitespace-only name OR
+  // code is refused* -- four cases. This theory covers code x {null, empty, whitespace}; its
+  // sibling `An_empty_name_is_refused` covers the name half on the same three inputs.
+  [Trait("Criterion", "AC-DEP-0005")]
   public void An_empty_code_is_refused(string? code)
   {
     var result = DepartmentCode.Create(code);
@@ -91,6 +105,9 @@ public sealed class DepartmentDomainTests
   [InlineData(null)]
   [InlineData("")]
   [InlineData("   ")]
+  // CITED BY B18 pass 17: `AC-DEP-0005`'s NAME half. See `An_empty_code_is_refused` for the
+  // other half -- neither test alone covers the criterion.
+  [Trait("Criterion", "AC-DEP-0005")]
   public void An_empty_name_is_refused(string? name)
   {
     var result = DepartmentName.Create(name);
@@ -184,6 +201,11 @@ public sealed class DepartmentDomainTests
 
   // ---- HIERARCHY: THE ONE CASE PHASE 1 DECIDES.
   [Fact]
+  // CITED BY B18 pass 22: `AC-DEP-0012`'s DOMAIN layer -- setting a department as its own parent is
+  // refused. Three layers carry this criterion and the third is the one that matters:
+  // `A_department_cannot_become_its_own_parent` at the application layer, and
+  // `A_department_cannot_be_its_own_parent_even_in_raw_sql` at the DATABASE.
+  [Trait("Criterion", "AC-DEP-0012")]
   public void A_department_cannot_be_its_own_parent()
   {
     var department = CreateDepartment("SALES", "Sales").Value;

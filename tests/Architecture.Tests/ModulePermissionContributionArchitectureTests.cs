@@ -177,9 +177,14 @@ public sealed class ModulePermissionContributionArchitectureTests
 
     Assert.True(catalog.IsSealed);
 
-    Assert.All(
-      catalog.GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public),
-      field => Assert.True(field.IsInitOnly));
+    // ⚠ `Assert.All` OVER AN EMPTY SEQUENCE PASSES, and a catalog whose fields stop being enumerated
+    // reads exactly like a catalog whose fields are all readonly. The binding flags are the matcher.
+    var fields = catalog.GetFields(
+      BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+
+    Assert.NotEmpty(fields);
+
+    Assert.All(fields, field => Assert.True(field.IsInitOnly));
 
     Assert.Empty(catalog.GetProperties().Where(property => property.CanWrite));
     Assert.DoesNotContain(

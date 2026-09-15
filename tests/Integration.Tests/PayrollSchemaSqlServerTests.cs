@@ -3,6 +3,11 @@ using Microsoft.EntityFrameworkCore;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
+using SSAS.BuildingBlocks.Domain;
+using SSAS.BuildingBlocks.Infrastructure.Persistence;
+using SSAS.BuildingBlocks.Tenancy;
+using SSAS.Payroll.Application.Permissions;
+using SSAS.Payroll.Application.Reads;
 using SSAS.Payroll.Domain.Compensation;
 using SSAS.Payroll.Domain.Elements;
 using SSAS.Payroll.Domain.Runs;
@@ -72,7 +77,7 @@ public sealed class PayrollSchemaSqlServerTests
   }
 
   [Fact]
-  public async Task The_migration_creates_all_seven_payroll_tables()
+  public async Task The_migration_creates_all_eight_payroll_tables()
   {
     await using var fixture = await PayrollFixture.CreateAsync();
 
@@ -83,7 +88,9 @@ public sealed class PayrollSchemaSqlServerTests
       WHERE s.name = 'tenant' AND t.name LIKE 'Payroll%';
       """);
 
-    Assert.Equal(7, tables);
+    // EIGHT since T-110 added `PayrollOneOffPayments`. This read 7 and went unnoticed for eighteen days
+    // because no full Integration run completed in that window (T-140).
+    Assert.Equal(8, tables);
   }
 
   [Fact]
@@ -192,6 +199,86 @@ public sealed class PayrollSchemaSqlServerTests
     Assert.Empty(await context.Set<PayrollRunDraftLine>().Where(l => l.PayrollRunId == runId).ToListAsync());
   }
 
+  // ================================================================================================
+  // ⚠⚠⚠ COMPANY-SCOPED CODE UNIQUENESS, ASSERTED BY INSERTING TWICE (AC-PAY-0008).
+  // ================================================================================================
+  //
+  // *"Two elements in the same company cannot share a code; the same code is free in another company."*
+  // **Both clauses live in ONE index key** — `(TenantId, CompanyId, NormalizedCode)`, unique — and before
+  // these two tests ***nothing in the tree exercised it, and nothing named it either.*** No test mentioned
+  // a pay element's `NormalizedCode` at all; this file asserted column types, the eight-table migration,
+  // two foreign-key boundaries and the append-only guards, and **contained no index assertion of any kind.**
+  //
+  // ⚠ ASSERTED BEHAVIOURALLY RATHER THAN BY NAME. An index test that reads a NAME and an `is_unique` flag
+  // out of `sys.indexes` **passes for an index of that name over the WRONG COLUMNS** — which is precisely
+  // the failure this criterion is about, since the columns ARE the claim. Inserting twice cannot be
+  // satisfied that way: either the database refuses the second row or it does not.
+  //
+  // ⚠⚠ THE TWO TESTS ARE A PAIR AND NEITHER IS SUFFICIENT ALONE. The refusal is satisfied by a
+  // TENANT-WIDE unique index — the wrong rule, and the one `Account` deliberately uses — which would then
+  // fail the second test. The acceptance is satisfied by NO index at all. ***Together they pin the key's
+  // column list***, which is what `OD-PAY-0005` actually ruled, and the configuration's own comment names
+  // the contrast: *"two companies in one tenant may each have their own BASIC."*
+  //
+  // ⚠⚠⚠ ***NOT RUN. `Integration.Tests` IS OUTSIDE `GATE_SCOPE=TASK` AND I CANNOT EXECUTE IT — THESE ARE
+  // COMPILATION-VERIFIED ONLY.*** An unrun assertion is a claim, not a check, and must not be reported as
+  // coverage until a `PHASE` run has seen it.
+  [Fact]
+  [Trait("Criterion", "AC-PAY-0008")]
+  public async Task A_second_element_reusing_a_code_in_one_company_is_refused_by_the_database()
+  {
+    await using var fixture = await PayrollFixture.CreateAsync();
+    await using var context = fixture.CreateContext();
+
+    var first = PayElement.Create(
+      fixture.CompanyA, "BASIC", "Basic", PayElementKind.Earning,
+      PayElementBehaviour.BaseSalary, 0m, 0).Value;
+    context.Set<PayElement>().Add(first);
+    await context.SaveChangesAsync();
+
+    // A DIFFERENT element in every respect except the code, so the refusal can only be about the code.
+    var duplicate = PayElement.Create(
+      fixture.CompanyA, "BASIC", "Basic again", PayElementKind.Deduction,
+      PayElementBehaviour.FixedAmount, 5m, 1).Value;
+    context.Set<PayElement>().Add(duplicate);
+
+    await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
+  }
+
+  [Fact]
+  [Trait("Criterion", "AC-PAY-0008")]
+  public async Task The_same_element_code_is_free_in_a_second_company()
+  {
+    await using var fixture = await PayrollFixture.CreateAsync();
+    await using (var contextA = fixture.CreateContext(fixture.CompanyA))
+    {
+      contextA.Set<PayElement>().Add(PayElement.Create(
+        fixture.CompanyA, "BASIC", "Basic", PayElementKind.Earning,
+        PayElementBehaviour.BaseSalary, 0m, 0).Value);
+      await contextA.SaveChangesAsync();
+    }
+
+    await using (var contextB = fixture.CreateContext(fixture.CompanyB))
+    {
+      contextB.Set<PayElement>().Add(PayElement.Create(
+        fixture.CompanyB, "BASIC", "Basic", PayElementKind.Earning,
+        PayElementBehaviour.BaseSalary, 0m, 0).Value);
+      // No throw: the key carries `CompanyId`, so these are two different rows and not a collision.
+      await contextB.SaveChangesAsync();
+    }
+
+    await using var context = fixture.CreateContext(fixture.CompanyA);
+    var stored = await context.Set<PayElement>()
+      .Where(element => element.NormalizedCode == "BASIC")
+      .ToListAsync();
+
+    // The COUNT is exact rather than a floor. A floor of one passes when the second insert was silently
+    // discarded, which is the outcome a tenant-wide index would produce if it did not throw.
+    Assert.Equal(2, stored.Count);
+    Assert.Contains(stored, element => element.CompanyId == fixture.CompanyA);
+    Assert.Contains(stored, element => element.CompanyId == fixture.CompanyB);
+  }
+
   [Fact]
   [Trait("Decision", "OD-PAY-0003")]
   public async Task Compensation_history_round_trips_and_the_amount_keeps_four_decimals()
@@ -223,6 +310,84 @@ public sealed class PayrollSchemaSqlServerTests
     Assert.Equal(1234.5678m, inForce!.BaseAmount);
   }
 
+  // ================================================================================================
+  // ⚠⚠ THE COMPANY PREDICATE, PER SITE, AGAINST THE REAL READ SERVICE (item 233, `AC-PAY-0005`).
+  // ================================================================================================
+  //
+  // ---- WHY THIS DID NOT EXIST, WHICH IS THE FINDING THAT PRODUCED IT.
+  //
+  // **`PayrollReadService` was constructed by no test in any suite.** `PayrollApiTestHost` registers
+  // `StubPayrollReads` and never calls `AddPayrollInfrastructure`, so the concrete class — and every
+  // `scope.CompanyIds.Contains(...)` in it — had never executed.
+  //
+  // ⚠ `Every_read_service_method_requires_a_scope` asserts that every method TAKES a scope. **Taking a
+  // scope is not applying it**, and a structural assertion over an interface reads as behavioural
+  // coverage while the only production implementation goes untouched.
+  //
+  // ---- ⚠⚠ PER SITE, NOT PER METHOD, AND THE COUNT IS FIVE.
+  //
+  // `ScopedCompensation` covers two methods and `ScopedRuns` covers four — but **`GetElementsAsync`,
+  // `GetElementAsync` and `GetPeriodsAsync` each carry their own hand-written copy of the predicate.**
+  // A case per method would over-count the helpers and still leave the three copies proven by nothing;
+  // a single case would prove one site and imply four.
+  //
+  // ---- THE ARRANGEMENT, AND WHY EACH PART OF IT IS LOAD-BEARING.
+  //
+  // **Both companies hold the same subjects and the SAME `employeeId`.** A distinct employee per company
+  // would let the compensation cases pass on the employee filter with no company predicate at all.
+  //
+  // ⚠ **Where a method also takes a `companyId`, company B's id is passed with a scope authorized for A.**
+  // That is what isolates the SCOPE predicate from the PARAMETER: a service that had dropped the scope
+  // and trusted the argument would return B's rows here, and returns nothing when it is right.
+  //
+  // **Two-sided at every site: company A must SEE ITS OWN ROW as well as not see B's.** An empty database,
+  // a broken query or a scope that resolved to nothing satisfies every "does not see B" assertion.
+  [Fact]
+  [Trait("Criterion", "AC-PAY-0005")]
+  public async Task A_scope_authorized_for_one_company_reads_none_of_the_others_rows()
+  {
+    await using var fixture = await PayrollFixture.CreateAsync();
+
+    var employee = Guid.NewGuid();
+    var a = await fixture.SeedReadSubjectsAsync(fixture.CompanyA, "AAA", employee);
+    var b = await fixture.SeedReadSubjectsAsync(fixture.CompanyB, "BBB", employee);
+
+    await using var context = fixture.CreateContext();
+    var reads = PayrollFixture.Reads(context);
+
+    var scope = await fixture.Resolver(fixture.CompanyA).ResolveAsync(PayrollPermissionNames.ViewElements);
+    Assert.True(scope.IsSuccess, scope.IsFailure ? scope.Error.Code : null);
+    Assert.Equal([fixture.CompanyA], scope.Value.CompanyIds);
+
+    // ---- SITE 1: `GetElementsAsync`, inline predicate.
+    Assert.Single(await reads.GetElementsAsync(scope.Value, fixture.CompanyA, null));
+    Assert.Empty(await reads.GetElementsAsync(scope.Value, fixture.CompanyB, null));
+
+    // ---- SITE 2: `GetElementAsync`, inline predicate. No company parameter: the id alone must not reach.
+    Assert.NotNull(await reads.GetElementAsync(scope.Value, a.ElementId));
+    Assert.Null(await reads.GetElementAsync(scope.Value, b.ElementId));
+
+    // ---- SITE 3: `GetPeriodsAsync`, inline predicate.
+    Assert.Single(await reads.GetPeriodsAsync(scope.Value, fixture.CompanyA));
+    Assert.Empty(await reads.GetPeriodsAsync(scope.Value, fixture.CompanyB));
+
+    // ---- SITE 4: `ScopedCompensation`, shared by history and in-force.
+    //
+    // ⚠ The same employee holds a compensation record under BOTH companies, so a history that returned
+    // two rows would be the exact defect: one person's pay from a company the caller cannot reach.
+    Assert.Single(await reads.GetCompensationHistoryAsync(scope.Value, employee));
+
+    var inForce = await reads.GetCompensationInForceAsync(
+      scope.Value, employee, new DateTimeOffset(2026, 6, 1, 0, 0, 0, TimeSpan.Zero));
+    Assert.NotNull(inForce);
+
+    // ---- SITE 5: `ScopedRuns`, shared by the run list, the run and the payslip.
+    Assert.Single(await reads.GetRunsAsync(scope.Value, fixture.CompanyA));
+    Assert.Empty(await reads.GetRunsAsync(scope.Value, fixture.CompanyB));
+    Assert.NotNull(await reads.GetRunAsync(scope.Value, a.RunId));
+    Assert.Null(await reads.GetRunAsync(scope.Value, b.RunId));
+  }
+
   private sealed class PayrollFixture : IAsyncDisposable
   {
     private const string Actor = "fp012-payroll-tests";
@@ -235,6 +400,10 @@ public sealed class PayrollSchemaSqlServerTests
 
     public Guid CompanyA { get; } = Guid.NewGuid();
 
+    // The second company exists so a scope authorized for ONE of them can be shown not to reach the other.
+    // Nothing before item 233 needed it, which is why `CompanyA` was named `CompanyA` and stood alone.
+    public Guid CompanyB { get; } = Guid.NewGuid();
+
     public Guid Employee { get; } = Guid.NewGuid();
 
     public static async Task<PayrollFixture> CreateAsync()
@@ -244,7 +413,12 @@ public sealed class PayrollSchemaSqlServerTests
       return fixture;
     }
 
-    public TenantDbContext CreateContext()
+    public TenantDbContext CreateContext() => CreateContext(CompanyA);
+
+    // The company the WRITE boundary will authorize. Seeding rows under `CompanyB` needs a context
+    // authorized for `CompanyB`: `ApplyCompanyRulesAsync` refuses the save otherwise, which is the write
+    // boundary doing its job and not something to route around.
+    public TenantDbContext CreateContext(Guid company)
     {
       var options = new DbContextOptionsBuilder<TenantDbContext>()
         .UseSqlServer(ConnectionFor(catalog))
@@ -252,9 +426,66 @@ public sealed class PayrollSchemaSqlServerTests
 
       return new TenantDbContext(
         options, new FixtureUser(), new FixtureTenant(Tenant), new FixtureClock(),
-        companyAuthorizer: new GrantingCompanyAuthorizer(CompanyA),
+        companyAuthorizer: new GrantingCompanyAuthorizer(company),
         modelContributors: [new PayrollTenantModelContributor()]);
     }
+
+    // ---- ONE COMPANY'S WORTH OF EVERY READ SUBJECT, SO EACH PREDICATE SITE HAS SOMETHING TO EXCLUDE.
+    //
+    // The same `employeeId` under both companies is deliberate: it is what makes the COMPANY predicate the
+    // only thing that can separate the two compensation rows. An employee id per company would let a test
+    // pass on the employee filter alone.
+    public async Task<SeededCompany> SeedReadSubjectsAsync(Guid company, string code, Guid employeeId)
+    {
+      await using var context = CreateContext(company);
+
+      var element = PayElement.Create(
+        company, code, $"Element {code}", PayElementKind.Earning,
+        PayElementBehaviour.BaseSalary, 0m, 0).Value;
+      context.Set<PayElement>().Add(element);
+
+      var period = PayrollPeriod.CreateAlignedTo(
+        company, Guid.NewGuid(), $"Period {code}",
+        new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+        new DateTimeOffset(2026, 1, 31, 0, 0, 0, TimeSpan.Zero),
+        new DateTimeOffset(2026, 2, 5, 0, 0, 0, TimeSpan.Zero)).Value;
+      context.Set<PayrollPeriod>().Add(period);
+
+      var compensation = EmployeeCompensation.Create(
+        company, employeeId, new DateTimeOffset(2025, 1, 1, 0, 0, 0, TimeSpan.Zero), 5000m).Value;
+      context.Set<EmployeeCompensation>().Add(compensation);
+
+      await context.SaveChangesAsync();
+
+      var run = PayrollRun.Create(company, period.Id).Value;
+      run.SetCalculation(
+        [new PayrollRunDraftLine(
+          Guid.NewGuid(), run.Id, employeeId, element.Id, PayElementKind.Earning, 5000m, 0, null)],
+        Actor);
+      context.Set<PayrollRun>().Add(run);
+
+      await context.SaveChangesAsync();
+
+      return new SeededCompany(element.Id, period.Id, run.Id);
+    }
+
+    // Returns the CONCRETE type deliberately: the whole point of this item is that
+    // `PayrollReadService` had never been constructed, and a helper typed to the interface would read as
+    // one more place the interface is satisfied.
+    public static PayrollReadService Reads(TenantDbContext context) =>
+      new(new SingleContext(context));
+
+    // The REAL resolver over a stubbed company authority, so the scope under test is produced the way the
+    // application produces it rather than constructed by the test. `PayrollReadScope.Create` is `internal`
+    // precisely so a test cannot forge one.
+    public PayrollScopeResolver Resolver(params Guid[] permitted) =>
+      new(
+        new GrantingCompanyAccess(permitted),
+        new FixtureTenant(Tenant),
+        new FixtureTenantUser(),
+        new PermittedUser());
+
+    public sealed record SeededCompany(Guid ElementId, Guid PeriodId, Guid RunId);
 
     // Seeds through the REAL aggregate methods, so the rows under test are the rows the product would have
     // written. An approved run seeded any other way would be asserting the write boundary's behaviour
@@ -331,6 +562,7 @@ public sealed class PayrollSchemaSqlServerTests
       await MasterAsync($"CREATE DATABASE [{catalog}]");
       await MigrateAsync();
       await SeedCompanyAsync(CompanyA, "CMPA");
+      await SeedCompanyAsync(CompanyB, "CMPB");
     }
 
     private async Task MigrateAsync()
@@ -411,7 +643,6 @@ public sealed class PayrollSchemaSqlServerTests
 
       public string? Email => null;
 
-      public Guid? CompanyId => null;
 
       public string? SessionId => null;
 
@@ -435,6 +666,59 @@ public sealed class PayrollSchemaSqlServerTests
     // Grants the one company the fixture seeded. It does NOT weaken the company boundary: the write
     // boundary still runs, still authorizes, and still refuses anything else — this stands in for the
     // platform authority a request would carry, which no fixture has.
+    // The company authority the RESOLVER reads. Distinct from `GrantingCompanyAuthorizer`, which is the
+    // WRITE boundary's: one decides what may be saved, the other what may be seen, and this item is about
+    // the second.
+    private sealed class GrantingCompanyAccess(IReadOnlyList<Guid> permitted)
+      : SSAS.BuildingBlocks.Tenancy.Companies.ITenantCompanyAccessResolver
+    {
+      public Task<Result<IReadOnlyList<SSAS.BuildingBlocks.Tenancy.Companies.CompanyAccessSummary>>>
+        GetPermittedCompaniesAsync(Guid tenantId, long tenantUserId, CancellationToken cancellationToken = default) =>
+        Task.FromResult(
+          Result.Success<IReadOnlyList<SSAS.BuildingBlocks.Tenancy.Companies.CompanyAccessSummary>>(
+            permitted.Select(id =>
+              new SSAS.BuildingBlocks.Tenancy.Companies.CompanyAccessSummary(id, "CODE", "Name")).ToArray()));
+
+      public Task<Result> AuthorizeCompanyAsync(
+        Guid tenantId, long tenantUserId, Guid companyId, CancellationToken cancellationToken = default) =>
+        Task.FromResult(permitted.Contains(companyId)
+          ? Result.Success()
+          : Result.Failure(new Error("Company.Denied", "Denied.")));
+    }
+
+    private sealed class FixtureTenantUser : ICurrentTenantUser
+    {
+      public long? TenantUserId => 42;
+    }
+
+    // `FixtureUser` holds no permissions, which is right for the schema tests: they never resolve a scope.
+    // The resolver refuses before it reaches the company dimension without the read permission, so this
+    // carries the two the read surface needs and nothing else.
+    private sealed class PermittedUser : ICurrentUser
+    {
+      public string? UserId => Actor;
+
+      public string? UserName => Actor;
+
+      public string? Email => null;
+
+      public string? SessionId => null;
+
+      public string? TokenId => null;
+
+      public IReadOnlyCollection<string> Roles => [];
+
+      public IReadOnlyCollection<string> Permissions =>
+        [PayrollPermissionNames.ViewElements, PayrollPermissionNames.ViewCompensation,
+         PayrollPermissionNames.ViewRuns, PayrollPermissionNames.ViewPayslips];
+    }
+
+    private sealed class SingleContext(TenantDbContext context) : ITenantDbContextAccessor
+    {
+      public Task<DbContext> GetRequiredAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult<DbContext>(context);
+    }
+
     private sealed class GrantingCompanyAuthorizer(Guid companyId) : ICompanyWriteAuthorizer
     {
       public Task<SSAS.BuildingBlocks.Domain.Result<Guid>> AuthorizeCurrentCompanyAsync(

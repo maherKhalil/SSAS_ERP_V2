@@ -17,7 +17,7 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "8.0.0")
+                .HasAnnotation("ProductVersion", "8.0.8")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
@@ -25,7 +25,6 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp.Migrations
             modelBuilder.Entity("SSAS.Attendance.Domain.Calendars.CalendarHoliday", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateOnly>("HolidayDate")
@@ -53,7 +52,6 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp.Migrations
             modelBuilder.Entity("SSAS.Attendance.Domain.Calendars.WorkingCalendar", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid>("CompanyId")
@@ -114,7 +112,6 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp.Migrations
             modelBuilder.Entity("SSAS.Attendance.Domain.Leave.LeaveBalance", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid>("CompanyId")
@@ -175,7 +172,6 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp.Migrations
             modelBuilder.Entity("SSAS.Attendance.Domain.Leave.LeaveRequest", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid?>("ApproverEmployeeId")
@@ -247,13 +243,16 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp.Migrations
 
                     b.HasIndex("TenantId", "EmployeeId", "StartDate", "EndDate");
 
+                    b.HasIndex(new[] { "TenantId", "EmployeeId", "StartDate", "EndDate" }, "UX_AttendanceLeaveRequests_Employee_Range_Active")
+                        .IsUnique()
+                        .HasFilter("[Status] IN ('Submitted', 'Approved')");
+
                     b.ToTable("AttendanceLeaveRequests", "tenant");
                 });
 
             modelBuilder.Entity("SSAS.Attendance.Domain.Leave.LeaveType", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<int>("Behaviour")
@@ -326,7 +325,6 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp.Migrations
             modelBuilder.Entity("SSAS.Attendance.Domain.Periods.AttendancePeriod", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("ClosedBy")
@@ -396,7 +394,6 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp.Migrations
             modelBuilder.Entity("SSAS.Attendance.Domain.Records.AttendanceRecord", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid?>("AdjustedRecordId")
@@ -481,7 +478,6 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp.Migrations
             modelBuilder.Entity("SSAS.GL.Domain.Accounts.Account", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("Code")
@@ -543,7 +539,6 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp.Migrations
             modelBuilder.Entity("SSAS.GL.Domain.Calendar.FiscalPeriod", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTimeOffset>("EndUtc")
@@ -590,7 +585,6 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp.Migrations
             modelBuilder.Entity("SSAS.GL.Domain.Calendar.FiscalYear", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("Code")
@@ -644,7 +638,6 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp.Migrations
             modelBuilder.Entity("SSAS.GL.Domain.Journals.JournalDraft", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid>("CompanyId")
@@ -697,7 +690,6 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp.Migrations
             modelBuilder.Entity("SSAS.GL.Domain.Journals.JournalDraftLine", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid>("AccountId")
@@ -741,7 +733,6 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp.Migrations
             modelBuilder.Entity("SSAS.GL.Domain.Journals.JournalEntry", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid>("CompanyId")
@@ -815,7 +806,6 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp.Migrations
             modelBuilder.Entity("SSAS.GL.Domain.Journals.JournalLine", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid>("AccountId")
@@ -1070,6 +1060,104 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp.Migrations
                         });
                 });
 
+            modelBuilder.Entity("SSAS.HR.Domain.EmployeeDocuments.EmployeeDocument", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("DocumentId");
+
+                    b.Property<long>("ByteCount")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("ContentHash")
+                        .IsRequired()
+                        .HasColumnType("binary(32)");
+
+                    b.Property<string>("ContentLocation")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset>("CreatedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DocumentType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(260)
+                        .HasColumnType("nvarchar(260)");
+
+                    b.Property<string>("ModifiedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset>("ModifiedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("NormalizedFileName")
+                        .IsRequired()
+                        .HasMaxLength(260)
+                        .HasColumnType("nvarchar(260)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId");
+
+                    b.HasIndex("EmployeeId");
+
+                    b.HasIndex("TenantId", "CompanyId", "EmployeeId", "Status")
+                        .HasDatabaseName("IX_EmployeeDocuments_Employee");
+
+                    b.ToTable("EmployeeDocuments", "tenant");
+                });
+
+            modelBuilder.Entity("SSAS.HR.Domain.EmployeeDocuments.EmployeeDocumentContent", b =>
+                {
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("Content")
+                        .IsRequired()
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("DocumentId");
+
+                    b.ToTable("EmployeeDocumentContents", "tenant");
+                });
+
             modelBuilder.Entity("SSAS.HR.Domain.Employees.Employee", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1099,6 +1187,9 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp.Migrations
 
                     b.Property<DateTimeOffset>("EmploymentDate")
                         .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("EmploymentType")
+                        .HasColumnType("int");
 
                     b.Property<string>("FullName")
                         .IsRequired()
@@ -1781,7 +1872,6 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp.Migrations
             modelBuilder.Entity("SSAS.Payroll.Domain.Compensation.EmployeeCompensation", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<decimal>("BaseAmount")
@@ -1815,6 +1905,9 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp.Migrations
                     b.Property<DateTimeOffset>("ModifiedUtc")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<int>("SalaryType")
+                        .HasColumnType("int");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
 
@@ -1831,10 +1924,61 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp.Migrations
                     b.ToTable("PayrollEmployeeCompensation", "tenant");
                 });
 
+            modelBuilder.Entity("SSAS.Payroll.Domain.Compensation.OneOffPayment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("decimal(19,4)");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("ConsumedByPayrollRunId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("CreatedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ModifiedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("ModifiedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("PayElementId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("PayrollPeriodId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "CompanyId", "PayrollPeriodId", "ConsumedByPayrollRunId");
+
+                    b.ToTable("PayrollOneOffPayments", "tenant");
+                });
+
             modelBuilder.Entity("SSAS.Payroll.Domain.Compensation.PayElementAssignment", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid>("EmployeeCompensationId")
@@ -1863,7 +2007,6 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp.Migrations
             modelBuilder.Entity("SSAS.Payroll.Domain.Elements.PayElement", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<int>("Behaviour")
@@ -1944,7 +2087,6 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp.Migrations
             modelBuilder.Entity("SSAS.Payroll.Domain.Runs.PayrollPeriod", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid>("CompanyId")
@@ -2002,7 +2144,6 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp.Migrations
             modelBuilder.Entity("SSAS.Payroll.Domain.Runs.PayrollRun", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("ApprovedBy")
@@ -2049,6 +2190,9 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp.Migrations
                     b.Property<DateTimeOffset?>("PostedUtc")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<DateTimeOffset?>("ReversedUtc")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
                         .ValueGeneratedOnAddOrUpdate()
@@ -2067,7 +2211,8 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp.Migrations
                     b.HasIndex("PayrollPeriodId");
 
                     b.HasIndex("TenantId", "CompanyId", "PayrollPeriodId")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("[ReversedUtc] IS NULL");
 
                     b.ToTable("PayrollRuns", "tenant");
                 });
@@ -2075,7 +2220,6 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp.Migrations
             modelBuilder.Entity("SSAS.Payroll.Domain.Runs.PayrollRunDraftLine", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<decimal>("Amount")
@@ -2115,7 +2259,6 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp.Migrations
             modelBuilder.Entity("SSAS.Payroll.Domain.Runs.PayrollRunLine", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<decimal>("Amount")
@@ -2525,6 +2668,30 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp.Migrations
                         .WithMany()
                         .HasForeignKey("SourceDepartmentId")
                         .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("SSAS.HR.Domain.EmployeeDocuments.EmployeeDocument", b =>
+                {
+                    b.HasOne("SSAS.Platform.Domain.Companies.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SSAS.HR.Domain.Employees.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SSAS.HR.Domain.EmployeeDocuments.EmployeeDocumentContent", b =>
+                {
+                    b.HasOne("SSAS.HR.Domain.EmployeeDocuments.EmployeeDocument", null)
+                        .WithMany()
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("SSAS.HR.Domain.Employees.Employee", b =>

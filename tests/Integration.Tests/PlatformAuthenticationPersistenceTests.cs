@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
@@ -219,6 +219,149 @@ public sealed class PlatformAuthenticationPersistenceTests
     }
   }
 
+  // ---- ⚠⚠⚠ `AC-AUTH-0034` NAMES EIGHT RACES. THIS METHOD COVERS ONE. THE OTHER SEVEN ARE ENUMERATED HERE
+  // BECAUSE A CRITERION ID ON A GREEN TEST IS READ AS THE WHOLE CRITERION PROVEN.
+  //
+  // *"Approved locked operations serialize concurrent **selection, refresh, revocation, session-limit,
+  // password-reset, membership, Tenant, and `SecurityVersion`** races without leaking SQL details."*
+  //
+  // **This one is SELECTION**, and it is a real race: two contexts, two handlers, `Task.WhenAll`, then
+  // `Single(successes)` paired with `Single(failures)` on a **domain** error code — ***which is what carries
+  // "without leaking SQL details", since a `SqlException` surfacing here would fail the code assertion.***
+  //
+  // ---- COVERED ELSEWHERE, UNTAGGED (the criterion is TENANT-plane; platform-plane siblings do not count).
+  //
+  //   *refresh*     `Repeated_concurrent_refresh_rotates_once_and_verified_loser_compromises_only_owning_session`
+  //   *revocation*  `Logout_racing_refresh_serializes_and_leaves_no_usable_refresh_token`,
+  //                 `Concurrent_http_refresh_and_logout_use_validated_transport_and_sql_serialization`
+  //
+  // ⚠ **`PlatformAuthenticationSessionFlowSqlServerTests` has concurrent refresh and session-limit tests that
+  // do NOT count here** — they are platform-plane. *In this tree "Platform" is the assembly in one file name
+  // and the security plane in another; the tell is the TABLE name, never the file name.*
+  //
+  // ---- ⚠⚠⚠ FIVE RACES WITH A LOCK IN `src/` AND NO CONCURRENT TEST. THE POPULATION IS THE LOCK, NOT A NAME
+  // SEARCH: `WITH (UPDLOCK, HOLDLOCK)` across `src/Platform/` is thirteen tables, closed and enumerable.
+  //
+  //   *session-limit*    `AuthenticationSessions` — `AuthenticationSessionCreator` **against itself**: two
+  //                      simultaneous logins for one identity. ⚠ One call site twice, not two sites.
+  //   *password-reset*   `AuthenticationAccounts` — `CompletePasswordResetCommandHandler` ×
+  //                      `RefreshAuthenticationSessionCommandHandler`
+  //   *`SecurityVersion`*  same table, and the security-relevant pair —
+  //                      `CompletePasswordResetCommandHandler` (bumps it) × `SelectTenantCommandHandler`
+  //                      or `BeginTenantAccessCommandHandler` (revalidate it)
+  //   *membership*       `TenantUsers` — `SelectTenantCommandHandler` / `BeginTenantAccessCommandHandler` ×
+  //                      `CompleteInvitationCommandHandler` / `AssignRoleToTenantUserCommandHandler`
+  //   *Tenant*           `Tenants` — `GetTenantAuthenticationEligibilityQueryHandler` ×
+  //                      `ArchiveTenantCommandHandler` / `ActivateTenantCommandHandler`
+  //
+  // ⚠⚠ **NO WRITER TAKES `UPDLOCK` ON `TenantUsers` OR `Tenants`, AND THAT IS NOT A DEFECT — IT IS THE
+  // IDIOM.** *The read holds a **U** lock to end of transaction; an ordinary `UPDATE` needs **X**, and X
+  // conflicts with U, so the writer blocks **without opting in**.* **A conclusion that the lock has "no
+  // counterparty" would be the stronger-sounding wrong answer here.**
+  //
+  // ⚠ **AND THE PREMISE ANY SUCH TEST MUST ESTABLISH RATHER THAN ASSUME: the two sides must overlap INSIDE
+  // TRANSACTIONS**, because `HOLDLOCK` holds only to end of transaction. *A badly arranged test whose read
+  // commits before the write starts passes for arrangement reasons and reads as coverage forever.*
+  //
+  // **Design recorded, tests not written on purpose:** the five above are Integration-only, so they would
+  // land green-at-a-date at best, and this file's own model — two contexts, `Task.WhenAll`, cardinality
+  // assertions — already carries everything the tests would. ***Three unrunnable greens would grow the
+  // never-executed bucket to prove races whose design is written down here.***
+  //
+  // ---- ⚠⚠⚠ AND THE MEASUREMENT THAT SHARPENS THE PREMISE ABOVE (2026-09-06).
+  //
+  // "The two sides must overlap INSIDE TRANSACTIONS" is the load-bearing arrangement, and only a
+  // RENDEZVOUS makes it deterministic. `Task.WhenAll` alone starts two tasks; it does not make them meet.
+  //
+  // ⚠⚠⚠ CORRECTED SAME DAY. The first version of this paragraph said `tests/` holds **exactly ONE**
+  // rendezvous primitive. **THAT WAS FALSE, AND IT WAS FALSE IN THE DIRECTION THAT FLATTERED THE FINDING.**
+  // It was derived by grepping .NET primitives — `Barrier`, `SemaphoreSlim`, `ManualResetEvent` — and a
+  // rendezvous does not have to be a .NET object. **`PlatformAuthenticationSessionFlowSqlServerTests` holds
+  // a SQL one**, `LockGate.HoldAsync` (defined at its line 1133), which parks one side on a real
+  // `UPDLOCK, HOLDLOCK` row lock. *Enumerate the MECHANISM, not the names — my own rule, missed on my own
+  // measurement, one commit after writing it down.*
+  //
+  // ---- THE CORRECTED FOUR-WAY SPLIT.
+  //
+  //   *`Barrier(2)`*   1 test — `Concurrent_account_creation_allows_only_one_identity_and_authentication
+  //                  _account`, in this file. A .NET rendezvous at a chosen point mid-transaction.
+  //   *SQL `LockGate`* 3 tests — `L1_create_first_commits_the_session_and_the_disable_then_revokes_it`,
+  //                  `L1_disable_first_makes_the_concurrent_creation_fail_closed`,
+  //                  `L1_holds_when_read_committed_snapshot_isolation_is_disabled`. ***Stronger than the
+  //                  barrier: each also ASSERTS THE PARK*** — `Assert.False(task.IsCompleted)` after a
+  //                  delay — so the test fails if the interleaving it claims did not happen.
+  //   *STAGED*       1 test — `Rowversion_detects_a_concurrent_conflicting_update`. Two contexts, two
+  //                  reads, then saves IN ORDER. No race at all; deterministic by sequencing, and for
+  //                  optimistic-concurrency detection that is the right shape.
+  //   *TIMING*       the rest, including all of `AC-AUTH-0034`'s three covered races.
+  //
+  // ***SO "HAS A CONCURRENT TEST" AND "HAS A TEST THAT RELIABLY INTERLEAVES" ARE STILL DIFFERENT
+  // POPULATIONS — the conclusion survived the correction, the magnitude did not.*** A timing-dependent race
+  // test does not fail when the race is unprotected: it passes whenever the two sides happen not to
+  // overlap, which is the arrangement failure this comment already warns about, present today rather than
+  // hypothetical in a test not yet written.
+  //
+  // ⚠ **AND THE PARK ASSERTION IS THE TRANSFERABLE IDEA.** A barrier makes an interleaving happen; only
+  // `Assert.False(task.IsCompleted)` PROVES it happened. Any of the five races above, if written, should
+  // take the `L1_*` shape rather than this file's — *gate the counterparty on the real lock, assert it is
+  // parked, then release.*
+  //
+  // ⚠ That is NOT a claim that the eight timing tests are wrong, and "several are terminal" is not a list,
+  // so here is the list.
+  //
+  // ---- ⚠⚠⚠ CORRECTED SAME DAY, AND THE FIRST VERSION SAID SEVEN TERMINAL. IT USED THE WRONG QUESTION.
+  //
+  //   WRONG: *would this assertion still PASS if the two ran sequentially?*  -> tests SOUNDNESS
+  //   RIGHT: *could this assertion FAIL if the two ran sequentially?*        -> tests DISCRIMINATION
+  //
+  // **A test that passes sequentially AND cannot fail sequentially is not "sound and terminal" — it is the
+  // vacuous case, because its green could never have been a red without a race.** That is what "passes for
+  // arrangement reasons and reads as coverage forever" means, and only the second question detects it.
+  //
+  //   TERMINAL, 3 of 8 — a sequential failure mode exists, so a green is informative either way
+  //     `Logout_racing_refresh_serializes_…`              a refresh succeeding AFTER revocation leaves an
+  //                                                      active token — fails with no race at all
+  //     `Concurrent_http_refresh_and_logout_…`            same shape, through HTTP
+  //     `Concurrent_disable_and_refresh_leave_no_usable…` a disable that failed to revoke sessions fails
+  //
+  //   ⚠⚠⚠ OVERLAP-DEPENDENT, 5 of 8 — CANNOT fail unless both sides were genuinely in flight
+  //     `Repeated_concurrent_refresh_rotates_once_…`      SINGLE-USE CREDENTIAL: sequentially the second
+  //     `Concurrent_selection_consumption_creates_…`      attempt refuses because the token/proof is
+  //                                                      already consumed — nothing to do with the lock.
+  //                                                      `Assert.Single(successes)` is guaranteed by the
+  //                                                      credential, and can only fail if two sides read
+  //                                                      it unconsumed at once.
+  //     `Concurrent_refresh_of_the_same_token_…`          `<= 1` can only break if two succeed
+  //     `Concurrent_session_creation_respects_the_…`      `<= 1` can only break if two are created
+  //     `L1_concurrent_create_and_disable_stress_…`       no contention, no deadlock, nothing proved
+  //
+  // ⚠⚠ **THE SETUP GIVES THE FIRST ONE AWAY AND THE WRONG QUESTION WALKED PAST IT:**
+  // `for (var iteration = 0; iteration < 3; iteration++)`. ***A repetition loop is a contention amplifier —
+  // it only makes sense if the author believed the outcome was timing-dependent, and the method name's
+  // first word is "Repeated".*** The overlap-dependence was encoded in the arrangement all along.
+  //
+  // ⚠ `L1_concurrent_create_and_disable_stress_…` is the benign member: its own comment calls it
+  // "supplementary unsynchronised stress", it seeds eight authorities to make contention likely, and it
+  // sits beside three `LockGate` tests that DO pin the interleaving. **A vacuity that declares itself is a
+  // known gap; one that does not is a false green.**
+  //
+  // ***SO TWO OF `AC-AUTH-0034`'S THREE COVERED RACES — SELECTION AND REFRESH — ARE OVERLAP-DEPENDENT, AND
+  // NOTHING GUARANTEES THE OVERLAP. ONLY REVOCATION IS TERMINAL.***
+  //
+  // ---- ⚠⚠ AND THE THIRD STATE: A TERMINAL ASSERTION UNDER A SERIALIZATION NAME. SOUND, MISDESCRIBED.
+  //
+  // `Logout_racing_refresh_SERIALIZES_and_leaves_no_usable_refresh_token` and
+  // `Concurrent_http_refresh_and_logout_use_validated_transport_and_SQL_SERIALIZATION` both promise
+  // serialization in the NAME and assert only the end state. Neither can observe whether anything
+  // serialized. **Both also carry a clause that accepts either outcome** — `refreshResult.IsSuccess ||
+  // Error == "AuthenticationSession.RefreshFailed"`, and `Contains(status, [OK, Unauthorized])` — *which is
+  // satisfied by any non-crash and carries no information.* The terminal assertions are what do the work.
+  //
+  // ***SO THE GREEN IS SOUND AND THE NAME OVER-CLAIMS, WHICH IS THE FAILURE THIS TREE ALREADY KNOWS: a
+  // reader takes the name for the assertion, and nothing checks a name against what a test proves.***
+  //
+  // It is a claim about what a GREEN licenses: a terminal-invariant green says the end state is safe, never
+  // that the lock serialized anything. Only a rendezvous can say the second.
   [Fact]
   [Trait("Scenario", "TS-AUTH-0088")]
   [Trait("Acceptance", "AC-AUTH-0034")]
@@ -262,7 +405,7 @@ public sealed class PlatformAuthenticationPersistenceTests
       var account = await loginContext.AuthenticationAccounts.AsNoTracking().SingleAsync();
       var tenantEligibility = new TenantAuthenticationEligibilityReadService(loginContext);
       var memberships = new IdentityTenantMembershipReadService(loginContext, tenantEligibility);
-      var unitOfWork = new PlatformUnitOfWork(loginContext, new NoOpDomainEventDispatcher());
+      var unitOfWork = TestUnitOfWork.Platform(loginContext, new NoOpDomainEventDispatcher());
       var sessionRepository = new AuthenticationSessionRepository(loginContext);
       var tokenService = new AuthenticationTokenService();
       var policy = new AuthenticationPolicy();
@@ -504,7 +647,7 @@ public sealed class PlatformAuthenticationPersistenceTests
     async Task<Result<int>> CreateAsync()
     {
       await using var context = database.CreateContext(Guid.NewGuid());
-      var unitOfWork = new PlatformUnitOfWork(context, new NoOpDomainEventDispatcher());
+      var unitOfWork = TestUnitOfWork.Platform(context, new NoOpDomainEventDispatcher());
       await using var transaction = await unitOfWork.BeginTransactionAsync();
       var identity = Identity.Create(AuthenticationSubject.Create($"local:{Guid.NewGuid():N}").Value);
       context.Identities.Add(identity);
@@ -658,7 +801,7 @@ public sealed class PlatformAuthenticationPersistenceTests
       new AuthenticationTokenService(),
       new AccessTokenClaimsProvider(context, new PlatformPermissionCatalog()),
       accessTokenIssuer ?? new TestAccessTokenIssuer(),
-      new PlatformUnitOfWork(context, new NoOpDomainEventDispatcher()),
+      TestUnitOfWork.Platform(context, new NoOpDomainEventDispatcher()),
       new AuthenticationPolicy(),
       database.Clock);
   }
@@ -669,7 +812,7 @@ public sealed class PlatformAuthenticationPersistenceTests
     IAccessTokenIssuer? accessTokenIssuer = null)
   {
     var tenantEligibility = new TenantAuthenticationEligibilityReadService(context);
-    var unitOfWork = new PlatformUnitOfWork(context, new NoOpDomainEventDispatcher());
+    var unitOfWork = TestUnitOfWork.Platform(context, new NoOpDomainEventDispatcher());
     var sessionRepository = new AuthenticationSessionRepository(context);
     var tokenService = new AuthenticationTokenService();
     var policy = new AuthenticationPolicy();
@@ -1041,7 +1184,7 @@ public sealed class PlatformAuthenticationPersistenceTests
   private static byte[] RandomHash() => Guid.NewGuid().ToByteArray().Concat(Guid.NewGuid().ToByteArray()).ToArray();
 
   private static Task<Result<int>> SaveAsync(PlatformDbContext context) =>
-    new PlatformUnitOfWork(context, new NoOpDomainEventDispatcher()).SaveChangesAsync();
+    TestUnitOfWork.Platform(context, new NoOpDomainEventDispatcher()).SaveChangesAsync();
 
   private static async Task<IReadOnlyCollection<string>> ReadPlatformTablesAsync(PlatformDbContext context)
   {
@@ -1099,7 +1242,35 @@ public sealed class PlatformAuthenticationPersistenceTests
       ConnectionString = connectionString;
     }
 
-    public MutableClock Clock { get; } = new(new DateTimeOffset(2026, 7, 31, 12, 0, 0, TimeSpan.Zero));
+    // ==============================================================================================
+    // ⚠ ANCHORED TO THE RUN, NOT TO A DATE (item 184). THIS FIXTURE HAD A FUSE.
+    // ==============================================================================================
+    //
+    // It was frozen at 2026-07-31 12:00. Everything seeded from it inherits that instant, including the
+    // refresh-token expiry at `Clock.UtcNow + DefaultSessionIdleLifetime` -- 30 days -- which
+    // `Concurrent_http_refresh_and_logout_...` hands to `AuthenticationCsrfService.Create`.
+    //
+    // **That service protects with a TIME-LIMITED data protector, which judges expiry against the REAL
+    // clock.** So the CSRF token expired at 2026-07-31 + 30 days = 2026-08-30 12:00 UTC, and from that
+    // moment the test failed for everyone, permanently, with no code change. Item 182 measured it:
+    // `csrfExpiry=2026-08-30T12:00Z, realNow=2026-08-31T03:31Z, expired=True`.
+    //
+    // ---- ⚠ WHY THIS AND NOT A LATER FIXED DATE.
+    //
+    // A later frozen instant RESETS THE FUSE; it does not remove it. Anchoring to the run removes it:
+    // every seeded expiry is `run + 30 days`, so there is no date at which this breaks. **One clock feeds
+    // the whole seed, which is what production does** -- the defect was two clocks, not a wrong date.
+    //
+    // ---- WHAT WAS NOT AVAILABLE.
+    //
+    // Substituting the protector's clock would be better still, keeping determinism AND removing the
+    // dependency. `ITimeLimitedDataProtector` exposes only `Protect`/`Unprotect`; the implementation is
+    // internal and reads `DateTimeOffset.UtcNow`. **There is no public seam**, and enforcing expiry in our
+    // own code instead would weaken a security mechanism to suit a test.
+    //
+    // Nothing here asserts an absolute date and this clock is never advanced, so anchoring changes no
+    // assertion -- only which instant the relative offsets hang from.
+    public MutableClock Clock { get; } = new(DateTimeOffset.UtcNow);
     public string ConnectionString { get; }
 
     public static async Task<SqlTestDatabase> CreateAsync(bool migrate = true)
@@ -1151,10 +1322,41 @@ public sealed class PlatformAuthenticationPersistenceTests
       Task.CompletedTask;
   }
 
+  // ==================================================================================================
+  // ⚠⚠⚠ THE `AC-AUTH-0047` CITATION WAS REMOVED HERE ON 2026-09-05. THE TEST STAYS; THE CLAIM DOES NOT.
+  // ==================================================================================================
+  //
+  // *"Logout derives the current session **only from validated claims**, verifies **all approved bindings**,
+  // revokes **only that session** with `UserLogout`, is **outwardly idempotent**, **clears both cookies**,
+  // **returns 204**, and provides **no logout-all behavior**."* — seven clauses, pasted whole.
+  //
+  // **This method's fixtures are: logout succeeds · refresh succeeds-or-fails · `Status == Revoked` ·
+  // `RevocationReason == UserLogout` · no active refresh token remains.** ***THAT IS HALF OF ONE CLAUSE.***
+  //
+  // ⚠⚠ **AND THE DECIDING FACT IS NOT THE RATIO — IT IS THAT THIS TEST'S SUBJECT IS A CONCURRENCY RACE.**
+  // *`RevocationReason == UserLogout` is asserted here because ANY logout sets it, not because the test is
+  // addressed to the criterion.* ***RIGHT NOUN, WRONG SUBJECT: adjacent scope, and an unqualified trait told
+  // every future reader that a seven-clause logout contract was proven.***
+  //
+  // ---- ⚠⚠⚠ AND IT IS NOT UNDER-WITNESSED BY ACCIDENT. THE CRITERION SPANS THREE LAYERS.
+  //
+  // **A single trait on a single-layer test is structurally incapable of witnessing it** — the same
+  // wrong-ARITY shape as `AC-LOC-0058`'s Domain/API/SQL equivalence claim. ***WHOEVER CLOSES THIS NEEDS
+  // THREE CITATIONS, NOT A BETTER ONE:***
+  //
+  //   ***PERSISTENCE***        *verifies all approved bindings* · *revokes ONLY that session*
+  //   ***HTTP***              *clears both cookies* · *returns 204* · *outwardly idempotent* ·
+  //                     *no logout-all behavior*
+  //   ***CLAIMS VALIDATION***  *derives the current session only from validated claims*
+  //
+  // ⚠ **NO PARTIAL MARKER WAS LEFT INSTEAD, DELIBERATELY: a comment saying "1 of 7" leaves the TRAIT in
+  // place, and the trait is what the census reads — so the cell would still count as covered while the prose
+  // said otherwise.** ***A PARTIAL MARKER THE INSTRUMENT CANNOT SEE IS THE FALSE GREEN THIS WHOLE EXERCISE
+  // EXISTS TO FIND.*** *The missing partial-trait key is an owner question; until it is ruled, removal is the
+  // only truthful state.*
   [Fact]
   [Trait("Scenario", "TS-AUTH-0112")]
   [Trait("Scenario", "TS-AUTH-0118")]
-  [Trait("Acceptance", "AC-AUTH-0047")]
   public async Task Logout_racing_refresh_serializes_and_leaves_no_usable_refresh_token()
   {
     await using var database = await SqlTestDatabase.CreateAsync();
@@ -1183,7 +1385,7 @@ public sealed class PlatformAuthenticationPersistenceTests
       new FixedCurrentAuthenticationSession(current),
       new AuthenticationAccountRepository(logoutContext),
       new AuthenticationSessionRepository(logoutContext),
-      new PlatformUnitOfWork(logoutContext, new NoOpDomainEventDispatcher()),
+      TestUnitOfWork.Platform(logoutContext, new NoOpDomainEventDispatcher()),
       database.Clock);
 
     var refreshTask = refresh.HandleAsync(new RefreshAuthenticationSessionCommand(
@@ -1234,6 +1436,11 @@ public sealed class PlatformAuthenticationPersistenceTests
       .AddHostPermissionAuthorization()
       .AddHostProblemDetails()
       .AddPlatformModule();
+
+    builder.Services.AddScoped<SSAS.Platform.Application.Subscriptions.ITenantEntitlementReader, SSAS.Platform.Infrastructure.Subscriptions.TenantEntitlementReader>();
+    builder.Services.AddSingleton<SSAS.Platform.Application.Subscriptions.ITenantEntitlementCache, SSAS.Platform.Infrastructure.Subscriptions.InMemoryTenantEntitlementCache>();
+    builder.Services.AddScoped<SSAS.BuildingBlocks.Api.Authorization.ITenantModuleEntitlement, SSAS.Platform.API.Subscriptions.TenantModuleEntitlement>();
+
     await using var application = builder.Build();
     application.UseExceptionHandler();
     application.UseCors(AuthenticationTransportServiceCollectionExtensions.CorsPolicy);
@@ -1330,7 +1537,6 @@ public sealed class PlatformAuthenticationPersistenceTests
     public string? UserId => "integration-user";
     public string? UserName => null;
     public string? Email => null;
-    public Guid? CompanyId => null;
     public string? SessionId => null;
     public string? TokenId => null;
     public IReadOnlyCollection<string> Roles => [];

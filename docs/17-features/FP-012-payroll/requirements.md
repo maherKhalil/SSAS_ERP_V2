@@ -1,4 +1,4 @@
-# FP-012 — Requirements (RATIFIED)
+# FP-012 — Requirements
 
 **RATIFIED 2026-08-24.** `Requirement-Catalog/PAY.md` now exists and carries `REQ-PAY-0001`–`0018`;
 `REQ-PAY` is indexed in the catalog README beside `REQ-GL` and `REQ-HR`. The gap this page was written

@@ -43,6 +43,14 @@ set -u
 #       4  the reap left catalogs behind; CatalogLeakGuardTests would fail on them
 #       5  the box is below the memory floor for this mode
 #
+#     And two more, outside `reap_to_zero`, which abort before any leg starts:
+#
+#       6  GATE_SCOPE or GATE_INTEGRATION holds a value this script does not recognise (note 7y)
+#       7  another gate holds the instance lock, or its state could not be read at all (note 7x)
+#
+#     6 AND 7 REFUSE RATHER THAN DEFAULT, for the same reason: both would otherwise run a DIFFERENT
+#     gate from the one the caller asked for and report it under the requested name.
+#
 #     A merge rule was built on this file's exit code (`DEC-L-007`: a green gate is merge authority for
 #     code), so a precondition abort that returned 0 would let untested code merge. It does not, and the
 #     reason it does not is that `exit` inside `reap_to_zero` terminates the script rather than the
@@ -79,6 +87,271 @@ set -u
 #     while FIFTEEN tests had silently vanished from the total. A summary line whose total quietly
 #     shrank is the most dangerous shape a gate can print. A red that under-reports is one accident
 #     away from a green that under-reports.
+#
+#  7r. THE VERDICT SAYS WHAT TREE IT MEASURED. T-070.
+#
+#     `DEC-L-007` makes a green gate merge authority for code, and this repository runs TWO WINDOWS
+#     AGAINST ONE WORKING TREE. On 2026-08-27 a gate run from a branch that predated FP-015 entirely
+#     went RED on eight of that package's requirements: **the failures came from the other window's
+#     UNCOMMITTED files, sitting on disk.** The verdict was correct about the disk and said nothing
+#     about whose disk it was.
+#
+#     **A merge-authorising green can therefore be bought or lost by what the other window happens to
+#     have open**, and until this note nothing in the output said which tree produced it.
+#
+#     ---- IT REPORTS AND NEVER FAILS.
+#
+#     A dirty tree is the NORMAL state of a window mid-task. A gate that refused one would be disabled
+#     by its user within a day, and a disabled gate is the failure this file has spent a week removing.
+#     **The defect was never the dirty tree; it was a verdict that did not say what it measured.**
+#
+#     ---- IT NAMES FILES AND ATTRIBUTES NOTHING.
+#
+#     Two windows, one tree, no reliable way to tell whose edit is whose. Naming the files lets the
+#     reader conclude. **Asserting an owner would be a guard claiming a cause it cannot know** -- the
+#     defect recorded eight times on this board, and the reason every message here states a question.
+#
+#     `.claude/` IS DELIBERATELY NOT EXCLUDED. The incident that prompted this was documentation, and
+#     excluding it would have made that exact case invisible.
+#
+#     ---- THE CLEAN CASE IS PRINTED AS A RESULT.
+#
+#     `[TREE: 0 modified, 0 untracked; HEAD matches origin/ClaudeBranch]` appears on a clean run too. A
+#     line that shows up only when something is wrong teaches a reader that its absence means nothing
+#     was checked -- the absence-versus-not-applicable confusion already removed from the sampler, the
+#     build status and the trace check. Demonstrated across three states before it was trusted: clean,
+#     one-modified-one-untracked, and a detached HEAD four commits behind.
+#
+#  7s. THE TRACEABILITY CHECK, WIRED AT LAST, AND NOT TO A HARD ZERO. T-065.
+#
+#     `scripts/trace-check.py` existed for weeks and was in NEITHER this script NOR
+#     `.github/workflows/ci.yml`. **Nine packages were red and nobody remarked on it, because
+#     nothing ran it.** That is the last instance of the shape this file spent a day removing:
+#     an instrument whose output nobody sees is indistinguishable from an instrument that
+#     passes.
+#
+#     ---- RED ON A RISE. NEVER ON THE STANDING COUNT.
+#
+#     Eleven failures stand today and **every one is work a package has already declared
+#     pending** -- FP-003's `AC-TEN-0078`..`0093`, marked "implementation pending" in its own
+#     acceptance-criteria file. A gate permanently red on declared work **is a gate people
+#     switch off**, and switching it off is how the nine went unnoticed in the first place.
+#
+#     So the comparison is per package against a committed baseline, and only a RISE is red.
+#     **Improvement ratchets**: a package that gets better lowers its own baseline on the next
+#     clean run and cannot raise it again, so the first person to fix something does not hand
+#     the next person room to break it.
+#
+#     ---- THE COST IS MEASURED, NOT ASSUMED.
+#
+#     730 ms over three runs, against a 72-second TASK gate: **one per cent.** It therefore
+#     runs in BOTH scopes. `DEC-L-051` bought back 68 minutes and this does not spend it --
+#     had the number been material it would have belonged in PHASE only, and that is the
+#     answer I was prepared to give.
+#
+#     ---- AND IT SAYS WHEN IT DID NOT RUN.
+#
+#     No `py`, or no script, prints `NOT RUN` rather than nothing. The memory sampler needed
+#     that rule and did not have it for a day.
+#
+#  7t. CONDITION 4, PARTIALLY MECHANISED -- AND THE PARTIAL IS THE POINT. T-059.
+#
+#     `DEC-L-008` condition 4 was the last of the four held by nothing. The gate printed per-suite
+#     counts and compared them to NOTHING; there was no baseline anywhere in this file. It was the most
+#     dangerous of the four precisely BECAUSE the other three are now enforced -- someone who has
+#     watched the gate go red on a warning and on a failed build reasonably assumes the count line is
+#     checked too.
+#
+#     ---- WHAT IS CHECKED, AND WHAT CANNOT BE. DO NOT BLUR THESE.
+#
+#       CHECKED : did any suite total move, when non-comment lines under src/ changed?
+#       NOT     : do the tests the task required exist? do the tests that moved cover what was written?
+#
+#     **The gate cannot know what a task required.** Wording that implies it does would be worse than
+#     the silence this replaces, because it converts an honest convention into a false enforcement --
+#     and this repository has now recorded four instruments that reported on a domain narrower than
+#     their wording implied. Every line this prints is worded to claim only the first.
+#
+#     ---- MEASURE IT PER MERGED PR. PER COMMIT YOU WILL CONCLUDE IT IS UNSHIPPABLE.
+#
+#       per merged PR (200):  45 touched src/ -- 44 added a new [Fact]/[Theory], 1 did not
+#       per commit    (300): 126 touched src/ -- 19 added no test
+#
+#     The gate runs once per task, and a task is several commits: intermediate ones legitimately land
+#     code before their tests. **The granularity is the finding**, and the next person to evaluate this
+#     will reach for commits first.
+#
+#     And the ONE spurious fire in 200 merges was `#66 T-018`: nineteen added lines under src/, all of
+#     them a comment block, zero non-comment lines. **That is why the diff filters comments** -- with
+#     the filter that false positive disappears, and it is exactly the "a docs task, a rename" case.
+#
+#     ---- THE DIFF INCLUDES THE WORKING TREE, AND AN UNREADABLE ONE SAYS SO.
+#
+#     `git diff <merge-base> -- src/` with no second commit compares against the WORKING TREE, so
+#     uncommitted work counts. A merge-base-to-HEAD diff would see nothing before the first commit and
+#     skip the check IN SILENCE -- permissive, which is the `DEC-L-051` hole rather than a smaller
+#     version of it. Every path that cannot compare prints WHY it could not, rather than nothing.
+#
+#     ---- IT WARNS. IT NEVER FAILS THE GATE. AND THE REASON TRAVELS WITH THE LABEL.
+#
+#     Not because it is noisy -- it is not; zero spurious fires in 200 merges. **That number is
+#     evidence about this repository's past, not about the check**, and "it has never happened" is the
+#     same reasoning that made condition 1 look enforced when nothing enforced it.
+#
+#     The reason is the REMEDY ASYMMETRY. Conditions 0, 1 and 2 go red with an unambiguous fix: fix the
+#     warning, fix the build, fix the test. **This one's wrong-fire remedies are to write a test you do
+#     not believe in, or to route around the gate.** A red answerable by manufacturing a test produces
+#     exactly the tests that make a suite worthless, and a legitimate refactor covered by existing
+#     tests is CORRECT WORK the gate would be asking to fake something for. That reason will still be
+#     true when the 200-merge number is stale.
+#
+#     **A tier without its reason is a ranking; with it, it is a distinction.** Condition 4 is a
+#     different KIND of signal, not a less important one, and no assertion variable exists to argue
+#     with it -- the honest reason would be "I refactored and existing tests cover it", which is
+#     precisely what a warning already permits without teaching anyone the bar is negotiable.
+#
+#  7u. AM I THE MERGED GATE? WARN, NAME THE DISTANCE, PROCEED. T-058.
+#
+#     THE TREE IS STALE BY DEFAULT, AND THE MERGE THAT MAKES IT STALE IS THE ONE THAT JUST SUCCEEDED.
+#     This happened THREE TIMES on 2026-08-27, in one shared tree, to both windows -- the third to the
+#     window that had just recorded the second as a High finding. Nothing makes a working tree notice
+#     that its integration branch moved, and `scripts/gate.sh` is one of the files that goes stale.
+#     **A gate that is not the merged gate presents identically to a normal green run.**
+#
+#     It is live elsewhere too: `SSAS_ERP_V2-chain-test` carries a `gate.sh` from 2026-08-25 with ZERO
+#     occurrences of `GATE_SCOPE`. That tree would run the pre-scope gate and report exactly what it
+#     has always reported.
+#
+#     ---- WHY THIS WARNS WHERE NOTE 7x REFUSES. The two are deliberately opposite.
+#
+#     **Fail-closed requires a signal you can trust, and this signal is self-admittedly stale.** The
+#     lock's evidence is authoritative -- `sys.dm_tran_locks` IS the truth -- and proceeding wrongly
+#     destroys a 69-minute run. Here the evidence is a remote-tracking ref that is only as good as the
+#     last fetch, and the failure is a WRONG GREEN rather than a destroyed run. A warning surfaces a
+#     wrong green. A refusal on a possibly-stale signal lets a stale ref block every run on the box --
+#     which is note 7x's own strand-the-instance failure, relocated.
+#
+#     ---- WHY IT DOES NOT FETCH. Measured on this box:
+#
+#       git fetch origin ClaudeBranch     1338 ms
+#       clean offline (DNS fails)          140 ms
+#       HALF-OPEN NETWORK               22 201 ms   <- thirty per cent of a 72-second gate
+#
+#     And a credential prompt would hang a gate forever with no output. `DEC-L-051` bought back 68
+#     minutes; spending 22 seconds per run policing it would be self-defeating. **Offline is a normal
+#     condition. A colliding gate is not.** The cost of not fetching is stated in the message itself --
+#     "as of your last fetch, <when>" -- rather than left for the reader to remember.
+#
+#     ---- ANCESTRY, NOT A HASH, AND THAT IS THE HALF THAT MAKES IT USABLE.
+#
+#     A hash comparison says "different" and conflates two states with opposite meanings: a tree that
+#     is BEHIND, and a tree that is DEVELOPING this file. Every task that has ever edited the gate
+#     looks like the second. **A check that cries wolf at the developer gets disabled long before it
+#     ever catches the stale tree.** So: is the last commit touching `scripts/gate.sh` on the
+#     integration ref an ancestor of HEAD? Three states, and the distance reported in commits.
+#
+#     NO SUPPRESSION FLAG. If it becomes noisy the fix is a sharper check, not a way to silence it.
+#
+#  7v. THE BUILD IS A CONDITION, NOT A PREAMBLE. T-058.
+#
+#     ---- A FAILING BUILD USED TO REPORT GREEN. Demonstrated 2026-08-27, not argued:
+#
+#       Build FAILED.  1 Error(s)   (a deliberate CS0029)
+#       Passed! 509 · 1032 · 326 · 724 · 46 · 56 · 59      <- the PREVIOUS build's assemblies
+#       [GATE GREEN -- TASK scope]    exit 0
+#
+#     `dotnet build`'s status was computed and discarded: `grep` ran next, so `$?` was grep's, and
+#     `GATE_FAILED=1` was set only inside the suite loop. The suites then ran `--no-build` against
+#     whatever was last built successfully. **`DEC-L-007` makes this exit code merge authority, so the
+#     gate was prepared to merge code that does not compile.** That is note 3's defect exactly, moved
+#     from the verdict to the build -- found the day after the same shape was found in the sampler.
+#
+#     A failed build now SKIPS THE SUITES for that configuration and sets the flag. Running them would
+#     produce a green that describes a build nobody performed.
+#
+#     ---- AND `--no-incremental` IS WHY THE WARNING BAR CAN BE ENFORCED AT ALL.
+#
+#     MSBuild skips up-to-date projects, so the compiler never re-runs and NEVER RE-EMITS THEIR
+#     WARNINGS. Measured:
+#
+#       plant one CS0219, build   ->  1 Warning(s)
+#       build again, no changes   ->  0 Warning(s)      <- the warning is still in the code
+#       --no-incremental          ->  1 Warning(s)      16 s against 3 s
+#
+#     So a warning check over an incremental build reports on what it happened to recompile rather
+#     than on the code, and **anyone who builds in an IDE first makes the gate's build a no-op.** That
+#     is a coincidence with a log line, in the same sense that omitting `-d` in note 7x was a
+#     coincidence with a login setting. Baseline when this landed: 0 warnings, Debug AND Release, so
+#     enforcement cost nothing to adopt.
+#
+#     `DEC-L-008` condition 1 -- "the build succeeds at zero warnings" -- is now the gate's condition
+#     rather than the coder's habit. Of the four merge conditions, 2 and 3 are suite runs and 4 is the
+#     count comparison; **1 was held entirely by the person the rule applies to, under a rule that
+#     merges on green without review.** It had never been violated, which is precisely what made it
+#     read as a property of the instrument.
+#
+#  7x. ONE GATE AT A TIME, ENFORCED ON THE INSTANCE. T-056.
+#
+#     `reap_to_zero` drops every SSAS[_]% catalog on the box, under EVERY scope. Until T-056 the only
+#     guard was the sibling-testhost check, which matches on `basename "$ROOT"` -- so two worktrees with
+#     DIFFERENT DIRECTORY NAMES each concluded the other's testhost belonged to someone unrelated and
+#     proceeded. A 72-second TASK gate would reap the catalogs a 69-minute PHASE run was using, mid-leg,
+#     and the PHASE run would then fail in a way that looks exactly like a test failure.
+#
+#     `DEC-L-051` made this materially more likely: something that costs 72 seconds does not feel like
+#     an action that needs checking first.
+#
+#     THE SHARED RESOURCE IS THE SQL SERVER INSTANCE, NOT THE REPOSITORY. `git rev-parse
+#     --git-common-dir` would close the two-worktree case and nothing else -- a second clone, or a
+#     colleague's checkout, reaps the same catalogs while repo identity correctly reports them
+#     unrelated. So the lock lives where the damage lands.
+#
+#     ---- FOUR THINGS ESTABLISHED BY TEST, EACH OF WHICH RULES OUT AN OBVIOUS DESIGN.
+#
+#     A ONE-SHOT LOCK IS NOT A LOCK. `sp_getapplock @LockOwner='Session'` taken by `sqlcmd -Q` is
+#     released the instant sqlcmd exits, because the lock is scoped to the session and a one-shot
+#     sqlcmd IS the session. Two consecutive acquires both returned 0 with nothing held in between.
+#     The take AND the release both succeed, so that gate announces an exclusive lock and guards
+#     nothing -- the same shape as the defect this note exists to prevent.
+#
+#     THE NAMESPACE IS PER-DATABASE. A holder in `master` and a challenger in `tempdb` took the same
+#     lock name without seeing each other. A gate that omits `-d` inherits the login's default
+#     database and therefore works BY ACCIDENT OF A LOGIN SETTING. `-d` is not optional here.
+#
+#     A KILLED GATE DOES NOT RELEASE -- IT ORPHANS. `kill -9` on the gate left the holder sqlcmd alive
+#     and still holding five seconds later; only killing the sqlcmd itself released it, within four.
+#
+#     AND `trap` DOES NOT FIX THAT. Tested twice, both negative: bash defers a trap while a foreground
+#     child runs -- a gate is inside `dotnet test` for up to 33 minutes at a stretch -- and sqlcmd is a
+#     native Windows process MSYS signals do not reach. The EXIT trap here is real and useful for
+#     normal exit and for this script's own aborts; NOTHING DEPENDS ON IT.
+#
+#     ---- WHY LIVENESS AND NEVER AGE.
+#
+#     A legitimate PHASE run is 69 minutes and a single Integration leg is 33 minutes of one process.
+#     NO THRESHOLD SEPARATES "hung" FROM "working correctly" HERE. Any age would either strand real
+#     runs or license stealing them, and it would be a number nobody could defend. So the question
+#     asked is never "how old" but "is that gate's process still alive":
+#
+#       lock held, holder's gate pid alive        -> REFUSE, naming root, pid, scope and start time
+#       lock held, holder's gate pid provably dead -> RECLAIM, and say so loudly in the log
+#       liveness undeterminable                    -> REFUSE. Fail closed.
+#
+#     PID ALONE IS INSUFFICIENT: a reused pid reads as alive. The pid must still be held by a process
+#     whose START TIME matches the one recorded in the label. Get this wrong and the failure direction
+#     is REFUSING WHEN WE COULD HAVE PROCEEDED -- the safe side, and it is not traded for convenience.
+#
+#     ---- THE LABEL IS NOT THE LOCK, AND THAT SEPARATION IS DELIBERATE.
+#
+#     The applock is the truth: it cannot be forgotten and it dies with its connection. But it carries
+#     no payload, and `sys.dm_exec_sessions` gives login_time and host_name while never giving the
+#     WORKTREE PATH -- and its host_process_id is the holder sqlcmd, which is alive in precisely the
+#     orphan case. So a one-row label carries root path, gate pid, start time and scope, purely so the
+#     refusal can name a holder instead of refusing bare. A guard that refuses without naming who holds
+#     it gets disabled by the next person. A stale label is harmless BECAUSE THE LOCK IS THE TRUTH.
+#
+#     It lives in `tempdb` and not in any `SSAS[_]%` catalog, which `reap_to_zero` would drop -- the
+#     guard's own state must not be reapable by the thing it guards.
 #
 #  7y. TWO SCOPES, ORTHOGONAL TO THE TWO MODES. `DEC-L-051`, implemented by T-055.
 #
@@ -277,7 +550,44 @@ export MSBUILDDISABLENODEREUSE=1
 # TestResults/ is already gitignored, so the gate cannot pollute the working tree.
 LOGS="${GATE_LOGS:-$ROOT/TestResults/gate}"
 mkdir -p "$LOGS"
+
+# ---- ⚠ THE PATH HANDED TO `dotnet` MUST BE RELATIVE, AND THIS IS NOT A STYLE PREFERENCE (T-251).
+#
+# `$LOGS` is an absolute POSIX path. `dotnet` is a WINDOWS executable, so MSYS normally rewrites
+# `/c/Users/...` into `C:\Users\...` on the way through. **When `MSYS_NO_PATHCONV=1` or
+# `MSYS2_ARG_CONV_EXCL='*'` is set, that rewrite does not happen** -- Windows then reads the leading
+# slash as a drive-relative path and resolves it against the current drive, producing
+# `C:\c\Users\...\TestResults\gate`.
+#
+# **That is outside the repository, where nothing looks.** A full run on 2026-08-27 wrote its entire
+# TRX set there; `TestResults/gate/` kept only stale files, so anyone checking whether the Integration
+# suite had run would have found nothing and concluded it had not. **A defect that manufactures false
+# absences in the gate's own evidence.**
+#
+# It is not hypothetical environment trivia: those two variables are exactly what one sets to stop MSYS
+# mangling a `git show <rev>:<path>` argument. **Fixing one tool's path handling silently relocated
+# another's output.**
+#
+# The fix is a path with nothing to convert. `cd "$ROOT"` happened above, so a repo-relative directory
+# is correct under both settings -- verified by running the same command with and without the variables
+# and confirming the TRX lands in the same place. An explicitly overridden `GATE_LOGS` outside the repo
+# keeps its absolute form, because there is nothing relative to make it.
+LOGS_ARG="${LOGS#"$ROOT"/}"
 GATE_FAILED=0
+GATE_CFG_DONE=""
+
+# ---- CONDITION 4's BASELINE. See note 7t. T-059.
+#
+# TRACKED, ON PURPOSE, AND THIS IS THE ONE TRACKED FILE THE GATE WRITES. Everything else it produces
+# goes to gitignored TestResults. A baseline a person maintains is a baseline nobody maintains, so the
+# instrument writes it and the coder commits it with the work -- which also puts the delta in the diff,
+# where review sees a count change as a reviewable line rather than as a number in a log.
+#
+# **It can be hand-edited, and the defence is visibility rather than prevention.** Anyone can change a
+# number in it; the change lands in the diff next to the code it excuses. That is the design, not a
+# hole in it.
+GATE_BASELINE_FILE="${GATE_BASELINE:-$ROOT/.claude/handoff/test-baseline.txt}"
+rm -f "$LOGS/counts.txt"
 
 reap_count () {
   sqlcmd -S localhost -E -C -h -1 -W -Q \
@@ -376,7 +686,315 @@ fi
 echo "########## GATE MODE: $GATE_MODE (floor ${MEMORY_FLOOR_MB} MB, ceiling: ${RUNSETTINGS_ARGS:-none})"
 echo "########## GATE SCOPE: $GATE_SCOPE -- $SCOPE_NOTE"
 echo "########## suites: $GATE_SUITES"
+# Derived from the SUITE LIST rather than from the scope name, so `GATE_INTEGRATION=1` under
+# TASK keeps the floor and a future scope inherits the right answer without another edit.
+GATE_INTEGRATION_IN_SCOPE=0
+case " $GATE_SUITES " in *" Integration "*) GATE_INTEGRATION_IN_SCOPE=1;; esac
+
 echo "########## configurations: $GATE_CONFIGS"
+
+# ---- THE CONCURRENCY GUARD. See note 7x in the header. T-056.
+#
+# Two gates on this box destroy each other: `reap_to_zero` drops every SSAS[_]% catalog under every
+# scope, and the only previous guard matched on `basename "$ROOT"`, so two differently-named worktrees
+# each concluded the other's testhost belonged to someone unrelated.
+#
+# THE SHARED RESOURCE IS THE SQL SERVER INSTANCE, NOT THE REPOSITORY, so the lock lives on the instance.
+GATE_LOCK_DB=tempdb
+GATE_LOCK_RESOURCE=SSAS_GATE_EXCLUSIVE
+GATE_HOLDER_PID=""
+GATE_LOCK_STATE=""
+GATE_ROOT_SQL=${ROOT//\'/\'\'}
+
+# -d IS NOT OPTIONAL AND IS NOT COSMETIC. Application locks are DATABASE-SCOPED: a holder in master and
+# a challenger in tempdb take the same lock name without seeing each other (measured, T-056). Omitting
+# -d inherits the login's default database, so the guard would work by accident of one login's settings
+# and silently stop working for another. tempdb rather than master: no persistent object in a system
+# database, and an instance restart clears any stale label for free.
+sqlq () { sqlcmd -S localhost -E -C -d "$GATE_LOCK_DB" -h -1 -W -Q "$1" 2>/dev/null; }
+
+# The gate's own WINDOWS pid. `$$` is the MSYS pid and means nothing to Get-Process; column 4 of
+# `ps -W` is the Windows one. Both are needed: the label records the Windows pid so any later
+# challenger -- a different shell, a different worktree -- can ask the OS whether we are still alive.
+GATE_WINPID=$(ps -W -p $$ 2>/dev/null | awk 'NR>1{print $4}' | head -1)
+
+# ALIVE <start> | DEAD | UNKNOWN. Anything unparsed is UNKNOWN, never DEAD: mistaking a live gate for a
+# dead one is the failure that reaps a running gate's catalogs.
+gate_probe_pid () {
+  local P="$1" OUT
+  case "$P" in ''|*[!0-9]*) echo UNKNOWN; return;; esac
+  OUT=$(powershell.exe -NoProfile -Command '$p = Get-Process -Id '"$P"' -ErrorAction SilentlyContinue; if ($null -eq $p) { "DEAD" } elseif ($null -eq $p.StartTime) { "UNKNOWN" } else { "ALIVE " + $p.StartTime.ToString("yyyy-MM-dd HH:mm:ss") }' 2>/dev/null | tr -d '\r' | head -1)
+  case "$OUT" in
+    DEAD|ALIVE\ ????-??-??\ ??:??:??) echo "$OUT";;
+    *) echo UNKNOWN;;
+  esac
+}
+
+GATE_STARTED=$(gate_probe_pid "$GATE_WINPID"); GATE_STARTED=${GATE_STARTED#ALIVE }
+
+# THE LABEL IS NOT THE LOCK. It carries what the lock cannot: which worktree, which pid, started when.
+# `sys.dm_exec_sessions` gives login_time and host_name for free but never the path, and its
+# host_process_id is the HOLDER sqlcmd -- which is alive in precisely the orphan case, so it cannot
+# answer the only question that matters. A stale label is harmless because the lock is the truth.
+#
+# IT IS WRITTEN BY THE HOLDER ITSELF, in the same batch that takes the lock, and that is not a
+# stylistic choice. Writing it from the gate afterwards leaves a window in which the lock is held and
+# the label still names the PREVIOUS holder -- and a challenger arriving in that window would probe a
+# dead pid and reclaim a lock that a live gate had just legitimately taken. Same session, same batch,
+# no window.
+gate_label_read () {
+  sqlq "SET NOCOUNT ON; IF OBJECT_ID('tempdb.dbo.ssas_gate_holder') IS NOT NULL
+    SELECT CONCAT(gate_winpid,'|',gate_started,'|',gate_scope,'|',
+      CONVERT(varchar(19), written_at, 120),'|',root_path) FROM dbo.ssas_gate_holder WHERE pin=1;" \
+    | head -1 | sed 's/[[:space:]]*$//'
+}
+
+gate_label_pid () {
+  sqlq "SET NOCOUNT ON; IF OBJECT_ID('tempdb.dbo.ssas_gate_holder') IS NOT NULL
+    SELECT gate_winpid FROM dbo.ssas_gate_holder WHERE pin=1;" | head -1 | tr -d '[:space:]'
+}
+
+# A HOLDER MUST BE A LIVE PROCESS, NOT A CALL. A session-scoped applock taken by a one-shot `sqlcmd -Q`
+# is released the instant sqlcmd exits -- and BOTH the take and the release return 0, so a gate built
+# that way would announce an exclusive lock, guard nothing, and look correct at every step (measured,
+# T-056). WAITFOR caps the holder's life at just under 24 h so a catastrophically orphaned holder is
+# bounded rather than eternal; the takeover path below is what actually recovers one.
+#
+# IT SETS A GLOBAL AND ECHOES NOTHING, AND IT MUST STAY THAT WAY. Called as `$(gate_lock_acquire)` the
+# whole thing runs in a subshell: the holder is started there, `GATE_HOLDER_PID` never reaches the
+# parent, and the EXIT trap below then has nothing to kill -- so every abort path leaks a holder that
+# blocks the next run. That is not hypothetical; it is what the first version of this function did, and
+# it is the same hazard note 3 records for `reap_to_zero`. **Never wrap this call in `$( )` or a pipe.**
+#
+# ACQUISITION IS DETECTED FROM THE LABEL TABLE, NOT FROM THE HOLDER'S OUTPUT. sqlcmd's stdout is
+# block-buffered when redirected to a file, so a sentinel printed before a 24-hour WAITFOR never
+# reaches the file while the holder lives -- the first version polled for it and timed out on a lock it
+# had successfully taken. The table is written by the same batch and is visible immediately.
+gate_lock_acquire () {
+  local i
+  GATE_LOCK_STATE=UNKNOWN
+  sqlcmd -S localhost -E -C -d "$GATE_LOCK_DB" -h -1 -W -Q \
+    "SET NOCOUNT ON; DECLARE @r int;
+     EXEC @r = sp_getapplock @Resource=N'$GATE_LOCK_RESOURCE', @LockMode=N'Exclusive',
+       @LockOwner=N'Session', @LockTimeout=0;
+     IF @r < 0 RETURN;
+     IF OBJECT_ID('tempdb.dbo.ssas_gate_holder') IS NULL
+       CREATE TABLE dbo.ssas_gate_holder (pin int NOT NULL PRIMARY KEY, root_path nvarchar(400) NOT NULL,
+         gate_winpid int NOT NULL, gate_started nvarchar(19) NOT NULL, gate_scope nvarchar(10) NOT NULL,
+         written_at datetime2(0) NOT NULL);
+     DELETE FROM dbo.ssas_gate_holder;
+     INSERT INTO dbo.ssas_gate_holder VALUES (1, N'$GATE_ROOT_SQL', $GATE_WINPID,
+       N'$GATE_STARTED', N'$GATE_SCOPE', SYSDATETIME());
+     WAITFOR DELAY '23:59:00';" > "$LOGS/gate-lock.out" 2>&1 &
+  GATE_HOLDER_PID=$!
+  # Bounded wait, paced by the server rather than by `sleep`, so the pause costs a round trip we are
+  # already able to make and proves the instance is answering while we wait for it.
+  for i in 1 2 3 4 5 6 7 8 9 10; do
+    if [ "$(gate_label_pid)" = "$GATE_WINPID" ]; then GATE_LOCK_STATE=HELD; return; fi
+    # The holder exits immediately when denied. A dead holder plus no label of ours is a refusal.
+    if ! kill -0 "$GATE_HOLDER_PID" 2>/dev/null; then GATE_LOCK_STATE=DENIED; return; fi
+    sqlq "WAITFOR DELAY '00:00:01';" >/dev/null 2>&1
+  done
+}
+
+# Kill the session holding OUR resource and nothing else. Reached only after the holder's gate has been
+# shown to be dead.
+#
+# THE STALE LABEL IS DELETED IN THE SAME BATCH. If it were left, a third gate arriving between this
+# reclaim and the next acquisition would read the dead holder's row, probe the same dead pid, and
+# reclaim the lock a moment after we legitimately took it. With the row gone that gate reads nothing,
+# which it treats as undeterminable and refuses -- the safe direction.
+gate_lock_steal () {
+  sqlq "SET NOCOUNT ON; DECLARE @spid int, @s nvarchar(50);
+    SELECT TOP 1 @spid = request_session_id FROM sys.dm_tran_locks
+      WHERE resource_type='APPLICATION' AND resource_database_id = DB_ID()
+        AND resource_description LIKE '%$GATE_LOCK_RESOURCE%';
+    IF OBJECT_ID('tempdb.dbo.ssas_gate_holder') IS NOT NULL DELETE FROM dbo.ssas_gate_holder;
+    IF @spid IS NOT NULL AND @spid <> @@SPID
+    BEGIN SET @s = N'KILL ' + CONVERT(nvarchar(10), @spid); EXEC sp_executesql @s; END" >/dev/null 2>&1
+}
+
+# Covers normal exit AND every `exit` in this script -- including the precondition aborts. It does NOT
+# cover an external kill: a trap does not fire while bash is inside a foreground child, and a gate is
+# inside `dotnet test` for up to 33 minutes at a stretch (measured, T-056; both the TERM and the
+# process-group INT case were tested and neither released). That is why the takeover path exists and
+# why nothing here depends on this trap running.
+gate_lock_release () {
+  [ -n "$GATE_HOLDER_PID" ] || return 0
+  kill "$GATE_HOLDER_PID" 2>/dev/null
+  kill -9 "$GATE_HOLDER_PID" 2>/dev/null
+  wait "$GATE_HOLDER_PID" 2>/dev/null
+  sqlq "SET NOCOUNT ON; IF OBJECT_ID('tempdb.dbo.ssas_gate_holder') IS NOT NULL
+    DELETE FROM dbo.ssas_gate_holder WHERE gate_winpid = ${GATE_WINPID:-0};" >/dev/null 2>&1
+}
+trap 'gate_lock_release' EXIT
+
+# A gate that cannot establish its own identity must not take a lock, because every later challenger
+# would read UNKNOWN and refuse -- stranding the instance behind a holder nobody can name.
+if [ -z "$GATE_WINPID" ] || [ "$GATE_STARTED" = "UNKNOWN" ] || [ "$GATE_STARTED" = "DEAD" ]; then
+  echo "!!! ABORT: cannot establish this gate's own Windows pid and start time."
+  echo "!!! Not proceeding: a lock held by a gate that cannot be identified is one no later run can clear."
+  exit 7
+fi
+
+gate_lock_acquire                       # sets GATE_LOCK_STATE; NEVER call this inside $( ) -- see above
+case "$GATE_LOCK_STATE" in
+  HELD) ;;
+  DENIED)
+    GATE_HOLDER_LABEL=$(gate_label_read)
+    IFS='|' read -r H_PID H_START H_SCOPE H_WRITTEN H_ROOT <<< "$GATE_HOLDER_LABEL"
+    H_LIVE=$(gate_probe_pid "$H_PID")
+    echo "--- another gate holds the instance lock."
+    echo "---   root       : ${H_ROOT:-<no label row>}"
+    echo "---   gate pid   : ${H_PID:-?}   scope: ${H_SCOPE:-?}"
+    echo "---   started    : ${H_START:-?}   (label written ${H_WRITTEN:-?})"
+    # PID ALONE IS INSUFFICIENT: a reused pid reads as alive. The pid must still be occupied by a
+    # process that started at the recorded time. The failure direction of getting this wrong is
+    # REFUSING WHEN WE COULD HAVE PROCEEDED, which is the safe side, and it is not traded away.
+    if [ "$H_LIVE" = "ALIVE $H_START" ]; then
+      echo "!!! ABORT: that gate is RUNNING. Wait for it, or run in the tree that owns it."
+      echo "!!! Not proceeding: reaping now would drop the catalogs it is using, mid-leg, silently."
+      exit 7
+    elif [ "$H_LIVE" = "DEAD" ] || [ "${H_LIVE%% *}" = "ALIVE" ]; then
+      if [ "$H_LIVE" = "DEAD" ]; then
+        echo "--- RECLAIMING: pid ${H_PID} is gone. The holder is an ORPHAN -- its sqlcmd outlived the gate."
+      else
+        echo "--- RECLAIMING: pid ${H_PID} is alive but started ${H_LIVE#ALIVE }, not ${H_START}."
+        echo "---             The pid was REUSED; the gate that took this lock is dead."
+      fi
+      gate_lock_steal
+      gate_lock_acquire
+      if [ "$GATE_LOCK_STATE" != "HELD" ]; then
+        echo "!!! ABORT: reclaim did not free the lock (state: $GATE_LOCK_STATE)."
+        exit 7
+      fi
+      echo "--- RECLAIMED. Proceeding."
+    else
+      echo "!!! ABORT: cannot determine whether that gate is alive."
+      echo "!!! Not proceeding: an unreadable holder is treated as a live one. Fail closed."
+      exit 7
+    fi;;
+  *)
+    echo "!!! ABORT: could not determine whether another gate is running."
+    echo "!!! Not proceeding: a lock that is skipped when it cannot be read is the guard that was"
+    echo "!!! already here -- and that guard is what T-056 exists to replace."
+    exit 7;;
+esac
+# The label was written by the holder itself, in the acquiring batch. Nothing to write here.
+echo "########## instance lock: HELD by pid $GATE_WINPID ($ROOT)"
+
+# ---- AM I THE MERGED GATE? See note 7u in the header. T-058.
+#
+# WARNS AND PROCEEDS. IT NEVER REFUSES, AND THAT IS THE OPPOSITE OF THE LOCK ABOVE ON PURPOSE:
+# fail-closed requires a signal you can trust, and this signal is SELF-ADMITTEDLY STALE -- a
+# remote-tracking ref is only as good as the last fetch. Refusing on it would let a stale ref block
+# every run on the box, which is the strand-the-instance failure the lock exists to avoid, relocated.
+# The lock's evidence is authoritative (the DMV is the truth) and proceeding wrongly destroys a
+# 69-minute run; here the failure is a WRONG GREEN, and a warning surfaces a wrong green.
+#
+# IT DOES NOT FETCH. Measured: 1338 ms online, 140 ms to fail on clean DNS -- but 22 SECONDS on a
+# half-open network, which is thirty per cent of a 72-second gate, and a credential prompt would hang
+# a gate forever with no output at all. `DEC-L-051` bought back 68 minutes; spending 22 s per run
+# policing it would be self-defeating. Offline is a NORMAL condition. A colliding gate is not.
+#
+# ANCESTRY, NOT A HASH. A hash says "different" and conflates two states with opposite meanings: a
+# tree that is BEHIND, and a tree that is DEVELOPING this file -- which is what every task that has
+# ever edited the gate looks like. A check that cries wolf at the second gets disabled before it ever
+# catches the first.
+GATE_STALE_NOTE=""
+gate_check_staleness () {
+  local REF=${GATE_INTEGRATION_REF:-origin/ClaudeBranch} C BEHIND FETCH_FILE LAST_FETCH
+  command -v git >/dev/null 2>&1 || { GATE_STALE_NOTE="unchecked: no git on PATH"; return; }
+  git rev-parse --verify -q "$REF" >/dev/null 2>&1 || {
+    GATE_STALE_NOTE="unchecked: '$REF' does not resolve in this repository"; return; }
+  C=$(git rev-list -1 "$REF" -- scripts/gate.sh 2>/dev/null)
+  [ -n "$C" ] || { GATE_STALE_NOTE="unchecked: no history for scripts/gate.sh on $REF"; return; }
+
+  FETCH_FILE="$(git rev-parse --git-common-dir 2>/dev/null)/FETCH_HEAD"
+  if [ -f "$FETCH_FILE" ]; then LAST_FETCH=$(date -r "$FETCH_FILE" '+%Y-%m-%d %H:%M' 2>/dev/null); fi
+  LAST_FETCH=${LAST_FETCH:-never}
+
+  if git merge-base --is-ancestor "$C" HEAD 2>/dev/null; then
+    # Contains the merged commit. A local edit here is deliberate -- someone is working ON the gate.
+    if [ "$(git hash-object -- scripts/gate.sh 2>/dev/null)" \
+         != "$(git ls-tree HEAD -- scripts/gate.sh 2>/dev/null | awk '{print $3}')" ]; then
+      GATE_STALE_NOTE="MODIFIED locally (not stale) -- this tree contains $REF's gate and edits it"
+    fi
+    return
+  fi
+
+  BEHIND=$(git rev-list --count "$C" --not HEAD -- scripts/gate.sh 2>/dev/null)
+  GATE_STALE_NOTE="STALE -- ${BEHIND:-?} commit(s) behind $REF on scripts/gate.sh, as of your last fetch ($LAST_FETCH)"
+}
+
+gate_check_staleness
+if [ -n "$GATE_STALE_NOTE" ]; then
+  echo "########## !!! GATE SCRIPT: $GATE_STALE_NOTE"
+fi
+
+# ---- WHAT TREE DID THIS GATE ACTUALLY MEASURE? See note 7r in the header. T-070.
+#
+# `DEC-L-007` makes a green gate merge authority for code, and this repository runs **two windows
+# against one working tree**. On 2026-08-27 a gate run from a branch that predated FP-015 entirely
+# went RED on eight of its requirements: the failures came from the OTHER window's UNCOMMITTED files,
+# sitting on disk. The verdict was correct about the disk and said nothing about whose disk it was.
+#
+# **So a merge-authorising green can be bought or lost by what the other window happens to have open**,
+# and nothing in the output said which tree produced it.
+#
+# ---- IT REPORTS AND NEVER FAILS, AND THAT IS NOT TIMIDITY.
+#
+# A dirty tree is the NORMAL state of a window mid-task. A gate that refused one would be a gate its
+# user disabled within a day, and the disabled gate is the failure this file has spent a week
+# removing. **The defect was never the dirty tree -- it was a verdict that did not say what it
+# measured.**
+#
+# ---- IT NAMES FILES AND ATTRIBUTES NOTHING.
+#
+# Two windows, one tree, and no reliable way to tell whose edit is whose. **Naming the files lets the
+# reader conclude; asserting an owner would be a guard claiming a cause it cannot know**, which is the
+# defect recorded eight times on this board. `.claude/` is deliberately NOT excluded: the incident
+# that prompted this was documentation, and excluding it would have made that exact case invisible.
+GATE_TREE_NOTE=""
+GATE_TREE_DETAIL=""
+gate_report_tree () {
+  command -v git >/dev/null 2>&1 || { GATE_TREE_NOTE="unchecked: no git on PATH"; return; }
+  git rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
+    GATE_TREE_NOTE="unchecked: not a git working tree"; return; }
+
+  local status modified untracked nmod nunt head_desc ref
+  status=$(git status --porcelain 2>/dev/null)
+  modified=$(printf '%s\n' "$status" | grep -v '^??' | grep -v '^$' | sed 's/^...//')
+  untracked=$(printf '%s\n' "$status" | grep '^??' | sed 's/^?? //')
+  nmod=$(printf '%s\n' "$modified" | grep -c . )
+  nunt=$(printf '%s\n' "$untracked" | grep -c . )
+
+  ref=${GATE_INTEGRATION_REF:-origin/ClaudeBranch}
+  if git rev-parse --verify -q "$ref" >/dev/null 2>&1; then
+    local ahead behind
+    ahead=$(git rev-list --count "$ref"..HEAD 2>/dev/null)
+    behind=$(git rev-list --count HEAD.."$ref" 2>/dev/null)
+    if [ "${ahead:-0}" = "0" ] && [ "${behind:-0}" = "0" ]; then
+      head_desc="HEAD matches $ref"
+    else
+      head_desc="HEAD is ${ahead:-?} ahead / ${behind:-?} behind $ref"
+    fi
+  else
+    head_desc="HEAD not comparable: '$ref' does not resolve"
+  fi
+
+  GATE_TREE_NOTE="$nmod modified, $nunt untracked; $head_desc"
+  if [ "$nmod" != "0" ] || [ "$nunt" != "0" ]; then
+    GATE_TREE_DETAIL=$(
+      [ "$nmod" != "0" ] && printf '%s\n' "$modified" | sed 's/^/##########   modified:  /'
+      [ "$nunt" != "0" ] && printf '%s\n' "$untracked" | sed 's/^/##########   untracked: /'
+    )
+  fi
+}
+
+gate_report_tree
+echo "########## tree measured: $GATE_TREE_NOTE"
+[ -n "$GATE_TREE_DETAIL" ] && printf '%s\n' "$GATE_TREE_DETAIL"
 
 reap_to_zero () {
   local CFG="$1"
@@ -385,15 +1003,164 @@ reap_to_zero () {
 #
 #    Aborts LOUDLY and distinctly: this is a precondition failure, and reporting it as a suite failure
 #    would send someone hunting for a defect in the tests. See note 7a in the header for the incident.
-  local FREE_MB
-  FREE_MB=$(powershell.exe -NoProfile -Command     "[math]::Round((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory/1KB,0)"     2>/dev/null | tr -d '[:space:]')
-  FREE_MB=${FREE_MB:-0}
+  # ---- FIVE SAMPLES, NOT ONE. 242(B), 2026-09-01.
+  #
+  # THE MEASURED REASON: on 2026-09-01 this check read 2639 MB, then 471 MB seconds later, then ~4300 MB
+  # two minutes after that -- one instrument, one box, no build in between, because the floor check is the
+  # first thing the gate does. A run was aborted at minute 0 on the 471.
+  #
+  # A SINGLE SAMPLE OF THAT QUANTITY DOES NOT RELIABLY MEASURE EVEN THE PRESENT, and the variance alone
+  # reproduces every abort attributed that night to build servers, to SQL Server's buffer pool and to a
+  # Debug-leg drawdown -- each of which was true when measured and none of which was necessary.
+  #
+  # FIVE SEPARATE INVOCATIONS, NOT ONE CALL RETURNING FIVE NUMBERS: a single call that fails loses every
+  # sample, which would collapse the "how many returned" test that the unmeasured branch turns on.
+  local FREE_MB FREE_NOTE FREE_N FREE_SAMPLES FREE_ONE FREE_MIN FREE_MAX FREE_PREV FREE_SHAPE FREE_SPREAD i
+  FREE_SAMPLES=""
+  FREE_N=0
+  FREE_MB=""
+  FREE_NOTE=""
+  for i in 1 2 3 4 5; do
+    FREE_ONE=$(powershell.exe -NoProfile -Command \
+      "[math]::Round((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory/1KB,0)" \
+      2>/dev/null | tr -d '[:space:]')
+    # A non-numeric reading is not a sample. `tr` yields empty when powershell fails, and the pipe hides
+    # the exit status because this script sets `set -u` and not `pipefail` -- so the VALUE is the only
+    # evidence available about whether the measurement happened.
+    case "$FREE_ONE" in
+      '' | *[!0-9]*) : ;;
+      *) FREE_SAMPLES="$FREE_SAMPLES $FREE_ONE"; FREE_N=$((FREE_N + 1)) ;;
+    esac
+    [ "$i" = "5" ] || sleep 1
+  done
+  # ---- UNMEASURED IS NOT ZERO, AND FEWER THAN THREE SAMPLES IS UNMEASURED. 242, 2026-09-01.
+  #
+  # `${FREE_MB:-0}` used to read as "zero megabytes free" -- a value below every floor, produced by no
+  # measurement at all, and indistinguishable in the abort text from a genuinely full box.
+  #
+  # The fallback must fail toward the safe outcome FOR THIS CONSUMER, and here that is PROCEEDING.
+  # Aborting on no evidence destroys the 25-minute run the floor exists to protect, which is the very
+  # failure the floor was built to prevent. Contrast `${LEFT:-1}` below, where the same rule gives the
+  # opposite value because an unmeasured reap must stop.
+  #
+  # THE MEDIAN, NEVER THE MAXIMUM: a genuinely full box reads low in all five, and a maximum would let a
+  # single high excursion wave it through. The median is the one that survives both a spike and a dip.
+  if [ "$FREE_N" -lt 3 ]; then
+    echo "!!! UNMEASURED ($CFG): only $FREE_N of 5 free-memory samples returned. PROCEEDING WITHOUT THE FLOOR."
+    echo "!!! If this run dies, the cause may be the condition nobody could measure. That is NOT a suite"
+    echo "!!! failure -- see note 7a before reading a red suite into it."
+    FREE_MB=$((MEMORY_FLOOR_MB + 1))
+    FREE_NOTE="UNMEASURED -- $FREE_N of 5 samples returned"
+  else
+    # Unquoted deliberately: a space-separated word list that must split, as elsewhere in this file.
+    # THE UPPER MIDDLE WHEN THE COUNT IS EVEN (4 of 5 returned): sorted `a b c d`, take `c`, not `b`.
+    # An INDEX choice, not an average -- there is no arithmetic here that can round the wrong way. Which
+    # index is settled by the direction rule: an uncertain FREE_MB must fail toward PROCEEDING, and the
+    # lower middle biases toward aborting, which is the wrong direction for this consumer.
+    FREE_MB=$(printf '%s\n' $FREE_SAMPLES | sort -n | awk -v n="$FREE_N" 'NR == int(n / 2) + 1 { print; exit }')
+    FREE_MIN=$(printf '%s\n' $FREE_SAMPLES | sort -n | head -1)
+    FREE_MAX=$(printf '%s\n' $FREE_SAMPLES | sort -n | tail -1)
+    FREE_SPREAD=$((FREE_MAX - FREE_MIN))
 
-  echo "--- free physical memory before $CFG: ${FREE_MB} MB (floor ${MEMORY_FLOOR_MB} MB)"
+    # SHAPE IS A HINT AND IS REPORTED AS ONE. A non-increasing run of five looks identical to one arm of
+    # a slow oscillation, and a lone dip looks identical to the trough of one. Five samples cannot tell
+    # a drawdown from noise; they can say which one to suspect, and a wide spread says "this box is
+    # churning" where a narrow one says "this box is simply full". Those want different responses.
+    FREE_SHAPE="non-increasing"
+    FREE_PREV=""
+    for FREE_ONE in $FREE_SAMPLES; do
+      if [ -n "$FREE_PREV" ] && [ "$FREE_ONE" -gt "$FREE_PREV" ]; then FREE_SHAPE="mixed"; fi
+      FREE_PREV="$FREE_ONE"
+    done
+    FREE_NOTE="median of $FREE_N/5; spread ${FREE_SPREAD} MB; $FREE_SHAPE (hint)"
+  fi
 
-  if [ "$FREE_MB" -lt "$MEMORY_FLOOR_MB" ]; then
+  # ---- THE FLOOR APPLIES WHERE ITS EVIDENCE CAME FROM: RUNS THAT INCLUDE INTEGRATION.
+  #
+  # Owner instruction, 2026-08-27, and it corrects an over-application rather than relaxing a
+  # guard. **Every number that calibrated this floor is an Integration number:**
+  #
+  #   the deaths it exists to prevent   14 MB and 92 MB free   BOTH Integration legs
+  #   the four healthy measurements     551-1510 MB min_free   all Integration legs
+  #   peak testhost working set         564-641 MB             Integration
+  #   the sampler that produced them    runs ONLY for Integration -- see the suite loop
+  #
+  # **So no TASK run's memory has ever been measured, because the only instrument that
+  # measures it does not run for one.** The floor was calibrated on the heaviest leg and
+  # enforced on the lightest run -- a constraint whose domain was established on one thing
+  # and applied to another, which is the shape this file has removed six times elsewhere.
+  #
+  # A TASK run is seven unit suites in Debug, 72 seconds, no database fixtures, no Integration.
+  # It aborted at 1072 MB free on a box whose own browsers held 1.4 GB, and nothing about that
+  # run would have been at risk.
+  #
+  # **The free figure is still PRINTED for every leg.** Observation without assertion: the
+  # number stays visible so a future TASK death has a reading beside it, which is exactly what
+  # the 2026-08-24 Integration deaths did not have until the sampler existed.
+  if [ "$GATE_INTEGRATION_IN_SCOPE" = "1" ]; then
+    echo "--- free physical memory before $CFG: ${FREE_MB} MB (floor ${MEMORY_FLOOR_MB} MB, Integration in scope; ${FREE_NOTE})"
+  else
+    echo "--- free physical memory before $CFG: ${FREE_MB} MB (no floor: Integration is not in scope; ${FREE_NOTE})"
+  fi
+
+  # ---- THE FLOOR IS CHECKED AGAIN LATER, AND THE RUN SAYS SO UP FRONT. 242(C), 2026-09-01.
+  #
+  # ⚠ THIS PREDICTS NOTHING. It does not estimate future free memory and must not: this box moved
+  # 800 MB in ten minutes and 2 GB in seconds on 2026-09-01, so any forecast would refuse runs that
+  # would have succeeded. The per-leg check stays the sufficient condition.
+  #
+  # What it does is state a fact the run already knows and the operator usually does not: under PHASE
+  # the Release leg re-checks this floor roughly 25 minutes from now, and passing here is not passing
+  # that. Three attempts on 2026-09-01 spent the Debug leg in full before learning it at minute 25.
+  if [ "$GATE_INTEGRATION_IN_SCOPE" = "1" ] && [ -z "${GATE_CFG_DONE:-}" ]; then
+    case "$GATE_CONFIGS" in
+      *\ *) echo "--- note: the floor is re-checked before EACH configuration ($GATE_CONFIGS). Passing"
+            echo "---       here does not carry to the next one, which is checked after this leg runs." ;;
+    esac
+  fi
+
+  if [ "$GATE_INTEGRATION_IN_SCOPE" = "1" ] && [ "$FREE_MB" -lt "$MEMORY_FLOOR_MB" ]; then
     echo "!!! ABORT ($CFG): PRECONDITION FAILURE -- only ${FREE_MB} MB free, floor is ${MEMORY_FLOOR_MB} MB."
+    echo "!!! Evidence: ${FREE_NOTE}."
     echo "!!! This is NOT a suite failure. Quiet the box (editors, browsers) and run again."
+    # ---- ⚠ AND SAY WHAT ALREADY PASSED, BECAUSE THE EXPENSIVE PART IS USUALLY BEHIND US. 242(C).
+    #
+    # This abort fires BEFORE a configuration, which under PHASE means after every earlier
+    # configuration has finished -- 25 minutes of Integration among them. Exiting 5 with no verdict
+    # made that read as a total loss on 2026-09-01 when the whole Debug leg was green.
+    if [ -n "${GATE_CFG_DONE:-}" ]; then
+      echo "!!! ALREADY COMPLETED THIS RUN: ${GATE_CFG_DONE}. Those suites RAN and their results stand"
+      echo "!!! in this log -- read them. Only ${CFG} is missing, and the gate has no verdict because a"
+      echo "!!! verdict covers every configuration in scope."
+    fi
+    # ---- ⚠ AND IN A LONG SESSION THE BROWSER IS USUALLY NOT THE CULPRIT. T-239, 2026-08-31.
+    #
+    # MSBuild and Roslyn keep BUILD SERVERS alive between builds, by design. A session that builds thirty
+    # times accumulates them: eighteen `dotnet.exe` holding ~1.1 GB was what aborted this gate, and
+    # `dotnet build-server shutdown` took it to three processes and returned ~500 MB, above the floor.
+    #
+    # They respawn on the next build, so this is fully reversible and costs one cold compile. The line
+    # above is right for a workstation and names the wrong culprit for an agent session that has been
+    # building all day -- which is the only kind of session this gate now runs in.
+    # ---- ⚠ AND THE PROCESS COUNT SAYS WHICH ADVICE APPLIES. 242(C), 2026-09-01.
+    #
+    # MEASURED BOTH WAYS ON ONE NIGHT: 18 `dotnet` processes, and `build-server shutdown` returned
+    # ~500 MB and cleared the floor. 3 processes, and the same command returned NOTHING -- 1785 to
+    # 1732 MB, which is noise -- because the box was genuinely occupied by an editor at 2.6 GB.
+    # Without this number both aborts read identically and invite the same wrong fix.
+    GATE_DOTNET_N=$(powershell.exe -NoProfile -Command       "(Get-Process dotnet,testhost -ErrorAction SilentlyContinue | Measure-Object).Count"       2>/dev/null | tr -d '[:space:]')
+    case "$GATE_DOTNET_N" in
+      '' | *[!0-9]*) GATE_DOTNET_N="" ;;
+    esac
+    if [ -n "$GATE_DOTNET_N" ]; then
+      echo "!!! dotnet/testhost processes right now: ${GATE_DOTNET_N}. MANY (10+) means build servers are"
+      echo "!!! holding the memory and the shutdown below will return it. FEW (under 5) means the box is"
+      echo "!!! genuinely occupied and the shutdown will free nothing -- look at what else is running."
+    else
+      echo "!!! dotnet/testhost process count: UNMEASURED, so it cannot say which of the two below applies."
+    fi
+    echo "!!! In a long session, try: dotnet build-server shutdown -- MSBuild/Roslyn servers accumulate"
+    echo "!!! across builds and can hold ~1 GB. They respawn; the cost is one cold compile."
     echo "!!! On 2026-08-24 both Integration legs died with no TRX at 14 MB and 92 MB free."
     exit 5
   fi
@@ -407,7 +1174,16 @@ reap_to_zero () {
   HOSTS=$(powershell.exe -NoProfile -Command \
     "(Get-CimInstance Win32_Process | Where-Object { \$_.Name -eq 'testhost.exe' -and \$_.CommandLine -like '*$(basename "$ROOT")*' } | Measure-Object).Count" \
     2>/dev/null | tr -d '[:space:]')
-  HOSTS=${HOSTS:-0}
+  # ---- UNMEASURED IS NOT ZERO, AND HERE THE SAFE DIRECTION IS THE OPPOSITE ONE. 242.
+  #
+  # Same pipeline shape as the memory sampler and the same three silencing mechanisms, but this guard
+  # protects an ACT rather than protecting against one: the comment above says reaping now "would drop
+  # catalogs that are in use". An unmeasured zero said "no sibling suite is live" and let the reap run.
+  if [ -z "$HOSTS" ]; then
+    echo "!!! ABORT ($CFG): could not determine whether sibling testhost processes are running."
+    echo "!!! Reaping blind would drop catalogs another run may hold. NOT a suite failure -- note 7a."
+    exit 2
+  fi
   if [ "$HOSTS" -ne 0 ]; then
     echo "!!! ABORT ($CFG): $HOSTS testhost process(es) running -- a sibling suite is live."
     echo "!!! Reaping now would drop catalogs that are in use. Serialise the runs."
@@ -426,7 +1202,19 @@ reap_to_zero () {
   PROTECTED=$(sqlcmd -S localhost -E -C -h -1 -W -Q \
     "SET NOCOUNT ON; SELECT COUNT(*) FROM sys.databases WHERE name LIKE 'SSAS[_]%' AND (name NOT LIKE 'SSAS[_]%[_]%' OR name LIKE '%PROD%' OR name LIKE '%LIVE%')" \
     2>/dev/null | head -1 | tr -d '[:space:]')
-  if [ "${PROTECTED:-0}" != "0" ]; then
+  # ---- UNMEASURED IS NOT ZERO, AND THIS IS THE MOST EXPENSIVE OF THE FOUR. 242.
+  #
+  # The DROP below is `WHERE name LIKE 'SSAS[_]%'` with no test-shape condition of its own, wrapped in
+  # TRY/CATCH with its output discarded. THIS COUNT IS THE ONLY THING BETWEEN IT AND A PRODUCTION-NAMED
+  # CATALOG. An unmeasured zero read as "nothing to protect" and let the drop proceed.
+  if [ -z "$PROTECTED" ]; then
+    echo "!!! ABORT ($CFG): could not count catalogs matching the test prefix but not the test shape."
+    echo "!!! The reap drops every SSAS_ database and this count is the only thing that narrows it."
+    echo "!!! Refusing to drop on an unmeasured guard. NOT a suite failure -- note 7a."
+    exit 3
+  fi
+
+  if [ "$PROTECTED" != "0" ]; then
     echo "!!! ABORT ($CFG): $PROTECTED catalog(s) match the test prefix but do not look like test catalogs."
     exit 3
   fi
@@ -450,6 +1238,65 @@ reap_to_zero () {
     echo "!!! ABORT ($CFG): reap left ${LEFT} catalog(s); CatalogLeakGuardTests would fail on them."
     exit 4
   fi
+
+  # 6. BACKUP DEVICES, TOO. T-217.
+  #
+  #    ---- WHY A REAP AND NOT A JANITOR, WHICH IS WHAT WAS ASKED FOR.
+  #
+  #    Seven of the nine backup fixtures already call `Directory.Delete(BackupRoot, recursive: true)` in
+  #    teardown, correctly scoped to their own run's folder. **The leak is not missing cleanup.** Measured
+  #    2026-08-30: 24 files and 18 folders, 161 MB, spanning two weeks — the signature of runs that DIED
+  #    before teardown ran, which is a thing this repository produces regularly (a killed run orphaned five
+  #    catalogs the same evening).
+  #
+  #    **A recorder mirroring `TestCatalogJanitor` would be structurally blind to that.** It records a
+  #    failure AT teardown, and if the process died no recording code runs at all. **A recovery mechanism
+  #    must not live inside the thing it protects against** — this reap works precisely because it runs at
+  #    the START OF THE NEXT RUN rather than the end of the failed one.
+  #
+  #    ---- AND IT RIDES ON PROTECTION THAT ALREADY EXISTS.
+  #
+  #    Step 1 has already established that no testhost of ours is running, and `T-056`'s instance lock has
+  #    already established that no other gate is. **Both are exactly the guarantees this needs**, and they
+  #    were built because a 72-second TASK gate could otherwise reap a 69-minute PHASE run's artefacts
+  #    mid-leg. Building a second sweep with its own concurrency story would repeat that lesson at full
+  #    price.
+  #
+  #    ---- ⚠ IT DOES NOT ABORT, AND THAT IS THE DIFFERENCE FROM THE CATALOG CASE.
+  #
+  #    Step 5 aborts because `CatalogLeakGuardTests` would fail on a surviving catalog. **No guard asserts
+  #    on backup devices, and a leftover `.bak` breaks nothing** — it is disk tidy-up, not a defect. Failing
+  #    a green run over one would be the cure exceeding the disease.
+  local DEVICE_ROOT="${SSAS_TEST_BACKUP_ROOT:-/c/ProgramData/SSAS_BackupTests}"
+  DEVICE_ROOT="${DEVICE_ROOT//\\//}"
+
+  # ⚠ REFUSE A ROOT THAT IS TOO SHALLOW TO BE THE TEST FOLDER. A recursive delete is the one mechanism
+  # that never asks, so the target is checked rather than trusted: an empty or truncated variable must not
+  # turn this into a sweep of a drive.
+  case "$DEVICE_ROOT" in
+    */SSAS_BackupTests|*/SSAS_BackupTests/) ;;
+    *)
+      echo "--- backup devices: SKIPPED, '$DEVICE_ROOT' does not look like the test backup root"
+      DEVICE_ROOT=""
+      ;;
+  esac
+
+  if [ -n "$DEVICE_ROOT" ] && [ -d "$DEVICE_ROOT" ]; then
+    local DEV_FILES DEV_BYTES
+    DEV_FILES=$(find "$DEVICE_ROOT" -type f 2>/dev/null | wc -l | tr -d '[:space:]')
+    DEV_BYTES=$(find "$DEVICE_ROOT" -type f -printf '%s\n' 2>/dev/null | awk '{t+=$1} END {print t+0}')
+    if [ "${DEV_FILES:-0}" != "0" ]; then
+      # Shown before removal, for the same reason step 2 shows the catalogs: the log records what was
+      # destroyed, and anything unexpected in here is visible rather than silent.
+      echo "--- backup devices present before $CFG: ${DEV_FILES} file(s), $((DEV_BYTES / 1048576)) MB"
+      find "$DEVICE_ROOT" -mindepth 1 -maxdepth 2 -type f -printf '      %f\n' 2>/dev/null | head -12
+    fi
+
+    find "$DEVICE_ROOT" -mindepth 1 -delete 2>/dev/null || true
+    local DEV_LEFT
+    DEV_LEFT=$(find "$DEVICE_ROOT" -type f 2>/dev/null | wc -l | tr -d '[:space:]')
+    echo "=== backup devices before $CFG (after reap): ${DEV_LEFT:-?}"
+  fi
 }
 
 # THE TWO LISTS ARE THE ONLY THING SCOPE CHANGES. Everything below -- preconditions, reaping, build,
@@ -462,9 +1309,61 @@ for CFG in $GATE_CONFIGS; do
   echo "########## $CFG ##########"
   reap_to_zero "$CFG"
 
+  # ---- THE BUILD IS A CONDITION, NOT A PREAMBLE. See note 7v. T-058.
+  #
+  # `--no-incremental` IS LOAD-BEARING AND IS NOT A PERFORMANCE CHOICE. MSBuild skips up-to-date
+  # projects, so the compiler never re-runs and NEVER RE-EMITS THEIR WARNINGS: a planted CS0219
+  # reported `1 Warning(s)` on the build that introduced it and `0 Warning(s)` on the very next build
+  # with nothing changed (measured, T-058). Anyone who builds in an IDE before running the gate makes
+  # the gate's build a no-op, and the gate then prints a clean bill over code that is not clean.
+  # Measured cost of honesty: 16 s against 3 s, on a 72-second TASK gate.
   echo "=== BUILD ($CFG) ==="
-  dotnet build SSAS.ERP.sln -c "$CFG" --nologo -v m > "$LOGS/build-$CFG.log" 2>&1
+  dotnet build SSAS.ERP.sln -c "$CFG" --nologo -v m --no-incremental > "$LOGS/build-$CFG.log" 2>&1
+  BUILD_STATUS=$?
   grep -E "Warning\(s\)|Error\(s\)|Build succeeded|Build FAILED|error" "$LOGS/build-$CFG.log" | head -20
+
+  # A FAILING BUILD MUST REACH THE VERDICT. Until T-058 this status was computed and discarded -- the
+  # `grep` above ran next, so `$?` was grep's, and `GATE_FAILED=1` was set only inside the suite loop.
+  # DEMONSTRATED 2026-08-27: a deliberate CS0029 produced `Build FAILED`, `1 Error(s)`, then 2752
+  # PASSING TESTS against the previous build's assemblies, and `[GATE GREEN]` with exit 0. `DEC-L-007`
+  # makes that exit code merge authority, so the gate was prepared to merge code that does not compile.
+  # This is note 3's defect exactly, moved from the verdict to the build.
+  if [ $BUILD_STATUS -ne 0 ]; then
+    echo "!!! BUILD FAILED ($CFG) -- dotnet build exited $BUILD_STATUS."
+    echo "!!! Suites SKIPPED for this configuration: --no-build would run the PREVIOUS build's"
+    echo "!!! assemblies and, if those were green, report green for code that does not compile."
+    GATE_FAILED=1
+    continue
+  fi
+
+  # ---- `DEC-L-008` CONDITION 1, ENFORCED RATHER THAN PRINTED. T-058.
+  #
+  # "The build succeeds at zero warnings; a warning you introduced is a failure." Nothing enforced it:
+  # `Directory.Build.props` sets TreatWarningsAsErrors false, and this script grepped the count and
+  # printed it. Of the four merge conditions, 2 and 3 are suite runs and 4 is the count comparison --
+  # condition 1 was held entirely by the coder choosing to honour it under a rule that merges on green
+  # without review. It had never been violated, which is what made it read as a property of the
+  # instrument rather than of a person.
+  #
+  # The suites still run: a warning does not invalidate a test result, and stopping here would trade
+  # one true report for another. It is RED, and the run still says everything it knows.
+  BUILD_WARNINGS=$(grep -m1 -oE '[0-9]+ Warning\(s\)' "$LOGS/build-$CFG.log" | awk '{print $1}')
+  # ---- UNMEASURED IS NOT ZERO. 242.
+  #
+  # `grep -m1 -oE '[0-9]+ Warning\(s\)'` is empty when the pattern is ABSENT, which is not the same as a
+  # build that emitted none -- MSBuild prints "0 Warning(s)" and that matches. So empty means the log was
+  # missing, truncated, or its format changed, and `${BUILD_WARNINGS:-0}` reported a clean count nobody
+  # read. Verified 2026-09-01 that the pattern does match today: build-Debug.log holds exactly one
+  # occurrence, reading "0 Warning(s)". This guard is what makes that keep being true.
+  if [ -z "$BUILD_WARNINGS" ]; then
+    echo "!!! WARNINGS ($CFG): no 'N Warning(s)' line found in build-$CFG.log. The count is UNMEASURED,"
+    echo "!!! not zero, so DEC-L-008 condition 1 cannot be evidenced. This gate is RED."
+    GATE_FAILED=1
+  elif [ "$BUILD_WARNINGS" != "0" ]; then
+    echo "!!! WARNINGS ($CFG): $BUILD_WARNINGS -- DEC-L-008 condition 1 is zero. This gate is RED."
+    grep -E ": warning [A-Z]+[0-9]+" "$LOGS/build-$CFG.log" | sort -u | head -20
+    GATE_FAILED=1
+  fi
 
   for P in $GATE_SUITES; do
     case $P in
@@ -494,9 +1393,23 @@ for CFG in $GATE_CONFIGS; do
       # next death comes with a curve. Baselines from the 2026-08-24 measurement: the two heaviest
       # cutover classes peak at 213MB and 239MB alone and 261MB together, and the FULL suite under
       # sixteen parallel collections peaks at 509MB Debug / 555MB Release.
-      if [ -f "$ROOT/scripts/sample-mem.ps1" ]; then
-        powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$ROOT/scripts/sample-mem.ps1" \
-          -OutFile "$LOGS/mem-Integration-$CFG.csv" -Tag "Integration-$CFG" -Match "$(basename "$ROOT")" &
+      # ---- ⚠ RELATIVE PATHS, FOR THE SAME REASON AS `--results-directory` ABOVE (T-255).
+      #
+      # `powershell.exe` is a Windows executable, so `-File "/c/Users/..."` depends on MSYS rewriting the
+      # path. With `MSYS_NO_PATHCONV=1` set it does not, and PowerShell refuses to start:
+      # *"The argument '/c/Users/.../sample-mem.ps1' to the -File parameter does not exist."*
+      #
+      # **This one failed LOUDLY where the TRX relocation failed silently, and the difference is the
+      # receiving tool: PowerShell VALIDATES `-File`, while `dotnet --results-directory` ACCEPTS anything
+      # and creates it.** A tool that checks its argument cannot hide the mistake; a tool that constructs
+      # what the argument names buries it. Same defect, opposite blast radius.
+      #
+      # `cd "$ROOT"` happened at the top, so a repo-relative path has nothing to convert under either
+      # setting.
+      if [ -f "scripts/sample-mem.ps1" ]; then
+        powershell.exe -NoProfile -ExecutionPolicy Bypass -File "scripts/sample-mem.ps1" \
+          -OutFile "${LOGS#"$ROOT"/}/mem-Integration-$CFG.csv" -Tag "Integration-$CFG" \
+          -Match "$(basename "$ROOT")" &
         SAMPLER=$!
       fi
     fi
@@ -507,17 +1420,47 @@ for CFG in $GATE_CONFIGS; do
     # replacement for it.
     dotnet test "$F" -c "$CFG" --nologo -v q --no-build $BLAME \
       --logger "trx;LogFileName=$P-$CFG.trx" \
-      --results-directory "$LOGS" \
+      --results-directory "$LOGS_ARG" \
       $RUNSETTINGS_ARGS \
       > "$LOGS/$P-$CFG.log" 2>&1
     STATUS=$?
 
-    if [ -n "$SAMPLER" ]; then
-      kill "$SAMPLER" 2>/dev/null
-      wait "$SAMPLER" 2>/dev/null
-      awk -F, 'NR>1 && $3 ~ /^[0-9]+$/ { if ($3+0 > pk) pk = $3+0; if (mn == 0 || $5+0 < mn) mn = $5+0; n++ }
-               END { printf "--- memory: samples=%d peak_testhost_ws=%d MB min_free=%d MB\n", n, pk, mn }' \
-        "$LOGS/mem-Integration-$CFG.csv"
+    # ---- ⚠ THE RESULTS FILE LANDED WHERE WE ASKED, OR THE GATE SAYS SO (T-251).
+    #
+    # The relocation above was silent for three days: the run passed, the log was written, and only the
+    # TRX went elsewhere. **Nothing in a green gate distinguished "results written here" from "results
+    # written to a directory outside the repository".**
+    #
+    # So the absence is now asserted rather than assumed. This does not fail the gate -- a missing TRX
+    # does not mean the tests were wrong -- but it must never again be INVISIBLE, because the evidence
+    # trail is what a later reader uses to decide whether a suite ran at all.
+    if [ ! -f "$LOGS/$P-$CFG.trx" ]; then
+      echo "!!! $P-$CFG.trx was NOT written to $LOGS -- results are somewhere else and this run leaves"
+      echo "!!! no evidence a reader can find. Check MSYS path conversion (see LOGS_ARG above)."
+    fi
+
+    # A DEAD INSTRUMENT MUST NOT READ AS A NOT-APPLICABLE ONE. Until T-056 this block printed a
+    # `--- memory:` line when the sampler worked and NOTHING when it died, so a leg with no memory line
+    # was indistinguishable from a leg that never sampled -- and on 2026-08-27 both PHASE legs printed
+    # two errors, set no failure flag, and reported green with nobody the wiser. Sampling still cannot
+    # fail a gate; that argument is about a sampler that RUNS AND REPORTS, and this line is what makes
+    # the difference visible. It costs nothing and asserts nothing.
+    if [ "$P" = "Integration" ]; then
+      if [ -n "$SAMPLER" ]; then
+        kill "$SAMPLER" 2>/dev/null
+        wait "$SAMPLER" 2>/dev/null
+      fi
+      if [ -f "$LOGS/mem-Integration-$CFG.csv" ]; then
+        awk -F, 'NR>1 && $3 ~ /^[0-9]+$/ { if ($3+0 > pk) pk = $3+0; if (mn == 0 || $5+0 < mn) mn = $5+0; n++ }
+                 END { if (n == 0) print "--- memory: SAMPLER PRODUCED NO SAMPLES -- the file exists and is empty of data."
+                       else printf "--- memory: samples=%d peak_testhost_ws=%d MB min_free=%d MB\n", n, pk, mn }' \
+          "$LOGS/mem-Integration-$CFG.csv"
+      elif [ -n "$SAMPLER" ]; then
+        echo "--- memory: SAMPLER DID NOT RUN -- launched but wrote no file. See DEC-L-056:"
+        echo "---         MSYS_NO_PATHCONV=1 in the launching shell breaks powershell.exe -File."
+      else
+        echo "--- memory: SAMPLER NOT PRESENT -- scripts/sample-mem.ps1 is missing; no curve for this leg."
+      fi
     fi
 
     if [ $STATUS -ne 0 ]; then
@@ -528,9 +1471,22 @@ for CFG in $GATE_CONFIGS; do
     grep -E "Passed!|Failed!|Test Run Aborted|host process crashed" "$LOGS/$P-$CFG.log" | head -6
     grep -E "\[FAIL\]|Error Message|Assert\." "$LOGS/$P-$CFG.log" | head -40
     grep -A 4 "The test running when the crash occurred" "$LOGS/$P-$CFG.log" | head -8
+
+    # `Total:` rather than `Passed:` -- a skipped test still EXISTS, and condition 4 asks whether the
+    # tests moved, not whether they ran. A suite the build failure skipped writes nothing here, which
+    # is why the comparison below reports what it compared rather than assuming it saw everything.
+    SUITE_TOTAL=$(grep -m1 -oE 'Total:[[:space:]]+[0-9]+' "$LOGS/$P-$CFG.log" 2>/dev/null | awk '{print $2}')
+    echo "$P|$CFG|${SUITE_TOTAL:-?}" >> "$LOGS/counts.txt"
   done
 
   echo "=== catalogs after $CFG: $(reap_count)"
+
+  # ---- WHAT HAS ALREADY COMPLETED, SO A LATER ABORT CAN NAME IT. 242(C), 2026-09-01.
+  #
+  # A precondition abort before Release exits 5 with no verdict, and on 2026-09-01 that discarded a
+  # fully green Debug leg -- Integration included, 862 passed in 24m47s. The results were in the log
+  # and nothing said so, so the run read as a total loss when three quarters of it had succeeded.
+  GATE_CFG_DONE="${GATE_CFG_DONE}${GATE_CFG_DONE:+ }$CFG"
 done
 
 # ---- THE VERDICT NAMES ITS SCOPE. `DEC-L-045`.
@@ -538,11 +1494,303 @@ done
 # `[GATE GREEN]` alone was unambiguous while there was one gate. With two, a log that does not say what
 # it covered is read a week later as if it covered everything -- and the cheap scope is the one that
 # will be read that way, because it is the one that gets run.
+# ---- CONDITION 4, PARTIALLY MECHANISED AND SAYING SO. See note 7t in the header. T-059.
+#
+# WHAT IS COMPARED: the per-suite totals this run produced, against the baseline this gate wrote on
+# its last green run. WHAT IS NOT: whether the tests a task required exist, or whether the tests that
+# moved cover what was written. **The gate cannot know what a task required.** Everything printed here
+# is worded to claim only the first.
+GATE_C4_NOTE=""
+gate_condition_4 () {
+  local REF=${GATE_INTEGRATION_REF:-origin/ClaudeBranch} BASE CHANGED MOVED=0 COMPARED=0 KEY OLD NEW BASELINE_AT_BASE
+  [ -s "$LOGS/counts.txt" ] || { GATE_C4_NOTE="not compared: no suite totals were captured"; return; }
+  command -v git >/dev/null 2>&1 || { GATE_C4_NOTE="not compared: no git on PATH"; return; }
+  BASE=$(git merge-base HEAD "$REF" 2>/dev/null) || true
+  [ -n "$BASE" ] || { GATE_C4_NOTE="not compared: no merge-base with '$REF'"; return; }
+
+  # THE WORKING TREE IS INCLUDED, DELIBERATELY. `git diff <base> -- src/` with no second commit
+  # compares base to the WORKING TREE, so uncommitted work counts. A merge-base-to-HEAD diff would see
+  # nothing before the first commit and skip the check IN SILENCE -- permissive, which is the
+  # `DEC-L-051` hole rather than a smaller version of it.
+  #
+  # NON-COMMENT LINES ONLY, AND THAT IS WHAT MAKES THIS SHIPPABLE. Measured over 200 merges: 45
+  # touched src/, 44 added a new [Fact]/[Theory], and the ONE that did not was 19 added lines that
+  # were entirely a comment block. With this filter that false positive disappears.
+  # ---- ⚠ THE COUNT AND THE MEASUREMENT ARE SEPARATED, BECAUSE `wc -l` CANNOT FAIL. 242(D), 2026-09-01.
+  #
+  # This was `CHANGED=$(git diff ... | grep | grep | wc -l)` with a `${CHANGED:-0}` after it, and that
+  # fallback was DEAD CODE: a pipeline ending in `wc -l` prints "0" when everything upstream fails, so
+  # the value is never empty and the default never fires. Tested rather than reasoned about --
+  # `nosuchcmd | grep -E '^[+-]' | wc -l` yields "0", where `powershell-that-fails | tr -d` yields "".
+  #
+  # A FALLBACK CATCHES AN ABSENT VALUE AND A COUNTER GUARANTEES THE VALUE IS NEVER ABSENT. So the
+  # failure had to be caught where it happens: `git` runs on its own, its status is kept, and only then
+  # is the output counted. The pipe still discards a status -- this script sets `set -u` and not
+  # `pipefail` -- but the only commands left in it are greps and `wc`, whose failure is not the risk.
+  #
+  # ⚠ AND THE SAFE VOCABULARY WAS ALREADY IN THIS FUNCTION, THREE LINES ABOVE: no suite totals, no git
+  # on PATH, no merge-base -- each refuses to claim. What was missing is the case where git EXISTS, the
+  # base EXISTS, and the command still fails. A PRESENCE CHECK IS NOT A SUCCESS CHECK, and the gap is
+  # exactly where the failure produced a plausible number instead of an obvious absence.
+  #
+  # THE SAFE DIRECTION HERE IS "not compared", NOT "ok". A failed measurement previously reported
+  # "ok: no non-comment change under src/", which is condition 4 passing itself on no evidence -- the
+  # permissive silent skip this check exists to prevent, inside the check. "not compared" is printed at
+  # the verdict by the case statement below, so it cannot be quiet either.
+  local DIFF_OUT DIFF_RC
+  DIFF_OUT=$(git diff "$BASE" -- src/ 2>/dev/null)
+  DIFF_RC=$?
+  if [ "$DIFF_RC" -ne 0 ]; then
+    GATE_C4_NOTE="not compared: 'git diff $BASE -- src/' exited $DIFF_RC, so the changed-line count is UNMEASURED -- which is not the same as zero"
+    return
+  fi
+  CHANGED=$(printf '%s\n' "$DIFF_OUT" \
+    | grep -E '^[+-]' | grep -vE '^[+-]{3}' \
+    | grep -vE '^[+-][[:space:]]*(//|\*|/\*|$)' | wc -l | tr -d '[:space:]')
+
+  # UNTRACKED FILES ARE INVISIBLE TO `git diff`, AND A NEW SOURCE FILE IS THE COMMONEST NEW CODE.
+  # This was found by planting one: the check reported "no non-comment change under src/" over a new
+  # .cs file full of executable code. That is the permissive, silent-skip failure this check exists to
+  # avoid, inside the check itself -- and reading the code would not have found it, because the line
+  # that was wrong is the line that looks right.
+  # Same treatment, and the stake is higher: this half exists BECAUSE a planted new source file was
+  # reported as "no non-comment change". If `git ls-files` fails, every untracked file becomes invisible
+  # and the count reads as zero -- reinstating exactly the hole this block was added to close.
+  local UNTRACKED UNTRACKED_LIST UNTRACKED_RC
+  UNTRACKED_LIST=$(git ls-files --others --exclude-standard -- src/ 2>/dev/null)
+  UNTRACKED_RC=$?
+  if [ "$UNTRACKED_RC" -ne 0 ]; then
+    GATE_C4_NOTE="not compared: 'git ls-files --others -- src/' exited $UNTRACKED_RC, so a new source file would be invisible and the count would read as zero"
+    return
+  fi
+  UNTRACKED=$(printf '%s\n' "$UNTRACKED_LIST" \
+    | while IFS= read -r f; do
+        [ -n "$f" ] && [ -f "$f" ] && grep -vE '^[[:space:]]*(//|\*|/\*|$)' "$f" 2>/dev/null
+      done | wc -l | tr -d '[:space:]')
+  CHANGED=$(( CHANGED + UNTRACKED ))
+
+  if [ ! -f "$GATE_BASELINE_FILE" ]; then
+    GATE_C4_NOTE="not compared: no baseline yet at ${GATE_BASELINE_FILE#$ROOT/} (it is written on the first green run)"
+    return
+  fi
+
+  # ---- ⚠⚠⚠ THE BASELINE IS READ AS AT $BASE, NOT FROM THE WORKING TREE. TWO CLOCKS, MEASURED 2026-09-01.
+  #
+  # The two halves of this condition used to span DIFFERENT INTERVALS. `CHANGED` is `git diff "$BASE"`, so
+  # it spans base..WORKING TREE. `OLD` came from the working-tree baseline -- WHICH EVERY GREEN RUN
+  # OVERWRITES at the end of this script.
+  #
+  # So on the SECOND green run of the same state, `OLD` was the total THIS state had already produced,
+  # `MOVED` was necessarily 0, `CHANGED` was still large, and the ATTENTION fired AS A FALSE ALARM BY
+  # CONSTRUCTION. ⚠ THE CONDITION GOT LESS RELIABLE THE MORE OFTEN THE GATE WAS RUN -- the more diligent
+  # the window, the more false attentions it saw. Observed on item 261: one run printed "ok: 1 of 7 moved"
+  # and the next printed ATTENTION over the same commit, and `Platform|Debug` 1103->1105 lands inside
+  # `f4586fa` itself, which is what made the second reading wrong rather than the first.
+  #
+  # Reading the baseline at $BASE makes both halves span ONE interval. Note 7t's rule is unchanged and NOT
+  # weakened: this fixes the reference point, never the threshold.
+  BASELINE_AT_BASE="$LOGS/baseline-at-base.txt"
+  if ! git show "$BASE:${GATE_BASELINE_FILE#$ROOT/}" > "$BASELINE_AT_BASE" 2>/dev/null; then
+    GATE_C4_NOTE="not compared: ${GATE_BASELINE_FILE#$ROOT/} does not exist at the merge-base $BASE, so there is no same-interval reference to compare against -- WHICH IS NOT THE SAME AS UNCHANGED"
+    return
+  fi
+
+  while IFS='|' read -r P C N; do
+    [ -n "$P" ] || continue
+    KEY="$P|$C"
+    OLD=$(grep -m1 "^$KEY|" "$BASELINE_AT_BASE" 2>/dev/null | cut -d'|' -f3)
+    [ -n "$OLD" ] || continue          # a suite with no baseline row cannot be compared, only recorded
+    COMPARED=$((COMPARED+1))
+    NEW="$N"
+    [ "$OLD" = "$NEW" ] || MOVED=$((MOVED+1))
+  done < "$LOGS/counts.txt"
+
+  if [ "$COMPARED" = "0" ]; then
+    GATE_C4_NOTE="not compared: no suite in this run has a baseline row yet"
+  elif [ "$CHANGED" = "0" ]; then
+    GATE_C4_NOTE="ok: no non-comment change under src/; $COMPARED suite total(s) checked"
+  elif [ "$MOVED" -gt 0 ]; then
+    GATE_C4_NOTE="ok: $MOVED of $COMPARED suite total(s) moved, with $CHANGED non-comment line(s) changed under src/"
+  else
+    GATE_C4_NOTE="ATTENTION: totals unchanged in all $COMPARED suite(s) SINCE THE MERGE-BASE, while $CHANGED non-comment line(s) under src/ changed OVER THAT SAME INTERVAL -- condition 4 is yours to judge"
+    # ---- ⚠ AND ON TASK THE ATTENTION MUST SAY WHAT IT CANNOT SEE. T-233, 2026-08-31.
+    #
+    # A `src/` fix whose only coverage is an Integration test moves NO total in this scope, because this
+    # scope does not run Integration. Item 233 fixed two GL queries that threw on every call and tripped
+    # this branch with 26 changed lines and seven unmoved totals -- a TRUE POSITIVE for the gate and a
+    # FALSE ALARM for the work.
+    #
+    # Left unqualified that recurs on every such fix forever, and an attention that is usually wrong is an
+    # attention nobody reads. The condition is NOT weakened -- it still fires. It now states its own blind
+    # spot, which is the same correction the baseline header needed at T-196.
+    if [ "$GATE_SCOPE" = "TASK" ]; then
+      GATE_C4_NOTE="$GATE_C4_NOTE; NOTE: this scope did not run Integration, so an unchanged total here cannot see a change whose only coverage is an Integration test -- if that is this change, run GATE_SCOPE=PHASE before trusting it"
+    fi
+  fi
+}
+gate_condition_4
+echo "--- condition 4: $GATE_C4_NOTE"
+
+# ---- THE TRACEABILITY CHECK, AGAINST A BASELINE. See note 7s in the header. T-065.
+#
+# RED ON A RISE, NEVER ON THE STANDING COUNT. Eleven failures stand today and every one is
+# work a package has already declared pending. **A gate permanently red on declared work is
+# a gate switched off by the second week** -- which is how nine red packages went unremarked
+# for weeks while `trace-check.py` was in neither this script nor `ci.yml`.
+#
+# IT RUNS IN BOTH SCOPES, and the reason is measured rather than assumed: **730 ms** over
+# three runs, against a 72-second TASK gate. That is one per cent, and `DEC-L-051` bought
+# back 68 minutes -- spending three-quarters of a second to close the last unwired instrument
+# is not the trade that undoes it. Had it been material it would belong in PHASE only.
+#
+# The interpreter is `py`, not `python`: on this box `python` resolves through a per-user
+# app-execution alias that can be switched off, and `py` is the launcher.
+# RELATIVE, NOT "$ROOT/...". `py` is a NATIVE Windows launcher and cannot open an MSYS path:
+# `$ROOT` is `/c/Users/...`, which Python resolves to a `C:` drive with a `c` folder under it
+# and fails with "No such file or directory". The gate `cd`s to $ROOT at the top, so relative
+# paths are both correct and immune to the conversion.
+#
+# **This is `DEC-L-056` from the other direction.** That rule is about a variable that DISABLES
+# path conversion and breaks `powershell.exe -File`; this is a shell-native path handed to a
+# Windows program with no conversion at all. Same class, opposite cause — and the first run
+# caught it only because the block below REPORTS when it does not complete.
+GATE_TRACE_BASELINE="${GATE_TRACE_BASELINE:-.claude/handoff/trace-baseline.txt}"
+if command -v py >/dev/null 2>&1 && [ -f "$ROOT/scripts/trace-check.py" ]; then
+  # `--baseline` returns 6 on a RISE and 0 otherwise. It deliberately does not return the
+  # standing-count code, which is the whole point: see the note above `--baseline` in
+  # trace-check.py.
+  py scripts/trace-check.py --baseline "$GATE_TRACE_BASELINE" --update-baseline \
+    > "$LOGS/trace-check.log" 2>&1
+  TRACE_STATUS=$?
+  sed -n '/TRACE BASELINE/,$p' "$LOGS/trace-check.log" | head -12
+  if [ "$TRACE_STATUS" = "6" ]; then
+    echo "!!! TRACEABILITY REGRESSION -- a package has MORE failures than its committed baseline."
+    echo "!!! This gate is RED. Full report: $LOGS/trace-check.log"
+    GATE_FAILED=1
+  elif [ "$TRACE_STATUS" != "0" ]; then
+    # Any other code means the checker did not answer the question. Reported, not failed:
+    # a documentation checker that cannot start must not block code that compiles and passes.
+    echo "--- trace-check: did not complete (exit $TRACE_STATUS) -- see $LOGS/trace-check.log"
+  fi
+else
+  # ABSENCE IS STATED. A missing interpreter or script must not read as a clean run, which
+  # is the same rule the memory sampler needed and did not have.
+  echo "--- trace-check: NOT RUN -- no 'py' on PATH or scripts/trace-check.py missing."
+fi
+
+# ---- THE `DEC-L-082` ADVISORY (T-106). REPORTS, NEVER FAILS.
+#
+# `DEC-L-082`: a citation RESOLVES; it does not VALIDATE. When a cited identifier's meaning
+# changes, every citation of it becomes a claim nobody re-checked -- and nothing notices, because
+# the reference still resolves. T-102 changed what `AC-ATT-0032` asserts; three citers kept
+# reading it the old way and it took T-103, T-104 and T-105 to find them. Run against T-102's own
+# commit, this lists all of them at once.
+#
+# THE DIFF SOURCE IS CONDITION 4's, AND DELIBERATELY SO. `git diff <merge-base>` with no second
+# commit compares against the WORKING TREE -- see note at line 190 -- so this fires while an
+# amendment is still being written rather than after it is committed. That is what makes it an
+# advisory instead of a post-mortem.
+#
+# IT NEVER SETS GATE_FAILED. Judgement -- whether a citer still MEANS what it cites -- is a
+# person's, and a guard that pretends otherwise is one somebody switches off.
+if command -v py >/dev/null 2>&1 && [ -f "$ROOT/scripts/trace-check.py" ]; then
+  CITER_BASE=$(git merge-base HEAD "${GATE_INTEGRATION_REF:-origin/ClaudeBranch}" 2>/dev/null) || true
+  if [ -n "$CITER_BASE" ]; then
+    py scripts/trace-check.py --citers "$CITER_BASE" 2>&1 | tee "$LOGS/citer-advisory.log"
+  else
+    # ABSENCE IS STATED, as everywhere else in this script. A missing merge-base must not read
+    # as "nothing changed".
+    echo "--- DEC-L-082 advisory: NOT RUN -- no merge-base with '${GATE_INTEGRATION_REF:-origin/ClaudeBranch}'"
+  fi
+else
+  echo "--- DEC-L-082 advisory: NOT RUN -- no 'py' on PATH or scripts/trace-check.py missing."
+fi
+
 if [ $GATE_FAILED -ne 0 ]; then
   echo "[GATE RED -- $GATE_SCOPE scope: $SCOPE_NOTE]"
 else
   echo "[GATE GREEN -- $GATE_SCOPE scope: $SCOPE_NOTE]"
 fi
+# IT WARNS AND NEVER FAILS THE GATE, AND THE REASON TRAVELS WITH THE LABEL. See note 7t: the only
+# remedy for a wrong fire is to write a test you do not believe in, and a red answerable that way
+# manufactures exactly the tests that make a suite worthless. A tier without its reason is a ranking.
+case "$GATE_C4_NOTE" in
+  ATTENTION:*) echo "[CONDITION 4: $GATE_C4_NOTE]";;
+  "not compared:"*|not\ compared*) echo "[CONDITION 4: $GATE_C4_NOTE]";;
+esac
+# REPEATED AT THE VERDICT, NOT ONLY AT THE START. A warning printed at second 3 of a 4095-second run
+# is not a warning anyone reads; the verdict is the one line guaranteed to be looked at. That is the
+# argument that put the scope into `[GATE GREEN -- <scope>]`, and it applies here unchanged.
+if [ -n "$GATE_STALE_NOTE" ]; then
+  echo "[GATE SCRIPT: $GATE_STALE_NOTE]"
+fi
+# AT THE VERDICT TOO, AND ALWAYS -- including when the tree is clean. A line that appears only when
+# something is wrong teaches a reader that its absence means nothing was checked, which is the
+# absence-versus-not-applicable confusion this file has removed from the sampler, the build status and
+# the trace check. **The clean case is a result and it is printed as one.**
+echo "[TREE: $GATE_TREE_NOTE]"
+# ---- THE BASELINE IS WRITTEN BY THE INSTRUMENT, ONCE, HERE. See note 7t.
+#
+# ONCE, AFTER THE LAST CONFIGURATION, AFTER THE VERDICT IS COMPUTED -- not "after the suites". Under
+# PHASE that phrase is ambiguous: Debug's suites finish and then Release runs, and a write between
+# them dirties the tree MID-RUN while Release is reading it. That is `DEC-L-013` with the gate doing
+# it to itself.
+#
+# A RED RUN WRITES NOTHING, AND SAYS SO. A red run that silently leaves the baseline alone is
+# indistinguishable from one that updated it -- the same absence problem as the sampler, one layer
+# down. Nothing partial either: a half-written baseline is a wrong baseline that looks maintained.
+if [ $GATE_FAILED -ne 0 ]; then
+  echo "--- baseline: NOT updated (gate is red). ${GATE_BASELINE_FILE#$ROOT/} still holds the last green run's totals."
+elif [ ! -s "$LOGS/counts.txt" ]; then
+  echo "--- baseline: NOT updated -- no suite totals were captured this run."
+else
+  mkdir -p "$(dirname "$GATE_BASELINE_FILE")"
+  # Rows this run did not produce are CARRIED FORWARD, not dropped. A TASK run covers seven suites in
+  # Debug; dropping the rest would report Integration as having vanished on the next PHASE.
+  {
+    echo "# Written by scripts/gate.sh on a green run. Do not hand-edit -- see note 7t."
+    echo "#"
+    echo "# WHAT IS NOT HERE, AND WHY (T-254, amended T-193 on 2026-08-31). Ten test projects exist;"
+    echo "# eight are tracked, in both configurations."
+    echo "#"
+    echo "#   Performance.Tests, UI.Tests -- EMPTY SCAFFOLDS. Each is a .csproj with no source file at"
+    echo "#     all, so there is nothing to count and no gate scope runs them. Their absence is correct"
+    echo "#     and stays correct until somebody writes a test in one."
+    echo "#"
+    echo "#   Integration and every Release row -- WRITTEN 2026-08-31, on the first green GATE_SCOPE=PHASE"
+    echo "#     run since this file was introduced on 2026-08-27. The writer worked exactly as it said it"
+    echo "#     would; what was missing was a green PHASE run, and the earlier text here predicting their"
+    echo "#     arrival outlived its own condition by one run and is replaced rather than left standing."
+    echo "#"
+    echo "#   AND THE CONSEQUENCE NOBODY DREW WHILE THEY WERE ABSENT. Condition 4 skips any suite with no"
+    echo "#     baseline row -- \"cannot be compared, only recorded\" -- so from 2026-08-27 to 2026-08-31 it"
+    echo "#     compared SEVEN of the sixteen suite/configuration pairs and said so only as a count nobody"
+    echo "#     read."
+    echo "#"
+    echo "#     READ THE \"suite total(s) checked\" NUMBER, NOT JUST THE WORD ok -- AND READ IT AGAINST THE"
+    echo "#     SCOPE, WHICH IS THE PART AN EARLIER VERSION OF THIS NOTE GOT WRONG. Condition 4 compares the"
+    echo "#     totals THIS RUN PRODUCED, so the healthy number is SEVEN on TASK and SIXTEEN on PHASE. Seven"
+    echo "#     on a TASK run is complete, not narrowed. Below the scope's number is the signal."
+    echo "#"
+    echo "#     (Amended T-196 on 2026-08-31. The sentence here said \"it compares all sixteen from the next"
+    echo "#     run on\" -- true of PHASE, false of TASK -- three lines above the instruction to read the"
+    echo "#     number, so following the instruction on a healthy TASK run would have raised the very alarm"
+    echo "#     it exists to raise. A fix for a misreading, introducing a misreading inside itself.)"
+    echo "#"
+    echo "# suite|configuration|total"
+    {
+      if [ -f "$GATE_BASELINE_FILE" ]; then
+        grep -v '^#' "$GATE_BASELINE_FILE" 2>/dev/null | while IFS='|' read -r P C N; do
+          [ -n "$P" ] || continue
+          grep -q "^$P|$C|" "$LOGS/counts.txt" || echo "$P|$C|$N"
+        done
+      fi
+      cat "$LOGS/counts.txt"
+    } | sort -u
+  } > "$GATE_BASELINE_FILE.tmp" && mv "$GATE_BASELINE_FILE.tmp" "$GATE_BASELINE_FILE"
+  echo "--- baseline: updated ${GATE_BASELINE_FILE#$ROOT/} from this green run ($(grep -vc '^#' "$GATE_BASELINE_FILE") row(s)). COMMIT IT WITH YOUR WORK."
+fi
+
 echo "[GATE COMPLETE -- $GATE_SCOPE scope: $SCOPE_NOTE -- full logs and TRX in $LOGS]"
 
 # ---- AND THE VERDICT REACHES `$?`. Do not remove this line. Paid for 2026-08-25.

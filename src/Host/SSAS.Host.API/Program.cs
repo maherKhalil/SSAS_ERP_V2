@@ -1,3 +1,5 @@
+using SSAS.HIS.API;
+using SSAS.HIS.API.Endpoints;
 using SSAS.HR.API.Departments;
 using SSAS.HR.API.Employees;
 using SSAS.HR.API.Positions;
@@ -34,6 +36,8 @@ using SSAS.Platform.Infrastructure.RequestContext;
 using SSAS.Platform.Application.Subscriptions;
 using SSAS.Platform.Infrastructure.Subscriptions;
 using SSAS.Platform.API.Subscriptions;
+using SSAS.Platform.API.TenantUsers;
+using SSAS.HIS.Infrastructure;
 
 Log.Logger = new LoggerConfiguration()
   .WriteTo.Console(formatProvider: CultureInfo.InvariantCulture)
@@ -80,7 +84,9 @@ try
     // Without it, every payroll approval would fail to resolve a dependency at REQUEST time rather than at
     // startup -- which is precisely the class of failure the eager composition below exists to prevent.
     .AddAttendanceModule()
-    .AddAttendanceInfrastructure();
+    .AddAttendanceInfrastructure()
+    .AddHisModule()
+    .AddHisInfrastructure(builder.Configuration);
 
   // ---- MODULE PERMISSION DEFINITIONS, REGISTERED EXPLICITLY (ADR-012 r1.2, FP-006P).
   //
@@ -103,6 +109,7 @@ try
   // caller -- FP-006P's incident, where HR's constants existed, no catalog defined them, and no role could
   // hold one.
   builder.Services.AddSingleton<IPermissionCatalogContributor, AttendancePermissionCatalogContributor>();
+  builder.Services.AddSingleton<IPermissionCatalogContributor, SSAS.HIS.Application.Permissions.HisPermissionCatalogContributor>();
 
   // ---- MODULE ENABLEMENT: THE SEAM NOW READS REAL DATA (FP-014, T-040).
   //
@@ -156,13 +163,24 @@ try
   app.MapPlatformSupportAuthenticationEndpoints();
   app.MapPlatformLocalizationEndpoints();
   app.MapPlatformIdentityAccessEndpoints();
+
+  // T-091. Two lifecycle routes over handlers that already existed and were reachable from nothing —
+  // deactivation is what termination now invokes, reactivation is the repair for its one half-state.
+  app.MapPlatformTenantUserEndpoints();
   app.MapPlatformSupportAuthorityEndpoints();
+  app.MapPlatformSupportTenantUserEndpoints();
   app.MapPlatformCompanyEndpoints();
+  app.MapPlatformPlansEndpoints();
+  app.MapPlatformTenantSubscriptionsEndpoints();
+  app.MapPlatformEntitlementGrantsEndpoints();
+  app.MapPlatformInvoicesEndpoints();
+  app.MapPlatformEnabledModulesEndpoints();
   // HR module transport (ADR-012: the Host maps each module's own endpoints; modules never map each other's).
   app.MapHrEmployeeEndpoints();
   app.MapHrDepartmentEndpoints();
   app.MapHrEmployeeDepartmentEndpoints();
   app.MapHrPositionEndpoints();
+  app.MapHrEmployeeDocumentEndpoints();
   app.MapHrJobGradeEndpoints();
   app.MapHrSalaryGradeEndpoints();
   app.MapHrEmployeePositionEndpoints();
@@ -178,6 +196,10 @@ try
   // Attendance's surface (FP-013): twenty-five routes across the working calendar, attendance periods,
   // records and their adjustments, leave types, leave requests and administered balances.
   app.MapAttendanceEndpoints();
+  app.MapHisRegistrationEndpoints();
+  app.MapHisSetupEndpoints();
+  app.MapOutPatientEndpoints();
+  app.MapInPatientEndpoints();
 
   app.Run();
 }

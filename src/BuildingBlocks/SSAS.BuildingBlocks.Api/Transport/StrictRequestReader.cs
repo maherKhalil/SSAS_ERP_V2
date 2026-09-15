@@ -4,11 +4,27 @@ using Microsoft.AspNetCore.Http;
 
 namespace SSAS.BuildingBlocks.Api.Transport;
 
-// Neutral strict-request parsing for admin route groups (and future Company API).
-// Mirrors the established localization strict-parsing convention: JSON bodies must be an
+// Neutral strict-request parsing. The convention: JSON bodies must be an
 // object with only the declared members (no unknown/duplicate members, allowed value-kinds,
 // required members enforced); query strings reject unknown or multi-valued keys.
 // Strict binding remains contract/route-group specific — global JsonSerializerOptions are not changed.
+// Localization converted its private, token-identical copy under T-127.
+//
+// ⚠ THIS IS NOT UNIVERSAL, AND AN EARLIER VERSION OF THIS HEADER SAID IT WAS. It claimed every route
+// group in the product binds through this reader and that Localization was "the last holdout". Both
+// were false. As at 2026-09-02 two private body readers remain, and neither is named "Strict" anything:
+//   AuthenticationEndpointRouteBuilderExtensions.ReadJsonAsync<T>
+//   PlatformSupportAuthenticationEndpointRouteBuilderExtensions.ReadLoginAsync
+// Enumerated by mechanism — JsonDocument.ParseAsync over Request.Body — because a name search cannot
+// find them. StrictRequestBindingArchitectureTests excludes their contracts from its closure on purpose.
+//
+// ⚠⚠ DO NOT CONVERT THEM TO THIS READER. Both construct their options as new(JsonSerializerDefaults.Web),
+// which matches property names case-INSENSITIVELY; this reader uses JsonSerializerOptions.Default, which
+// is case-SENSITIVE. Neither login contract carries a single [JsonPropertyName], so their camelCase wire
+// bodies would stop binding to their PascalCase members on conversion — every field null on the login
+// routes. That makes the architecture guard's exclusion silently load-bearing on an option nothing
+// asserts. The deleted sentence was not merely inaccurate: it was an instruction to perform that
+// conversion, on the file a converter reads first.
 public static class StrictRequestReader
 {
   public static async Task<T?> ReadStrictJsonAsync<T>(

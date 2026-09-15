@@ -691,7 +691,7 @@ public sealed class PlatformSupportBootstrapSqlServerTests
   private sealed class TestPlatformUnitOfWork(PlatformDbContext context)
     : SSAS.Platform.Application.Abstractions.Persistence.IPlatformUnitOfWork
   {
-    private readonly PlatformUnitOfWork inner = new(context, new NoOpDomainEventDispatcher());
+    private readonly PlatformUnitOfWork inner = TestUnitOfWork.Platform(context, new NoOpDomainEventDispatcher());
 
     public Task<Result<int>> SaveChangesAsync(CancellationToken cancellationToken = default) =>
       inner.SaveChangesAsync(cancellationToken);
@@ -752,7 +752,6 @@ public sealed class PlatformSupportBootstrapSqlServerTests
     public string? UserId => "integration-actor";
     public string? UserName => null;
     public string? Email => null;
-    public Guid? CompanyId => null;
     public string? SessionId => null;
     public string? TokenId => null;
     public IReadOnlyCollection<string> Roles => [];

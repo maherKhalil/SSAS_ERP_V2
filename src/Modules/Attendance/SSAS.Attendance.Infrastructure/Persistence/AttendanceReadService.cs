@@ -108,13 +108,40 @@ internal sealed class AttendanceReadService(
       return Result.Failure<IReadOnlyList<AttendanceRecordView>>(resolved.Error);
     }
 
+    return await QueryRecordsAsync(
+      resolved.Value, companyId, employeeId, fromDate, toDate, cancellationToken);
+  }
+
+  // ---- THE SELF-SERVICE ENTRY (FP-015, T-089), AND WHY IT TAKES THE SCOPE RATHER THAN RESOLVING ONE.
+  //
+  // `GetRecordsAsync` resolves `Attendance.Records.View` — the ADMINISTRATIVE permission — so a self route
+  // calling it would demand the very permission a self-service caller must not need. This one is handed a
+  // scope that a *different* resolver already built from the caller's own employee record.
+  //
+  // **The employee is a method ARGUMENT and never a contract member**, which is what stops the self route
+  // carrying an identifier a caller could change. Payroll's `GetPayslipsForEmployeeAsync` is the precedent.
+  //
+  // Both entries run `QueryRecordsAsync`. One query, so the branch predicate cannot be present on one path
+  // and quietly absent on the other.
+  public Task<Result<IReadOnlyList<AttendanceRecordView>>> GetRecordsForEmployeeAsync(
+    AttendanceReadScope readScope, Guid employeeId, DateOnly? fromDate, DateOnly? toDate,
+    CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(readScope);
+    return QueryRecordsAsync(readScope, null, employeeId, fromDate, toDate, cancellationToken);
+  }
+
+  private async Task<Result<IReadOnlyList<AttendanceRecordView>>> QueryRecordsAsync(
+    AttendanceReadScope readScope, Guid? companyId, Guid? employeeId,
+    DateOnly? fromDate, DateOnly? toDate, CancellationToken cancellationToken)
+  {
     var context = await contextAccessor.GetRequiredAsync(cancellationToken);
 
     IReadOnlyList<AttendanceRecordView> views = await context.Set<AttendanceRecord>()
       .AsNoTracking()
-      .Where(record => record.TenantId == resolved.Value.TenantId)
-      .Where(record => resolved.Value.CompanyIds.Contains(record.CompanyId))
-      .Where(record => resolved.Value.BranchIds.Contains(record.BranchId))
+      .Where(record => record.TenantId == readScope.TenantId)
+      .Where(record => readScope.CompanyIds.Contains(record.CompanyId))
+      .Where(record => readScope.BranchIds.Contains(record.BranchId))
       .Where(record => companyId == null || record.CompanyId == companyId)
       .Where(record => employeeId == null || record.EmployeeId == employeeId)
       .Where(record => fromDate == null || record.AttendanceDate >= fromDate)
@@ -187,12 +214,51 @@ internal sealed class AttendanceReadService(
     // make the redaction depend on evaluation order.
     var maySeeSensitive = scope.HasPermission(AttendancePermissionNames.ViewSensitiveLeave);
 
+    return await QueryLeaveRequestsAsync(
+      resolved.Value, companyId, employeeId, maySeeSensitive, cancellationToken);
+  }
+
+  // ================================================================================================
+  // THE SELF-SERVICE ENTRY (FP-015, T-089) — AND THE ONE DECISION IT MAKES THAT IS NOT MECHANICAL.
+  // ================================================================================================
+  //
+  // Same shape as `GetRecordsForEmployeeAsync`: the administrative entry resolves `Attendance.Leave.View`,
+  // which a self-service caller must not need, so this one is handed a scope built from the caller's OWN
+  // employee record. The employee is a method argument, never a contract member.
+  //
+  // ---- `maySeeSensitive: true`, AND THIS IS A RULING RATHER THAN AN OVERSIGHT.
+  //
+  // `REQ-ATT-0025` redacts a sensitive leave TYPE because it identifies an individual's medical absence.
+  // **The party it protects is the subject, and on this route the subject IS the caller.** Redacting here
+  // would protect nobody and would leave an employee unable to see which of their own leave they took —
+  // a self-service list where sick leave shows as a nameless gap.
+  //
+  // **The permission that gates the administrative view is `Attendance.Leave.ViewSensitive`, an
+  // ADMINISTRATIVE grant no plain employee holds**, so applying the same rule here would make the redaction
+  // universal on this route rather than conditional.
+  //
+  // T-088's precedent points the same way: an own payslip is returned in full, and a payslip discloses at
+  // least as much about a person as a leave type does.
+  //
+  // **The cost is named: this route shows the caller their own sensitive leave type on a screen that may be
+  // shoulder-surfed.** That is the same exposure as their own payslip, and it is the subject's to manage.
+  public Task<Result<IReadOnlyList<LeaveRequestView>>> GetLeaveRequestsForEmployeeAsync(
+    AttendanceReadScope readScope, Guid employeeId, CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(readScope);
+    return QueryLeaveRequestsAsync(readScope, null, employeeId, true, cancellationToken);
+  }
+
+  private async Task<Result<IReadOnlyList<LeaveRequestView>>> QueryLeaveRequestsAsync(
+    AttendanceReadScope readScope, Guid? companyId, Guid? employeeId, bool maySeeSensitive,
+    CancellationToken cancellationToken)
+  {
     var context = await contextAccessor.GetRequiredAsync(cancellationToken);
 
     IReadOnlyList<LeaveRequestView> views = await context.Set<LeaveRequest>()
       .AsNoTracking()
-      .Where(request => request.TenantId == resolved.Value.TenantId)
-      .Where(request => resolved.Value.CompanyIds.Contains(request.CompanyId))
+      .Where(request => request.TenantId == readScope.TenantId)
+      .Where(request => readScope.CompanyIds.Contains(request.CompanyId))
       .Where(request => companyId == null || request.CompanyId == companyId)
       .Where(request => employeeId == null || request.EmployeeId == employeeId)
       .Join(

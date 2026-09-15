@@ -7,7 +7,8 @@ public static class CalendarErrors
 {
   public static readonly Error InvalidCode = new(
     "Gl.FiscalYearCodeInvalid",
-    "A fiscal year code is required and must be at most 32 characters.");
+    "A fiscal year code is required and must be at most 32 characters.",
+    Field: "code");
 
   public static readonly Error InvalidRange = new(
     "Gl.FiscalYearRangeInvalid",
@@ -15,7 +16,8 @@ public static class CalendarErrors
 
   public static readonly Error NoPeriods = new(
     "Gl.FiscalYearHasNoPeriods",
-    "A fiscal year must define at least one period.");
+    "A fiscal year must define at least one period.",
+    Field: "periods");
 
   // ---- CONTIGUOUS AND NON-OVERLAPPING ARE ONE REFUSAL, NOT TWO (AC-GL-0011).
   //
@@ -34,6 +36,23 @@ public static class CalendarErrors
     "Gl.FiscalPeriodClosed",
     "The fiscal period covering this date is closed and cannot receive postings.");
 
+  // ---- 249. THE TWO SIDES OF THE POSTING FENCE, DISTINCT BECAUSE THE CALLER ACTS DIFFERENTLY ON EACH.
+  //
+  // `CalendarErrors` already distinguishes CLOSED from ABSENT for exactly this reason: a caller who
+  // cannot tell them apart cannot tell "reopen the period" from "define the calendar".
+
+  // Returned to a POSTER that could not take the shared fence: a period-state change is in flight.
+  public static readonly Error PeriodStateChangeInProgress = new(
+    "Gl.FiscalPeriodStateChangeInProgress",
+    "The fiscal period's state is being changed. Retry the posting.");
+
+  // Returned to the PERIOD-STATE WRITER that waited out its bounded timeout: postings are still in
+  // flight. RETRYABLE BY DESIGN — an operator told "posting in progress" can act; one whose request
+  // never returns cannot.
+  public static readonly Error PostingInProgress = new(
+    "Gl.FiscalPeriodPostingInProgress",
+    "A journal posting is in progress for this company. Retry the period state change.");
+
   public static readonly Error PeriodAlreadyClosed = new(
     "Gl.FiscalPeriodAlreadyClosed",
     "The fiscal period is already closed.");
@@ -49,6 +68,40 @@ public static class CalendarErrors
   public static readonly Error DuplicateCode = new(
     "Gl.FiscalYearCodeConflict",
     "A fiscal year with this code already exists for this company.");
+
+  // ---- ANOTHER DEFINITION FOR THIS COMPANY HOLDS THE CALENDAR LOCK (T-184).
+  //
+  // **Transient and worth retrying**, which is what makes it a distinct code rather than a generic
+  // conflict: the caller is not wrong and nothing about the request needs changing. That is the opposite
+  // of `DuplicateCode` and `OverlappingYear`, which both mean the input must change.
+  //
+  // It is also returned when a caller reaches the lock with no open transaction — **a sequencing bug in
+  // this module, not a busy system.** Refusing there is what stops that bug presenting as an intermittent
+  // overlap much later, and `sp_getapplock` with `Transaction` ownership makes it unmissable.
+  // ---- TWO FISCAL YEARS COVER ONE DATE, AND THAT IS A DIFFERENT CONDITION FROM NONE (T-187).
+  //
+  // `PeriodNotFound` means *no calendar covers this date*, and its remedy is to define or open one.
+  // **This means TWO do, and its remedy is to fix the calendar.** Collapsing them sends an operator to
+  // do the wrong thing with full confidence.
+  //
+  // ⚠ **WHY REFUSING BEATS PICKING ONE, EVEN DETERMINISTICALLY.** `GetCoveringAsync` had no ordering, so
+  // the year returned could differ BETWEEN CALLS — and a journal and its reversal are SEPARATE calls
+  // resolving separate dates. An entry could post into year A and the entry that cancels it into year B:
+  // different period, different number sequence. **Adding an ORDER BY would make that consistent rather
+  // than correct** — both still landing in a year chosen by a tiebreak nobody ratified, and the
+  // consistency would make it look decided.
+  //
+  // `DEC-L-084` is why this is the last line of defence: no constraint can express range non-overlap, so
+  // the guard is the only enforcement, and a guard that has ever been bypassed leaves data no guard can
+  // retroactively fix. T-184 closed the race; it could not close what the race already wrote.
+  public static readonly Error AmbiguousCoveringYear = new(
+    "Gl.FiscalCalendarAmbiguous",
+    "More than one fiscal year covers this date for this company. The calendar must be corrected before "
+    + "entries can be posted to it.");
+
+  public static readonly Error CalendarDefinitionBusy = new(
+    "Gl.FiscalCalendarBusy",
+    "Another fiscal-year definition for this company is in progress. Retry the request.");
 
   public static readonly Error OverlappingYear = new(
     "Gl.FiscalYearOverlaps",

@@ -25,6 +25,8 @@
     <ProjectReference Include="..\..\src\Host\SSAS.Host.API\SSAS.Host.API.csproj" />
     <ProjectReference Include="..\..\src\Modules\Attendance\SSAS.Attendance.API\SSAS.Attendance.API.csproj" />
     <ProjectReference Include="..\..\src\Modules\Attendance\SSAS.Attendance.Infrastructure\SSAS.Attendance.Infrastructure.csproj" />
+    <ProjectReference Include="..\TestSupport\SSAS.TestSupport.VerificationHost\SSAS.TestSupport.VerificationHost.csproj" />
+    <ProjectReference Include="..\..\src\Modules\HIS\SSAS.HIS.Application\SSAS.HIS.Application.csproj" />
   </ItemGroup>
 
 </Project>

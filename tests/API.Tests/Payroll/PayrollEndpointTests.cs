@@ -1,4 +1,6 @@
+using System.Text.Json;
 using System.Net;
+using SSAS.Attendance.Contracts.Summaries;
 using SSAS.GL.Contracts.Posting;
 using SSAS.HR.Contracts.Employment;
 using SSAS.Payroll.Application.Permissions;
@@ -67,6 +69,11 @@ public sealed class PayrollEndpointTests(PayrollApiTestHost host) : IClassFixtur
       HttpMethod.Post, $"/api/payroll/runs/{run.Id}/reversals", host.TokenWith(AllPermissions),
       """{"reversalDateUtc":"2026-02-10T00:00:00Z","description":"Correction"}"""));
 
+    // ⚠⚠⚠ SOLE ASSERTION, AND AN UNCONSTRAINED NEGATIVE (2026-09-06). The claim is that the reversal body
+    // BINDS. A 500, a 404 or a 403 all satisfy this — including the failure the JsonPropertyName loop above
+    // exists to catch. Every other `NotEqual(status)` in this suite sits beside an `Assert.Equal` naming the
+    // right answer; this one has no companion. **The idiom is sound — naming the specific wrong answer
+    // beside the right one — and this site uses only half of it.**
     Assert.NotEqual(HttpStatusCode.BadRequest, response.StatusCode);
   }
 
@@ -85,10 +92,60 @@ public sealed class PayrollEndpointTests(PayrollApiTestHost host) : IClassFixtur
     Assert.Equal("request.invalid", await PayrollApiTestHost.ProblemCodeAsync(response));
   }
 
+  // ⚠ A REFUSAL INSIDE A COLLECTION NAMES THE PATH, NOT JUST THE COLLECTION (T-272).
+  //
+  // `field` was a flat property name until this, and a flat name cannot address an element: an assignment
+  // with an empty pay element is wrong at `assignments[].payElementId`, not at `assignments`. **This is
+  // where attribution is worth most** -- a caller sending ten assignments needs to know which property of
+  // an element is at fault, and `request.invalid` alone tells them nothing at all.
+  //
+  // Asserted through a real request because the path crosses the guard that raises it, the mapper, the
+  // projection and serialization -- and the architecture guard proves only that it RESOLVES, not that it
+  // travels.
+  [Fact]
+  public async Task A_refusal_inside_a_collection_names_the_path_to_the_element_property()
+  {
+    host.ResetToAuthorizedState();
+
+    var response = await host.Client.SendAsync(PayrollApiTestHost.Request(
+      HttpMethod.Post,
+      "/api/payroll/employees/44444444-4444-4444-4444-444444444444/compensation",
+      host.TokenWith(AllPermissions),
+      """
+      {"companyId":"22222222-2222-2222-2222-222222222222","effectiveFromUtc":"2026-01-01T00:00:00Z",
+       "baseAmount":5000,"wasOutsideGradeBand":false,
+       "assignments":[{"payElementId":"00000000-0000-0000-0000-000000000000","rateOrAmount":10}]}
+      """));
+
+    Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+    using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+
+    Assert.Equal("assignments[].payElementId",
+      document.RootElement.GetProperty("field").GetString());
+  }
+
   // ================================================================================================
   // THE BLEED TEST (BR-PAY-0010, OD-PAY-0016)
   // ================================================================================================
 
+  // ⚠⚠⚠ COMMENT CORRECTED 2026-09-05. THE CITATION STANDS; THE CLAIM "VERBATIM, BOTH HALVES" DID NOT.
+  //
+  // *"A caller with **every HR permission** and no payroll permission can read no compensation and no
+  // payslip."* **The theory covers BOTH NOUNS — compensation, compensation/current and payslips — and that
+  // half is verbatim.** ***THE QUANTIFIER IS NOT: THE TOKEN BELOW NAMES SEVEN HR PERMISSIONS AND THERE ARE
+  // TWENTY-THREE.*** *A caller holding one of the sixteen untested ones is outside what this establishes.*
+  //
+  // ⚠⚠ THE FIX IS ONE LINE AND THE PATTERN IS FORTY-FIVE LINES AWAY IN THIS FILE.
+  // `Approval_is_refused_to_a_caller_holding_every_other_payroll_permission` derives its complement as
+  // `AllPermissions.Where(p => p != ApproveRuns)` — so a permission added later is automatically included.
+  // ***THE SOUND DESIGN AND THE SAMPLED ONE ARE NEIGHBOURS, WHICH IS THE EVIDENCE THAT THIS WAS A LAPSE
+  // RATHER THAN A CONVENTION.*** **Deriving the HR set the same way would make the quantifier true rather
+  // than sampled, and it is left as a named improvement rather than done silently under an audit.**
+  //
+  // ⚠ *The old comment said "the criterion verbatim, BOTH halves" — accurate about the nouns and silent
+  // about the quantifier, which is the shape that survives review: true, and not about the doubtful part.*
+  [Trait("Criterion", "AC-PAY-0027")]
   [Theory]
   [InlineData("/api/payroll/employees/44444444-4444-4444-4444-444444444444/compensation")]
   [InlineData("/api/payroll/employees/44444444-4444-4444-4444-444444444444/compensation/current")]
@@ -129,6 +186,8 @@ public sealed class PayrollEndpointTests(PayrollApiTestHost host) : IClassFixtur
 
   [Fact]
   [Trait("Decision", "OD-PAY-0009")]
+  // ⚠ CITED BY B18 pass 14, body-confirmed: the criterion verbatim -- a caller holding every OTHER payroll permission is refused 403.
+  [Trait("Criterion", "AC-PAY-0016")]
   public async Task Approval_is_refused_to_a_caller_holding_every_other_payroll_permission()
   {
     // The sensitive act is its own grant. This is the separation-of-duties claim made testable: someone who
@@ -163,23 +222,136 @@ public sealed class PayrollEndpointTests(PayrollApiTestHost host) : IClassFixtur
   // THE TWO APPROVAL REFUSALS, AND BOTH NAME WHAT WENT WRONG
   // ================================================================================================
 
+  // ---- AN AMBIGUOUS CALENDAR REFUSES AT BOTH PAYROLL CONSUMERS (T-188).
+  //
+  // Adding a value to `PostingWindowStatus` is only safe if every consumer refuses an unknown status
+  // rather than falling through as open. **That was measured at both sites, and this is the measurement.**
+  // One tests `PeriodNotFound || FiscalPeriodId is null`; the other tests `PeriodClosed` then `!IsOpen`.
+  //
+  // ⚠⚠ **AND WHAT PAYROLL ACTUALLY ANSWERS IS WORSE THAN A MISLEADING REMEDY: `payroll.not_found`, A
+  // GENERIC 404.** `PayrollErrors.FiscalPeriodNotFound` maps to `NotFound`, so an operator whose calendar
+  // has two overlapping years is told the thing they asked for does not exist.
+  //
+  // The GL side is now honest — `CalendarAmbiguous` says repair the calendar — and the payroll-facing
+  // answer is not. **Deliberately NOT fixed here**, because distinguishing it is the same argument one
+  // layer out and belongs with the payroll error vocabulary. **This test pins the current answer so the
+  // day someone distinguishes it, this reddens and explains itself rather than being quietly updated.**
+  [Theory]
+  [Trait("Decision", "DEC-L-084")]
+  [InlineData("periods")]
+  [InlineData("approval")]
+  public async Task An_ambiguous_calendar_refuses_rather_than_falling_through_as_open(string route)
+  {
+    host.ResetToAuthorizedState();
+    host.Ledger.Window = new PostingWindow(PostingWindowStatus.CalendarAmbiguous, null);
+
+    var response = route == "periods"
+      ? await host.Client.SendAsync(PayrollApiTestHost.Request(
+          HttpMethod.Post, "/api/payroll/periods", host.TokenWith(AllPermissions),
+          """{"companyId":"22222222-2222-2222-2222-222222222222","anyDateInPeriodUtc":"2026-01-15T00:00:00Z","payDateUtc":"2026-02-05T00:00:00Z"}"""))
+      : await host.Client.SendAsync(PayrollApiTestHost.Request(
+          HttpMethod.Post, $"/api/payroll/runs/{SeedCalculatedRun().Id}/approval",
+          host.TokenWith(AllPermissions)));
+
+    // Refused, and NOT as an open window. The status is unknown to both call sites and neither treats
+    // an unknown status as permission to post.
+    Assert.NotEqual(HttpStatusCode.OK, response.StatusCode);
+    Assert.NotEqual(HttpStatusCode.Created, response.StatusCode);
+    Assert.Equal("payroll.not_found", await PayrollApiTestHost.ProblemCodeAsync(response));
+  }
+
   [Fact]
   [Trait("Decision", "OD-PAY-0014")]
+  // ⚠ CITED BY B18 pass 14 as PARTLY PINNED; FULLY PINNED SINCE T-270. `AC-PAY-0022` is *"a run whose
+  // pay date falls in a closed fiscal period cannot be approved, AND THE RESPONSE NAMES THE PERIOD"*.
+  // The body asserted 409 and `payroll.period_closed` -- the CONDITION -- and nothing said which period.
+  //
+  // ⚠ THE CONTRAST DRAWN IN THE ORIGINAL NOTE WAS WRONG AND IS WORTH KEEPING FOR THAT REASON. It said
+  // `AC-PAY-0021`'s test *"really does assert `Contains("HOUSING")`"*: it does, in
+  // `PayElementDomainTests` -- **at the domain, where the string is constructed.** Comparing an API test
+  // against a domain test made one endpoint look careless when in fact **no API test in this file, or in
+  // `GlEndpointTests`, asserted a named subject at all.** The shape was a layer's, not a test's.
+  // ---- ⚠⚠⚠ AN OPEN ATTENDANCE PERIOD REFUSES APPROVAL, AS A MODELLED OUTCOME (AC-ATT-0025).
+  //
+  // *"Payroll calculation against an open attendance period is refused with a modelled outcome the caller
+  // must handle."* **The refusal exists** — `PayrollRunCommandHandlers` returns
+  // `PayrollErrors.AttendancePeriodOpen` when the summary answers `PeriodOpen`, and the mapper turns it
+  // into `payroll.attendance_period_open` — ***and the only test driving it was the Integration chain,
+  // green at a date.*** The sole gated mention of `PeriodOpen` anywhere in `tests/` was a COMMENT in this
+  // suite's own stub, explaining why the default is not `PeriodOpen`.
+  //
+  // ⚠⚠ "A MODELLED OUTCOME THE CALLER MUST HANDLE" IS THE CLAUSE, AND A 409 WITH ITS OWN CODE IS WHAT IT
+  // MEANS HERE. Not an exception, not a 500, and **not folded into a generic `request_invalid`**: the
+  // caller's remedy is to close the attendance period, which is a different act from every other refusal
+  // this endpoint can give. *A distinct code is what makes the outcome handleable rather than merely
+  // reported.*
+  //
+  // ⚠⚠⚠ AND THE STATUS IS ASSERTED ALONGSIDE THE CODE BECAUSE NEITHER IS SUFFICIENT. `A_ledger_refusal_at_
+  // posting_refuses_the_transition` and the closed-period test above BOTH answer 409, so the status alone
+  // separates nothing; and a code asserted without the status would pass on a 200 carrying a problem
+  // document. **The run staying `Calculated` is the third assertion: a refusal that transitioned anyway
+  // would satisfy both of the others.**
+  [Trait("Criterion", "AC-ATT-0025")]
+  public async Task Approval_against_an_open_attendance_period_is_refused_as_a_modelled_outcome()
+  {
+    host.ResetToAuthorizedState();
+    var run = SeedCalculatedRun();
+    host.Attendance.InspectionStatus = AttendanceSummaryStatus.PeriodOpen;
+
+    var response = await host.Client.SendAsync(PayrollApiTestHost.Request(
+      HttpMethod.Post, $"/api/payroll/runs/{run.Id}/approval", host.TokenWith(AllPermissions)));
+
+    Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    Assert.Equal("payroll.attendance_period_open", await PayrollApiTestHost.ProblemCodeAsync(response));
+
+    // The transition did not happen. Without this the test passes on a handler that approves the run and
+    // reports a refusal afterwards, which is the worse of the two failures.
+    Assert.Equal(PayrollRunStatus.Calculated, run.Status);
+  }
+
+  [Fact]
+  [Trait("Criterion", "AC-PAY-0022")]
   public async Task Approval_into_a_closed_period_is_refused_and_names_the_period()
   {
     host.ResetToAuthorizedState();
     var run = SeedCalculatedRun();
-    host.Ledger.Window = new PostingWindow(PostingWindowStatus.PeriodClosed, "January 2026");
+    // ⚠ THE FISCAL PERIOD IS DELIBERATELY NOT NAMED "January 2026" -- THE RUN'S OWN PERIOD IS.
+    //
+    // `PeriodClosedForPosting` is handed `window.PeriodName ?? period.Name`, so with the two names equal
+    // a handler that ignored the window entirely and printed the run's own period would satisfy the
+    // assertion below perfectly. **The names have to differ for that assertion to have a subject** -- and
+    // the closed thing is the FISCAL period, which is not the payroll period that shares its month.
+    const string closedFiscalPeriod = "FY2026-P01";
+    host.Ledger.Window = new PostingWindow(PostingWindowStatus.PeriodClosed, closedFiscalPeriod);
 
     var response = await host.Client.SendAsync(PayrollApiTestHost.Request(
       HttpMethod.Post, $"/api/payroll/runs/{run.Id}/approval", host.TokenWith(AllPermissions)));
 
     Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
     Assert.Equal("payroll.period_closed", await PayrollApiTestHost.ProblemCodeAsync(response));
+
+    // ---- ⚠ AND THE PERIOD, WHICH IS THE HALF THE NAME PROMISES AND THE CODE CANNOT CARRY.
+    //
+    // `payroll.period_closed` names the CONDITION. `AC-PAY-0022` is that the response names the PERIOD,
+    // and until `ApiError.Detail` existed it could not: the problem document carried `code`,
+    // `correlationId` and `resourceKey` and no message member, so the value was built in
+    // `PayrollErrors.PeriodClosedForPosting` and died at the mapper. **The channel arrived and nothing
+    // came back to assert through it** -- which is why the test name has promised this since it was
+    // written and the body never delivered it.
+    using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+
+    Assert.Contains(
+      closedFiscalPeriod,
+      document.RootElement.GetProperty("detail").GetString(),
+      StringComparison.Ordinal);
   }
 
   [Fact]
   [Trait("Decision", "OD-PAY-0012")]
+  // `AC-PAY-0021`'s TRANSPORT half. `PayElementDomainTests` pins that the message is BUILT with the
+  // element code; this pins that it SURVIVES to the caller. Two tests, one criterion, and the second
+  // was the one nobody had written.
+  [Trait("Criterion", "AC-PAY-0021")]
   public async Task Approval_with_an_unmapped_element_is_refused_and_names_the_element()
   {
     host.ResetToAuthorizedState();
@@ -190,6 +362,18 @@ public sealed class PayrollEndpointTests(PayrollApiTestHost host) : IClassFixtur
 
     Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
     Assert.Equal("payroll.element_unmapped", await PayrollApiTestHost.ProblemCodeAsync(response));
+
+    // ---- ⚠ AND THE ELEMENT. THE SAME OMISSION AS THE TEST ABOVE, IN THE SAME FILE.
+    //
+    // `PayElementDomainTests` asserts `Unmapped("HOUSING").Message` contains "HOUSING" -- at the DOMAIN,
+    // where the string is constructed. **That proves the message is built and says nothing about whether
+    // it reaches a caller**, and the mapper, `ShowsDetail` and serialization all sit between the two.
+    // `SeedCalculatedRun(mapAccount: false)` leaves `BASIC` unmapped, so the code the caller must go and
+    // fix is the one asserted here.
+    using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+
+    Assert.Contains(
+      "BASIC", document.RootElement.GetProperty("detail").GetString(), StringComparison.Ordinal);
   }
 
   [Fact]
@@ -205,6 +389,40 @@ public sealed class PayrollEndpointTests(PayrollApiTestHost host) : IClassFixtur
 
     Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
     Assert.Equal("payroll.ledger_refused", await PayrollApiTestHost.ProblemCodeAsync(response));
+    Assert.Equal(PayrollRunStatus.Approved, run.Status);
+    Assert.Null(run.JournalEntryId);
+  }
+
+  // ---- 254. AN UNDEFINED CALENDAR IS NOT A LEDGER REFUSAL, AND THE OPERATOR'S REMEDY DIFFERS.
+  //
+  // `JournalPostingStatus.PeriodNotFound` used to answer `payroll.ledger_refused` — the same code as
+  // `AccountUnavailable` above. ⚠ THE TWO REMEDIES ARE OPPOSITE: one says investigate a rejected posting,
+  // the other says define the fiscal year. The generic code sent the operator to the wrong one.
+  //
+  // 409 and not 404 on purpose: the request is well formed and the run is postable, and the same body
+  // succeeds unchanged once Finance defines the year. Its approval-time namesake `FiscalPeriodNotFound`
+  // answers a generic 404, which this deliberately does not reuse.
+  [Fact]
+  public async Task A_posting_with_no_fiscal_period_is_distinguished_from_a_ledger_refusal()
+  {
+    host.ResetToAuthorizedState();
+    var run = SeedApprovedRun();
+    host.Ledger.PostOutcome = JournalPostingOutcome.Refused(JournalPostingStatus.PeriodNotFound);
+
+    var response = await host.Client.SendAsync(PayrollApiTestHost.Request(
+      HttpMethod.Post, $"/api/payroll/runs/{run.Id}/posting", host.TokenWith(AllPermissions)));
+
+    Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+
+    // THE WHOLE POINT: a DIFFERENT code from `A_ledger_refusal_at_posting_refuses_the_transition`
+    // above, which answers `payroll.ledger_refused` for `AccountUnavailable`. Both are 409, so the
+    // STATUS alone would not have distinguished them and the code is what carries the remedy.
+    //
+    // ⚠ Read once. The response content is a stream, and a second `ProblemCodeAsync` on the same
+    // response throws on an empty body rather than returning the code again.
+    Assert.Equal("payroll.fiscal_period_undefined", await PayrollApiTestHost.ProblemCodeAsync(response));
+
+    // The run is untouched either way — distinguishing the message must not change the transition.
     Assert.Equal(PayrollRunStatus.Approved, run.Status);
     Assert.Null(run.JournalEntryId);
   }
@@ -227,6 +445,150 @@ public sealed class PayrollEndpointTests(PayrollApiTestHost host) : IClassFixtur
     // `BR-GL-0001` refuses it and the defect is Payroll's.
     var posted = host.Ledger.LastPosted!;
     Assert.Equal(posted.Lines.Sum(line => line.Debit), posted.Lines.Sum(line => line.Credit));
+
+    // ⚠ WITHOUT THIS, AN EMPTY LINE SET SATISFIES THE LINE ABOVE PERFECTLY: 0 == 0, under a test name that
+    // promises the journal BALANCES. `PayrollChainSqlServerTests` has carried this second assertion since it
+    // was written; this site had the equality copied and the control left behind.
+    Assert.True(posted.Lines.Sum(line => line.Debit) > 0m);
+  }
+
+  // ---- ⚠⚠⚠ WHICH DATE PAYROLL HANDS THE LEDGER, AND HOW MANY TIMES IT ASKS (AC-PAY-0019).
+  //
+  // *"Posting an approved run creates exactly one journal in GL for the company, in the fiscal period
+  // containing the pay date."* **That clause splits across the module boundary and only one half was
+  // covered.**
+  //
+  //   GL resolves a period from a date   `FiscalYear.ResolveOpenPeriodFor` — CLOSED, gated, in
+  //                                      `CalendarDomainTests`: resolution from the date alone among many
+  //                                      periods, the half-open boundary, and a date outside the year.
+  //   Payroll hands over the PAY DATE    ***THIS TEST.***
+  //
+  // ⚠⚠ AND THE DISCRIMINATING FIXTURE VALUE WAS ALREADY HERE, UNCONSUMED. `SeedCalculatedRun` builds a
+  // period running 1–31 January with a pay date of **5 FEBRUARY** — the ordinary "pay on the 5th for last
+  // month" arrangement, which `PayrollPeriod` allows because it refuses only `payDateUtc < start`. So the
+  // period start, the period end and the pay date are three DIFFERENT dates, and they fall in two
+  // different months.
+  //
+  // ***THAT IS THE WHOLE POINT: IF PAYROLL HANDED OVER THE PERIOD END INSTEAD OF THE PAY DATE, THE JOURNAL
+  // WOULD LAND IN JANUARY RATHER THAN FEBRUARY AND EVERY OTHER TEST IN THE TREE WOULD STAY GREEN.*** The
+  // Integration chain cannot see it either — its fixture seeds ONE fiscal period spanning the whole of
+  // 2026, and says so, so every candidate date resolves to the same period there.
+  //
+  // ⚠ THE COUNT IS ASSERTED TWICE, AND THE SECOND ONE IS WHAT MAKES IT MEAN ANYTHING. A bare `Equal(1, …)`
+  // after a single request is nearly free. Asserting it is STILL 1 after a second posting attempt is what
+  // distinguishes *"refused before it reached the ledger"* from *"posted a second journal and then said
+  // no"* — and the second is the failure the criterion's "exactly one" exists to forbid.
+  [Fact]
+  [Trait("Criterion", "AC-PAY-0019")]
+  public async Task Posting_hands_the_ledger_the_pay_date_and_asks_exactly_once()
+  {
+    host.ResetToAuthorizedState();
+    var run = SeedApprovedRun();
+    host.Ledger.PostOutcome = JournalPostingOutcome.Success(Guid.NewGuid());
+
+    // THE PREMISE. Without it the count assertion below cannot tell "asked once" from "never reset".
+    Assert.Equal(0, host.Ledger.PostCount);
+
+    var response = await host.Client.SendAsync(PayrollApiTestHost.Request(
+      HttpMethod.Post, $"/api/payroll/runs/{run.Id}/posting", host.TokenWith(AllPermissions)));
+
+    Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+    Assert.Equal(1, host.Ledger.PostCount);
+
+    var posted = host.Ledger.LastPosted!;
+
+    // ---- THE PAY DATE, NOT THE PERIOD END. February, from a January period.
+    Assert.Equal(new DateTimeOffset(2026, 2, 5, 0, 0, 0, TimeSpan.Zero), posted.EntryDateUtc);
+
+    // ---- AND *"FOR THE COMPANY"*, which is the other half GL resolves the calendar against.
+    Assert.Equal(PayrollApiTestHost.CompanyA, posted.CompanyId);
+
+    // ---- A SECOND ATTEMPT NEVER REACHES THE LEDGER.
+    var again = await host.Client.SendAsync(PayrollApiTestHost.Request(
+      HttpMethod.Post, $"/api/payroll/runs/{run.Id}/posting", host.TokenWith(AllPermissions)));
+
+    Assert.NotEqual(HttpStatusCode.NoContent, again.StatusCode);
+    Assert.Equal(1, host.Ledger.PostCount);
+  }
+
+  // ⚠ THE SIBLING OF THE TEST BELOW, AND IT WAS A 500 UNTIL T-198.
+  //
+  // `MarkReversed()` returns two errors and the handler propagates both. `RunNotReversible` had a mapper
+  // arm and `RunAlreadyReversed` did not, so the two halves of one aggregate method answered 409 and 500.
+  // Found by enumerating codes produced in Domain or Infrastructure that no mapper handles — the error is
+  // never named in the handler, so the guard that walks a handler's own source cannot see it.
+  // ---- ⚠⚠⚠ THE CORRECTION REVERSES *THE ORIGINAL'S* JOURNAL, AND THE ORIGINAL SURVIVES IT (AC-PAY-0024).
+  //
+  // *"Correcting a posted run produces a reversing journal and a second run; the original run and journal
+  // are unchanged."* The second-run clause is `PayrollChainSqlServerTests.A_reversed_period_accepts_another_
+  // run_and_a_live_one_still_does_not`. ***THE FIRST CLAUSE WAS WITNESSED BY NOTHING, AND THE TEST NAMES
+  // AROUND IT READ AS THOUGH IT WERE.***
+  //
+  // Every reversal test on this surface is NEGATIVE — already-reversed and not-posted, both 409. The two
+  // Integration sites drive the real handler and the real ledger, so a reversing journal genuinely IS
+  // created there — **and both DISCARD the `Result<Guid>` that names it.** Nothing asserted which journal
+  // was reversed.
+  //
+  // ⚠⚠ AND THE REASON NOTHING COULD: `StubJournalPoster` captured `PostAsync`'s request and not
+  // `ReverseAsync`'s. **The instrument existed for one direction of a symmetric pair and not its inverse**,
+  // so this claim was not merely untested — it was unassertable on the gated surface. The capture was two
+  // lines; the absence had been there since the stub was written.
+  //
+  // ⚠⚠⚠ `JournalEntryId` IS THE ASSERTION. Reversal date and description are echoed from the request body
+  // and a defect in them is visible to a caller. **Which journal gets reversed is chosen by the handler
+  // from server state, is invisible in the response, and reversing the WRONG journal corrects a payroll by
+  // unwinding somebody else's posting.** That is the value no observable would have carried.
+  [Fact]
+  [Trait("Criterion", "AC-PAY-0024")]
+  public async Task A_correction_reverses_the_journal_the_original_run_posted_and_leaves_it_intact()
+  {
+    host.ResetToAuthorizedState();
+    var run = SeedPostedRun();
+    var original = run.JournalEntryId;
+
+    // THE PREMISE. If the seed ever stopped recording a journal the assertions below would compare two
+    // nulls and pass, under a name promising the opposite.
+    Assert.NotNull(original);
+    Assert.Equal(0, host.Ledger.ReverseCount);
+
+    var response = await host.Client.SendAsync(PayrollApiTestHost.Request(
+      HttpMethod.Post, $"/api/payroll/runs/{run.Id}/reversals", host.TokenWith(AllPermissions),
+      """{"reversalDateUtc":"2026-02-10T00:00:00Z","description":"Correction"}"""));
+
+    // 201, not 204: a reversal CREATES a journal, and the surface says so. Posting answers 204 because it
+    // records an identity the caller already caused; this is a new ledger entry.
+    Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+    Assert.Equal(1, host.Ledger.ReverseCount);
+
+    var reversal = host.Ledger.LastReversed!;
+
+    // ***THE ORIGINAL'S JOURNAL, NOT A NEW IDENTITY AND NOT ANOTHER RUN'S.***
+    Assert.Equal(original, reversal.JournalEntryId);
+
+    // The date and description are the caller's, carried through unaltered.
+    Assert.Equal(new DateTimeOffset(2026, 2, 10, 0, 0, 0, TimeSpan.Zero), reversal.ReversalDateUtc);
+    Assert.Equal("Correction", reversal.Description);
+
+    // ---- AND THE ORIGINAL RUN IS UNCHANGED. It stays POSTED and keeps naming the same journal: a
+    // reversal is a NEW journal, never an edit of the original, which is what keeps the ledger append-only.
+    Assert.Equal(PayrollRunStatus.Posted, run.Status);
+    Assert.Equal(original, run.JournalEntryId);
+    Assert.True(run.IsReversed);
+  }
+
+  [Fact]
+  public async Task A_run_that_is_already_reversed_cannot_be_reversed_again()
+  {
+    host.ResetToAuthorizedState();
+    var run = SeedPostedRun();
+    Assert.True(run.MarkReversed().IsSuccess);
+
+    var response = await host.Client.SendAsync(PayrollApiTestHost.Request(
+      HttpMethod.Post, $"/api/payroll/runs/{run.Id}/reversals", host.TokenWith(AllPermissions),
+      """{"reversalDateUtc":"2026-02-10T00:00:00Z","description":"Correction"}"""));
+
+    Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    Assert.Equal("payroll.run_state_invalid", await PayrollApiTestHost.ProblemCodeAsync(response));
   }
 
   [Fact]

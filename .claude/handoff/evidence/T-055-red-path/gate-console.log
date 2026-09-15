@@ -1,0 +1,31 @@
+########## GATE MODE: LEAN (floor 2048 MB, ceiling: -- xUnit.MaxParallelThreads=4)
+########## GATE SCOPE: TASK -- seven suites, NO Integration, Debug only
+########## suites: Architecture Platform HR API Finance Payroll Attendance
+########## configurations: Debug
+########## Debug ##########
+--- free physical memory before Debug: 2372 MB (floor 2048 MB)
+--- catalogs present before Debug:
+=== catalogs before Debug (after reap): 0
+=== BUILD (Debug) ===
+Build succeeded.
+    0 Warning(s)
+    0 Error(s)
+=== Architecture.Tests (Debug) ===
+!!! Architecture.Tests (Debug) EXITED 1
+Failed!  - Failed:     1, Passed:   509, Skipped:     0, Total:   510, Duration: 7 s - SSAS.Architecture.Tests.dll (net8.0)
+[xUnit.net 00:00:06.60]     SSAS.Architecture.Tests.RedPathProbeTests.Planted_failure_must_reach_the_verdict_through_six_green_suites [FAIL]
+=== Platform.Tests (Debug) ===
+Passed!  - Failed:     0, Passed:  1032, Skipped:     0, Total:  1032, Duration: 5 s - SSAS.Platform.Tests.dll (net8.0)
+=== HR.Tests (Debug) ===
+Passed!  - Failed:     0, Passed:   326, Skipped:     0, Total:   326, Duration: 56 ms - SSAS.HR.Tests.dll (net8.0)
+=== API.Tests (Debug) ===
+Passed!  - Failed:     0, Passed:   724, Skipped:     0, Total:   724, Duration: 24 s - SSAS.API.Tests.dll (net8.0)
+=== Finance.Tests (Debug) ===
+Passed!  - Failed:     0, Passed:    46, Skipped:     0, Total:    46, Duration: 23 ms - SSAS.Finance.Tests.dll (net8.0)
+=== Payroll.Tests (Debug) ===
+Passed!  - Failed:     0, Passed:    56, Skipped:     0, Total:    56, Duration: 28 ms - SSAS.Payroll.Tests.dll (net8.0)
+=== Attendance.Tests (Debug) ===
+Passed!  - Failed:     0, Passed:    59, Skipped:     0, Total:    59, Duration: 22 ms - SSAS.Attendance.Tests.dll (net8.0)
+=== catalogs after Debug: 0
+[GATE RED -- TASK scope: seven suites, NO Integration, Debug only]
+[GATE COMPLETE -- TASK scope: seven suites, NO Integration, Debug only -- full logs and TRX in /c/Users/User/Documents/SSAS_ERP_V2/SSAS_gate_red/TestResults/gate]

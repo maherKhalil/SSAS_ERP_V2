@@ -39,7 +39,30 @@ public sealed class ModuleEnablementArchitectureTests
     typeof(GlModuleEnablement).Assembly,
     typeof(PayrollModuleEnablement).Assembly,
     typeof(AttendanceModuleEnablement).Assembly,
+    typeof(SSAS.HIS.API.HisModuleEnablement).Assembly
   ];
+
+  // ==================================================================================================
+  // ⚠ THE NAMED LIST ABOVE COVERS EVERY MODULE THE BUILD SHIPS (item 171).
+  // ==================================================================================================
+  //
+  // Naming the four assemblies is deliberate and the comment above says why: a scan returning nothing
+  // would pass vacuously, and naming them catches a module MOVING on the day it moves. **That reasoning
+  // is sound and this does not undo it** -- it closes the other direction, which naming cannot: a module
+  // ADDED and never appended here would drop out silently, and every assertion over the list would stay
+  // green while covering three modules out of five.
+  //
+  // "Which types count as a module" is a convention judgement, so it is not asked. "Which assemblies are
+  // modules" is a fact about the layout -- a project under `src/Modules/` -- and that is what is asked.
+  [Fact]
+  public void Every_module_api_assembly_the_build_ships_is_named_in_the_list()
+  {
+    var shipped = DeployedProductAssemblies.ModuleProjectNames(".API");
+    var named = DeployedProductAssemblies.NamesOf(ModuleApiAssemblies);
+
+    Assert.NotEmpty(shipped);
+    Assert.Empty(shipped.Except(named, StringComparer.Ordinal));
+  }
 
   private static IEnumerable<Type> DescriptorsIn(Assembly assembly) =>
     assembly.GetTypes()
@@ -78,7 +101,7 @@ public sealed class ModuleEnablementArchitectureTests
       .Select(type => ((IModuleEnablementDescriptor)Activator.CreateInstance(type)!).ModuleKey)
       .ToList();
 
-    Assert.Equal(4, keys.Count);
+    Assert.Equal(5, keys.Count);
     Assert.All(keys, key => Assert.False(string.IsNullOrWhiteSpace(key)));
     Assert.Equal(keys.Count, keys.Distinct(StringComparer.Ordinal).Count());
   }
@@ -166,10 +189,21 @@ public sealed class ModuleEnablementArchitectureTests
   [Fact]
   public void Exactly_one_entitlement_implementation_exists()
   {
+    // ⚠⚠⚠ THE HOST ASSEMBLY IS IN THIS LIST BECAUSE IT WAS MISSING AND THAT WAS THE ONE THAT MATTERED.
+    //
+    // The set is ENUMERATED, so an implementation in an assembly nobody listed is invisible — and the
+    // omitted assembly was `SSAS.Host.API`, ***which is where `AddScoped<ITenantModuleEntitlement, …>` is
+    // actually written***. A second implementation placed beside its own registration — the single most
+    // likely place to put one — passed this guard.
+    //
+    // *Measured, not argued:* planting `: ITenantModuleEntitlement` in `SSAS.Platform.API` reddened this
+    // test and named both types; planting the identical class in `SSAS.Host.API` left it **GREEN**. The
+    // guard was never vacuous — ***its population simply did not contain the place the failure would occur.***
     var assemblies = ModuleApiAssemblies
       .Append(typeof(ITenantModuleEntitlement).Assembly)
       .Append(typeof(SSAS.Platform.API.ServiceCollectionExtensions).Assembly)
       .Append(typeof(SSAS.Platform.Infrastructure.Persistence.PlatformDbContext).Assembly)
+      .Append(typeof(SSAS.Host.API.Authentication.AccessTokenIssuer).Assembly)
       .Distinct();
 
     var implementations = assemblies

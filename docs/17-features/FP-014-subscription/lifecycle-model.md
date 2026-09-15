@@ -1,4 +1,4 @@
-# FP-014 — Lifecycle model (proposed)
+# FP-014 — Lifecycle model
 
 Written from the ruling set of 2026-08-25. Reads on from
 [`domain-model.md`](domain-model.md) and [`data-model.md`](data-model.md).

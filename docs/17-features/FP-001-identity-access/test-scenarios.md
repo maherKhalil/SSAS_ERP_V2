@@ -54,3 +54,10 @@ version: 1.0
 - `TS-IAM-0046`: Domain and Application remain EF Core-free.
 - `TS-IAM-0047`: no generic repository exists.
 - `TS-IAM-0048`: Platform does not depend on HR or GL.
+
+## Concurrency (T-062)
+
+- `TS-IAM-0049`: a stale `ExpectedRowVersion` is rejected as a concurrency conflict and the unit of
+  work is never asked to save.
+- `TS-IAM-0050`: `TenantUser.RowVersion` is a concurrency token in the built model, which is the half
+  of `AC-IAM-0022` the database enforces.

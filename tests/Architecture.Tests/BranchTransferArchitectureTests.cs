@@ -1,10 +1,12 @@
 using SSAS.BuildingBlocks.Tenancy.Branches;
 using System.Reflection;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.Platform.Application.Branches;
 using SSAS.Platform.Infrastructure.Persistence;
 using SSAS.Platform.Infrastructure.Persistence.TenantErp;
+using SSAS.TestSupport.CutoverModel;
 
 namespace SSAS.Architecture.Tests;
 
@@ -22,6 +24,19 @@ public sealed class BranchTransferArchitectureTests
 
   private static readonly string TenantDbContextSource = ReadSource(
     "Persistence", "TenantErp", "TenantDbContext.cs");
+
+  // ⚠⚠⚠ THIS GUARD'S OWN FLOOR, NOT A SHARED LITERAL (T-099). It was the bare number 28, copied out of
+  // `TenantBackupSchedulerArchitectureTests` in T-266 "for consistency" — **and consistency is not a
+  // derivation.** One literal serving two walks means the next person tightening it for one guard
+  // silently retightens the other, over a population they were not looking at.
+  //
+  // 32, derived: actual 36, measured 2026-09-07. The collapse it discriminates is THE PLATFORM
+  // CONFIGURATION SCAN STOPPING PART-WAY — `ApplyConfigurationsFromAssembly` with a namespace filter that
+  // no longer matches after a move, which drops a group of entities rather than all of them.
+  //
+  // ⚠ It may equal the scheduler's floor today. **Two floors that happen to be equal are a different
+  // artefact from one floor used twice**, and only the first survives one of the two populations changing.
+  private const int PlatformEntityFloor = 32;
 
   // ---- THE TRANSFER CONTRACTS ARE MODULE-FACING; THE WRITE AUTHORIZER IS NOT (FP-006C3-pre, ADR-012).
   //
@@ -88,8 +103,24 @@ public sealed class BranchTransferArchitectureTests
       .Select(member => member.Name)
       .ToArray();
 
-    Assert.DoesNotContain(members, name => suspicious.Any(
-      candidate => name.Contains(candidate, StringComparison.OrdinalIgnoreCase)));
+    // ⚠⚠ GROUNDED (T-119). `members` is EVERY member of EVERY type in two assemblies — thousands — and this
+    // failed with *"Filter matched in collection"*, naming neither the member nor which of the five
+    // suspicious names it matched.
+    // ⚠ IT WAS INVISIBLE TO BOTH CENSUSES because the walk is bound to a local six lines above: they
+    // classify by the collection expression at the call site, which here reads only `members`.
+    var switches = members
+      .SelectMany(name => suspicious
+        .Where(candidate => name.Contains(candidate, StringComparison.OrdinalIgnoreCase))
+        .Select(candidate => $"{name} (matched `{candidate}`)"))
+      .Distinct(StringComparer.Ordinal)
+      .OrderBy(value => value, StringComparer.Ordinal)
+      .ToArray();
+
+    Assert.True(switches.Length == 0,
+      $"a general branch-change switch has appeared: {string.Join("; ", switches)}. ADR-024 decision 11 " +
+      "forbids one, because a boolean that can be turned on for convenience is the boundary's ABSENCE " +
+      "rather than its exception — the sanctioned channel requires a tracked entity precisely so that no " +
+      "flag can stand in for it.");
 
     // And no boolean anywhere on the transfer contracts, which is where such a switch would most naturally
     // be smuggled in.
@@ -257,11 +288,30 @@ public sealed class BranchTransferArchitectureTests
   [Fact]
   public void No_hr_dependency_reaches_the_transfer_infrastructure()
   {
+    // ⚠ DECLARED AND EMITTED, BECAUSE THEY FAIL ON DIFFERENT DAYS (272). The emitted reading omits a
+    // reference no type is taken from, so the transfer infrastructure could declare an HR dependency and
+    // pass here until the first use — and *the channel is general mechanism, not Employee support* is
+    // exactly the claim a merged-but-unused reference already falsifies. One control covers both
+    // assemblies, which read the same term through the same helper.
+    //
+    // ⚠ THIS COMMENT USED TO SAY *IDENTICAL PREDICATE, IDENTICAL HELPER*, AND THE FIRST HALF WAS FALSE
+    // (278). The lambda below is a COPY of the one in the ban — same text, different expression — so it
+    // cannot witness the ban's predicate changing. Deliberate: `Contains ⊇ StartsWith`, so widening this
+    // match makes the ban fire more, which is a loud false red rather than a silent pass. The silent
+    // direction needs a term that is not a real prefix, and `SSAS.HR` is one.
+    Assert.Contains(
+      DeclaredDependencies.Of("SSAS.Host.API"),
+      name => name.Contains("SSAS.HR", StringComparison.OrdinalIgnoreCase));
+
     foreach (var assembly in new[] { ApplicationAssembly, InfrastructureAssembly }.Distinct())
     {
       Assert.DoesNotContain(
         assembly.GetReferencedAssemblies(),
         reference => reference.Name?.Contains("SSAS.HR", StringComparison.OrdinalIgnoreCase) == true);
+
+      Assert.DoesNotContain(
+        DeclaredDependencies.Of(assembly),
+        name => name.Contains("SSAS.HR", StringComparison.OrdinalIgnoreCase));
     }
 
     // And nothing in the transfer types names an HR concept.
@@ -282,10 +332,37 @@ public sealed class BranchTransferArchitectureTests
       StringComparison.Ordinal);
   }
 
-  // ---- THIS SLICE INTRODUCED NO PERSISTENCE. The channel is authorization, not storage: no new entity, no
-  // new table, and no new foreign key of any kind.
+  // ---- NO ENTITY NAMED `Transfer` EXISTS IN EITHER MODEL. The channel is authorization, not storage.
+  //
+  // ⚠⚠⚠ READ THE NAME AND THE ASSERTION TOGETHER: THIS CHECKS A SPELLING, NOT A MECHANISM. It was called
+  // `The_transfer_channel_introduced_no_persistence`, which claims the absence of transfer persistence.
+  // The predicate is `ClrType.Name.Contains("Transfer")` — a substring over type names — and **this
+  // repository's convention for exactly this record is `…Assignment`**, as `EmployeeBranchAssignment`
+  // already demonstrates. So the honest statement of what this guard covers is: *a transfer record named
+  // the naive way is caught; one named the house way is not.* The name now says that, because a reader who
+  // saw the old name would have concluded the stronger thing.
+  //
+  // ⚠ THE TRIGGER THIS EXISTS TO CATCH is somebody adding transfer persistence. Whoever does that will be
+  // working in a MODULE — and until T-266 this test built `TenantDbContext` directly, with no contributors,
+  // so the tenant walk saw TWO entity types and could not see module models at all. ***The guard was aimed
+  // at a change it was structurally incapable of detecting.*** It now reads the composed model, the same
+  // one the cutover manifest derives from, so a module's entities are in the population.
+  //
+  // FLOORED PER MODEL RATHER THAN OVER THE UNION (T-265): the platform walk and the composed tenant walk
+  // fail on different days, and a floor over both together cannot see one of them collapse. There is no
+  // PROPERTY floor because the predicate never descends to properties — a floor there would bind nothing.
+  //
+  // ⚠ REACH PROBE RUN, AND IT IS THE EVIDENCE THAT THE WIDENING DID SOMETHING (T-266). Swapping the tenant
+  // clause's needle from `Transfer` to `Assignment` — a term satisfied only by a MODULE entity — turned this
+  // RED. Under the old two-entity walk the same swap would have stayed GREEN. That is the difference
+  // between a guard that inspects the module models and one that only appears to.
+  //
+  // The tenant floor is set to DISCRIMINATE THE FAILURE THAT ACTUALLY HAPPENED HERE, not to track a count:
+  // a contributor-free source yields TWO entity types (asserted directly by `C6_14` in the cutover manifest
+  // tests), the composed one yields thirty-six, and 30 separates them with room for a module to be removed
+  // without a false red. If this floor ever fires, the composition regressed — not the ban.
   [Fact]
-  public void The_transfer_channel_introduced_no_persistence()
+  public void No_entity_named_transfer_exists_in_either_model()
   {
     var options = new DbContextOptionsBuilder<PlatformDbContext>()
       .UseSqlServer("Server=model-only;Database=model-only;Integrated Security=True")
@@ -294,20 +371,32 @@ public sealed class BranchTransferArchitectureTests
     using var platform = new PlatformDbContext(
       options, new ModelUser(), new ModelTenant(), new ModelClock());
 
-    Assert.DoesNotContain(
-      platform.Model.GetEntityTypes(),
-      entity => entity.ClrType.Name.Contains("Transfer", StringComparison.OrdinalIgnoreCase));
+    AssertNoTransferEntity(
+      ModelWalk.FlooredEntities(platform.Model.GetEntityTypes(), "PlatformModel", PlatformEntityFloor), "PlatformModel");
 
-    var tenantOptions = new DbContextOptionsBuilder<TenantDbContext>()
-      .UseSqlServer("Server=model-only;Database=model-only;Integrated Security=True")
-      .Options;
+    AssertNoTransferEntity(
+      ModelWalk.FlooredEntities(
+        CutoverTenantModel.Source.Model.GetEntityTypes(), "ComposedTenantModel", 30),
+      "ComposedTenantModel");
+  }
 
-    using var tenant = new TenantDbContext(
-      tenantOptions, new ModelUser(), new ModelTenant(), new ModelClock());
+  // ⚠ THE MODEL IS NAMED BECAUSE THIS RUNS TWICE (T-089). As two `DoesNotContain(collection, predicate)`
+  // calls, a failure said "Filter matched in collection" over a 36-entity walk and did not say WHICH entity
+  // matched or WHICH of the two models it came from — and the two models are the whole point of the test.
+  private static void AssertNoTransferEntity(IEnumerable<IEntityType> entities, string model)
+  {
+    var offenders = entities
+      .Where(entity => entity.ClrType.Name.Contains("Transfer", StringComparison.OrdinalIgnoreCase))
+      .Select(entity => entity.ClrType.Name)
+      .OrderBy(name => name, StringComparer.Ordinal)
+      .ToArray();
 
-    Assert.DoesNotContain(
-      tenant.Model.GetEntityTypes(),
-      entity => entity.ClrType.Name.Contains("Transfer", StringComparison.OrdinalIgnoreCase));
+    Assert.True(offenders.Length == 0,
+      $"the {model} contains an entity named for a transfer: {string.Join(", ", offenders)}. The transfer " +
+      "channel is authorization, not storage. If this is genuinely new transfer persistence, note that " +
+      "this guard matches the NAIVE spelling only — the house convention for such a record is " +
+      "`…Assignment`, as `EmployeeBranchAssignment` shows — so the guard that caught you is narrower than " +
+      "the rule you have crossed.");
   }
 
   private static string ReadSource(params string[] segments)
@@ -336,7 +425,6 @@ public sealed class BranchTransferArchitectureTests
 
     public string? Email => null;
 
-    public Guid? CompanyId => null;
 
     public string? SessionId => null;
 

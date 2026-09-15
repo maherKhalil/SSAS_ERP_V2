@@ -50,9 +50,30 @@ public sealed class ModuleTenantContractArchitectureTests
   [Fact]
   public void The_tenancy_project_does_not_depend_on_entity_framework()
   {
+    // ⚠ DECLARED AND EMITTED, BECAUSE THEY FAIL ON DIFFERENT DAYS (272). The emitted reading omits a
+    // reference no type is taken from, so this project could DECLARE EF and pass until the first use — and
+    // *an Application-layer module can reference it without pulling EF Core in* is a claim about what
+    // consumers inherit, which is decided by the declaration rather than by current usage.
+    //
+    // ⚠⚠ FOUR EXERCISES FOR FOUR BRANCHES. The second ban is a disjunction over `SSAS.Platform`, `SSAS.HR`
+    // and `SSAS.GL`; one control would prove only that one of the three can fire and leave two prefixes
+    // untested. All four witnesses are the composition root or the EF host, both of which legitimately
+    // declare what they are asked about.
+    var host = DeclaredDependencies.Of("SSAS.Host.API");
+    var declared = DeclaredDependencies.Of(TenancyAssembly);
+
+    Assert.Contains(
+      DeclaredDependencies.Of("SSAS.BuildingBlocks.Infrastructure"),
+      name => name.StartsWith("Microsoft.EntityFrameworkCore", StringComparison.Ordinal));
+    Assert.Contains(host, name => name.StartsWith("SSAS.Platform", StringComparison.Ordinal));
+    Assert.Contains(host, name => name.StartsWith("SSAS.HR", StringComparison.Ordinal));
+    Assert.Contains(host, name => name.StartsWith("SSAS.GL", StringComparison.Ordinal));
+
     Assert.DoesNotContain(
       TenancyAssembly.GetReferencedAssemblies(),
       reference => reference.Name?.StartsWith("Microsoft.EntityFrameworkCore", StringComparison.Ordinal) == true);
+    Assert.DoesNotContain(
+      declared, name => name.StartsWith("Microsoft.EntityFrameworkCore", StringComparison.Ordinal));
 
     // Nor on any module, in either direction. A contract project that referenced Platform would put every
     // consumer back where it started.
@@ -61,6 +82,11 @@ public sealed class ModuleTenantContractArchitectureTests
       reference => reference.Name?.StartsWith("SSAS.Platform", StringComparison.Ordinal) == true ||
         reference.Name?.StartsWith("SSAS.HR", StringComparison.Ordinal) == true ||
         reference.Name?.StartsWith("SSAS.GL", StringComparison.Ordinal) == true);
+    Assert.DoesNotContain(
+      declared,
+      name => name.StartsWith("SSAS.Platform", StringComparison.Ordinal) ||
+        name.StartsWith("SSAS.HR", StringComparison.Ordinal) ||
+        name.StartsWith("SSAS.GL", StringComparison.Ordinal));
   }
 
   // ---- BOTH SIDES REFERENCE THE CONTRACTS, AND NEITHER REFERENCES THE OTHER.
@@ -76,10 +102,28 @@ public sealed class ModuleTenantContractArchitectureTests
     Assert.Contains("SSAS.BuildingBlocks.Tenancy", projects["SSAS.HR.Application"]);
     Assert.Contains("SSAS.BuildingBlocks.Tenancy", projects["SSAS.HR.Infrastructure"]);
 
+    // ⚠⚠⚠ THE MODULE SET IS DERIVED, AND IT USED TO BE TWO NAMES.
+    //
+    // This loop filtered on `SSAS.HR.` and `SSAS.GL.` — the modules that existed when it was written.
+    // **Payroll and Attendance shipped afterwards and were never added, so a test whose NAME claims
+    // "modules consume without referencing one another" asserted it over half the modules.**
+    //
+    // ***ADDING THE TWO NAMES WOULD HAVE BEEN THE SAME DEFECT ONE COMMIT LATER***, leaving a fifth module to
+    // be forgotten by the mechanism that forgot these two. **The prefixes come from the folders under
+    // `src/Modules` instead, so a module is covered the day its project exists** — the same derivation
+    // `PersistenceArchitectureTests.Every_domain_and_application_project_is_actually_examined` uses against
+    // the same failure.
+    var modulePrefixes = ModulePrefixes();
+
+    // The anti-vacuity control. An empty or short set makes both bans below hold over nothing, and the test
+    // passes loudest exactly then. Four modules today: HR, GL, Payroll, Attendance.
+    Assert.True(modulePrefixes.Length >= 4,
+      $"only {modulePrefixes.Length} module prefixes were derived from src/Modules — the derivation has " +
+      "stopped matching and the isolation bans below cover nothing: " + string.Join(", ", modulePrefixes));
+
     foreach (var (project, references) in projects)
     {
-      if (project.StartsWith("SSAS.HR.", StringComparison.Ordinal) ||
-        project.StartsWith("SSAS.GL.", StringComparison.Ordinal))
+      if (modulePrefixes.Any(prefix => project.StartsWith(prefix, StringComparison.Ordinal)))
       {
         Assert.DoesNotContain(
           references,
@@ -90,11 +134,27 @@ public sealed class ModuleTenantContractArchitectureTests
       {
         Assert.DoesNotContain(
           references,
-          reference => reference.StartsWith("SSAS.HR.", StringComparison.Ordinal) ||
-            reference.StartsWith("SSAS.GL.", StringComparison.Ordinal));
+          reference => modulePrefixes.Any(prefix => reference.StartsWith(prefix, StringComparison.Ordinal)));
       }
     }
   }
+
+  // ---- THE MODULE PREFIXES, FROM DISK RATHER THAN FROM A LIST.
+  //
+  // `src/Modules/Finance` ships `SSAS.GL.*`, so the FOLDER name is not the prefix — the prefix is taken from
+  // the project names the folder actually contains, cut at the second dot. That is why this reads projects
+  // rather than directories.
+  private static string[] ModulePrefixes() =>
+    [.. Directory
+      .EnumerateFiles(Path.Combine(RepositoryRoot(), "src", "Modules"), "*.csproj", SearchOption.AllDirectories)
+      .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
+        && !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+      .Select(RepositoryPaths.ProjectNameFromFile)
+      .Select(name => name.Split('.'))
+      .Where(segments => segments.Length >= 2)
+      .Select(segments => $"{segments[0]}.{segments[1]}.")
+      .Distinct(StringComparer.Ordinal)
+      .OrderBy(prefix => prefix, StringComparer.Ordinal)];
 
   // ---- A MODULE MAPS ITS OWN ENTITIES THROUGH A CONTRACT NEITHER SIDE OWNS.
   //
@@ -176,6 +236,9 @@ public sealed class ModuleTenantContractArchitectureTests
         // The company scope of the acting user, needed so a module can constrain a company-owned read or
         // write to the companies that user may reach (FP-006C4). Platform owns the answer; HR must ask it.
         nameof(CompanyAccessSummary),
+        // T-090's standing answer. A three-valued enum rather than a bool, so `default` is the CLOSED
+        // answer and no caller has to decide what "I could not find that employee" means.
+        nameof(EmploymentStanding),
         nameof(IBranchTransferAuthorizer),
         nameof(IBranchTransferScope),
         // The trusted execution branch, needed so a module can record which branch an operation happened in
@@ -184,6 +247,16 @@ public sealed class ModuleTenantContractArchitectureTests
         // The acting tenant user, needed so a module can name WHO is asking when resolving scope. It carries
         // no roles, permissions, session or claims: what they may DO stays with the permission pipeline.
         nameof(ICurrentTenantUser),
+        // ---- ADDED BY T-090, AND THE FIRST ON THIS SEAM POINTING PLATFORM -> MODULE.
+        //
+        // `IUserEmployeeResolver` answers which employee a tenant user is, from the PLATFORM database.
+        // Whether that employment has ended lives on `Employee` in the TENANT database and `ADR-030`
+        // Decision 4 forbids the foreign key that would let the seam read it — so it has to ask, and HR is
+        // the authority. A status copy on the Platform side would be a second source of truth.
+        //
+        // It cannot live in `SSAS.HR.Contracts`: no Platform project references any module, and keeping
+        // that true is exactly what `ADR-012` is for. Same edge as its neighbour, opposite direction.
+        nameof(IEmploymentStandingDirectory),
         // A module's own permission definitions, offered to the one composed catalog. Platform composes and
         // validates; the module owns the names. Without it a module's permissions cannot be granted to any
         // role, which is the FP-006 release blocker this contract closes (ADR-012 r1.2).
@@ -204,6 +277,26 @@ public sealed class ModuleTenantContractArchitectureTests
         // ADR-level change `DEC-POS-0015` reserved for a multi-currency requirement).
         nameof(ITenantCompanyCurrencyLookup),
         nameof(ITenantUnitOfWork),
+        // ---- ADDED BY T-091. THE SECOND OF TWO GUARDS ON A TERMINATED EMPLOYEE.
+        //
+        // HR terminates an employee and Platform owns the account, so HR has to ask. Called synchronously
+        // from the handler rather than raised as an event: the domain-event road has no outbox, so a
+        // failing consumer would leave a terminated employee with a live account and an operator who
+        // reasonably believes nothing happened.
+        //
+        // Points module -> Platform, like `IUserEmployeeResolver` and unlike `IEmploymentStandingDirectory`.
+        nameof(ITenantUserDeactivator),
+        // ADR-030's identity-to-employee mapping, needed so a module can answer "is the acting user this
+        // employee" (T-084). It sits beside ICurrentTenantUser because it is the same seam and the second
+        // half of the same question: a module asks WHO is acting, then WHICH employee that is.
+        //
+        // Deliberately NOT in SSAS.Platform.Contracts. That project exists, is empty, and no module
+        // references it — adopting it would open the first module-to-Platform project reference in the
+        // product, which is a structural precedent rather than a defect fix.
+        //
+        // Its surface is one method taking the tenant user EXPLICITLY. Not an identity service: a contract
+        // that read its subject from ambient state could not be asked about anyone else and would grow.
+        nameof(IUserEmployeeResolver),
         // The data half of the permission contribution: a name and the description a tenant administrator
         // reads. Deliberately carries NO scope -- the composer stamps Tenant, so a module cannot mint
         // cross-tenant PlatformSupport authority (ADR-012 r1.2).

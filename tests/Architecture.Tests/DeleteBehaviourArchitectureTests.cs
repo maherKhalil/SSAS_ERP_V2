@@ -85,6 +85,9 @@ public sealed class DeleteBehaviourArchitectureTests(ITestOutputHelper output)
   // `SubscriptionPlan` and every other cross-aggregate reference still refuses to cascade, which is the
   // thing the loop was written for and the reason it cannot simply be deleted.
   [Fact]
+  // ⚠ CITED BY ITEM 220: `AC-EMP-0017` bans a CASCADE for Employee and `EmployeeBranchAssignment`. This asserts Restrict for
+  // every reference foreign key in the model, a SUPERSET, with its own Assert.NotEmpty control (item 220).
+  [Trait("Criterion", "AC-EMP-0017")]
   public void Every_reference_foreign_key_still_restricts()
   {
     using var context = PlatformContext();
@@ -141,8 +144,15 @@ public sealed class DeleteBehaviourArchitectureTests(ITestOutputHelper output)
   // — three `OwnsMany` on `SubscriptionPlan` plus `TenantSubscription.Term`, which shares its owner's
   // table and so has no schema foreign key at all. If ownership ever stops being reported, test 1 fails
   // rather than passing vacuously.
+  // ⚠ THE NAME CARRIES THE COUPLING BECAUSE THE NAME IS WHAT A DELETER READS (T-267).
+  // 
+  // // This reads as a test of which relationships are owned, and it is that. It is ALSO the only thing
+  // // keeping `Ownership_foreign_keys_keep_the_conventional_cascade` from passing over an empty list.
+  // // Delete it as a redundant inventory and that guard becomes unfalsifiable in the same commit, with
+  // // nothing in the runner output to say so.
+  // 
   [Fact]
-  public void The_owned_relationships_the_guard_covers_are_the_ones_the_model_declares()
+  public void The_four_owned_relationships_are_named_here_so_the_cascade_guard_above_cannot_read_an_empty_set()
   {
     using var context = PlatformContext();
 
@@ -166,7 +176,6 @@ public sealed class DeleteBehaviourArchitectureTests(ITestOutputHelper output)
     public string? UserId => "architecture-tests";
     public string? UserName => null;
     public string? Email => null;
-    public Guid? CompanyId => null;
     public string? SessionId => null;
     public string? TokenId => null;
     public IReadOnlyCollection<string> Roles => [];

@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.RegularExpressions;
 using System.IdentityModel.Tokens.Jwt;
 using System.Net;
 using System.Security.Claims;
@@ -41,72 +42,212 @@ public sealed class PlatformSupportAuthorityAuthorizationTests : IAsyncLifetime
   private WebApplication? application;
   private HttpClient? client;
 
-  public static TheoryData<string, string> AuthorityRoutes() => new()
+  // ---- THE ROUTES ARE DERIVED FROM THIS HOST, NOT LISTED (243 step 2).
+  //
+  // ⚠⚠⚠ THIS CHANGED NOTHING TODAY, AND THAT IS THE POINT RATHER THAN AN OBJECTION TO IT. Step 1
+  // compared the nine hand-written pairs against the derived set and they were IDENTICAL, 9 for 9, in
+  // both directions. So this substitution adds no coverage now and could read as churn.
+  //
+  // THE VALUE IS ENTIRELY IN THE TENTH ROUTE. Before this, a new authority route was caught by
+  // `PlatformSupportAuthorityRouteInventoryTests` -- which is about the ROUTE LIST -- and was SILENTLY
+  // EXEMPT from all four guards below, which are about WHO MAY CALL IT. The cheap test saw it and the
+  // expensive one did not.
+  //
+  // ⚠ AND THE ROUTES COME FROM THIS TEST'S OWN APPLICATION, not from the shared host factory. This class
+  // builds a deliberately minimal host -- application handlers are unregistered so anything reaching one
+  // would surface as a DI failure rather than a pass -- and it maps the same surface through
+  // `MapPlatformSupportAuthorityEndpoints`. Deriving from the host the requests are actually sent to is
+  // stricter than borrowing another one's endpoint source.
+  //
+  // ⚠⚠ THE NORMALISATION IS PART OF THE MEASUREMENT. The endpoint source yields TEMPLATES
+  // (`{principalId}`); a request needs a concrete path. Substituting `1` on a segment boundary is a
+  // CHOICE, stated here so a later reader disagrees with the choice rather than with the result.
+  private (string Method, string Path)[] AuthorityRoutes()
   {
-    { "POST", Prefix },
-    { "GET", Prefix },
-    { "GET", $"{Prefix}/1" },
-    { "GET", $"{Prefix}/1/assignments" },
-    { "GET", $"{Prefix}/1/permissions" },
-    { "POST", $"{Prefix}/1/grant" },
-    { "POST", $"{Prefix}/1/revoke" },
-    { "POST", $"{Prefix}/1/disable" },
-    { "POST", $"{Prefix}/1/reenable" }
-  };
+    var derived = PlatformRouteInventory.Under(Application.Services, Prefix)
+      .Select(route => (
+        Method: PlatformRouteInventory.FirstMethodOf(route),
+        Path: Regex.Replace(route.RoutePattern.RawText!, @"\{[^}]+\}", "1")))
+      .OrderBy(route => route.Path, StringComparer.Ordinal)
+      .ThenBy(route => route.Method, StringComparer.Ordinal)
+      .ToArray();
 
-  [Theory]
-  [MemberData(nameof(AuthorityRoutes))]
-  public async Task Every_authority_route_rejects_an_anonymous_request(string method, string path)
-  {
-    using var request = Request(method, path);
+    // ---- ⚠⚠⚠ THE FLOOR, AND IT IS THE WHOLE REASON A DERIVED POPULATION IS SAFE HERE.
+    //
+    // A derivation that returned NOTHING would turn all four of these into vacuous passes -- FOUR
+    // SECURITY GUARDS ASSERTING NOTHING, which is strictly worse than the hand-written list this
+    // replaced. NINE is the number step 1 measured; it is a floor and not an expectation, so ordinary
+    // growth does not touch it.
+    Assert.True(
+      derived.Length >= 9,
+      $"the authority route derivation found {derived.Length} route(s); it must find at least 9. " +
+      "These four guards assert nothing over an empty set.");
 
-    var response = await Client.SendAsync(request);
-
-    Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    return derived;
   }
 
-  [Theory]
-  [MemberData(nameof(AuthorityRoutes))]
-  public async Task Every_authority_route_rejects_a_tenant_plane_token_carrying_the_administer_name(string method, string path)
+  private WebApplication Application =>
+    application ?? throw new InvalidOperationException("the host has not been initialised");
+
+  // ⚠⚠⚠ ALL FOUR TESTS IN THIS FILE ASSERT A REFUSAL, AND THE POSITIVE THAT MAKES THEM MEAN ANYTHING IS IN
+  // A DIFFERENT FILE.
+  //
+  // Anonymous · tenant-plane token carrying the name · platform token without `Administer` · mixed-plane
+  // token. **A PIPELINE THAT REFUSED EVERY REQUEST SATISFIES ALL FOUR.** What separates *the gate
+  // discriminates* from *the gate is shut* is `PlatformAuthorizationPipelineTests.Valid_platform_token_
+  // with_the_required_permission_is_authorized`, which carries `AC-IAM-0003`'s permit half.
+  //
+  // **The dependency runs both ways and neither file stated it**: without these four, a pipeline that
+  // ALLOWED everything would satisfy that one. Written here rather than there because this file grows a
+  // row whenever an authority route is added, so this is the side a future editor is standing on.
+  //
+  // ⚠ Same discipline as the seven-guard class, arriving from the other side: there a suite of refusals
+  // could not prove a guard STOPS firing; here the proof existed one file away and was unnamed.
+  [Fact]
+  public async Task Every_authority_route_rejects_an_anonymous_request()
   {
+    var unprotected = new List<string>();
+
+    foreach (var (method, path) in AuthorityRoutes())
+    {
+      using var request = Request(method, path);
+
+      var response = await Client.SendAsync(request);
+
+      if (response.StatusCode != HttpStatusCode.Unauthorized)
+      {
+        unprotected.Add($"{method} {path} -> {response.StatusCode}");
+      }
+    }
+
+    // ---- EVERY OFFENDER, NOT THE FIRST. An assertion inside the loop stops at route one, and
+    // the day this fires it will be because SEVERAL routes were added unprotected -- *which*
+    // routes is the whole question. The theory form named them all; this restores that.
+    Assert.True(
+      unprotected.Count == 0,
+      $"{unprotected.Count} authority route(s) did not refuse an anonymous request: " +
+      string.Join("; ", unprotected));
+  }
+
+  [Fact]
+  [Trait("Criterion", "AC-TEN-0087")]
+  // `AC-TEN-0087`'s TENANT-TOKEN DENIAL — *"Listing/getting platform-support principals and their
+  // assignments requires `Platform.Support.Administer`; … a TENANT TOKEN [is] denied."*
+  //
+  // ⚠ THE FIXTURE IS WHAT MAKES THIS DISCRIMINATING: the tenant token CARRIES THE ADMINISTER NAME. A tenant
+  // token without it would be refused for lacking the permission text, proving nothing about planes —
+  // **this one is refused despite having the exact permission string, so the refusal can only be the plane.**
+  // Same construction as the reason-parameter matcher control: give the fixture the thing that would let a
+  // wrong implementation pass.
+  public async Task Every_authority_route_rejects_a_tenant_plane_token_carrying_the_administer_name()
+  {
+    var unprotected = new List<string>();
+
+    foreach (var (method, path) in AuthorityRoutes())
+    {
     // A valid tenant token that (illegally) carries the platform permission name still lacks
     // security_plane=platform, so the platform handler must refuse it. Tenant authority cannot reach
     // platform authority administration.
-    using var request = Request(method, path);
-    request.Headers.Authorization = new("Bearer", SignToken(TenantClaims(PlatformPermissionNames.AdministerPlatformSupport)));
+      using var request = Request(method, path);
+      request.Headers.Authorization = new("Bearer", SignToken(TenantClaims(PlatformPermissionNames.AdministerPlatformSupport)));
 
-    var response = await Client.SendAsync(request);
+      var response = await Client.SendAsync(request);
 
-    Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+      if (response.StatusCode != HttpStatusCode.Forbidden)
+      {
+        unprotected.Add($"{method} {path} -> {response.StatusCode}");
+      }
+    }
+
+    // ---- EVERY OFFENDER, NOT THE FIRST. An assertion inside the loop stops at route one, and
+    // the day this fires it will be because SEVERAL routes were added unprotected -- *which*
+    // routes is the whole question. The theory form named them all; this restores that.
+    Assert.True(
+      unprotected.Count == 0,
+      $"{unprotected.Count} authority route(s) did not refuse a tenant-plane token: " +
+      string.Join("; ", unprotected));
   }
 
-  [Theory]
-  [MemberData(nameof(AuthorityRoutes))]
-  public async Task Every_authority_route_rejects_a_platform_token_without_administer(string method, string path)
+  [Fact]
+  [Trait("Criterion", "AC-TEN-0087")]
+  [Trait("Criterion", "AC-TEN-0045")]
+  // `AC-TEN-0045` — *"`Platform.Tenants.Manage` and `Platform.Tenants.Lifecycle` cannot REGISTER, GRANT,
+  // REVOKE, DISABLE, or RE-ENABLE platform-support authority; ONLY `Platform.Support.Administer` (or genesis
+  // bootstrap) can."* This sweep runs EVERY authority route against a platform token lacking `Administer` —
+  // **and the five verbs the criterion names are exactly those routes**, so the route inventory is what
+  // makes the enumeration complete rather than sampled.
+  //
+  // ⚠ THE *OR GENESIS BOOTSTRAP* CLAUSE IS NOT HERE and belongs to the bootstrap service, which reaches the
+  // principal repository directly and never traverses a route. **A criterion naming an exception needs the
+  // exception exercised somewhere, or the sweep reads as forbidding what the criterion permits.**
+  //
+  // `AC-TEN-0087`'s NON-ADMINISTER DENIAL — the other half of *"a non-`Administer` platform token and a
+  // tenant token are BOTH denied"*. **A criterion naming two callers is a set, and each member needs its own
+  // route sweep**; the tenant-token half is the test above, same trait.
+  public async Task Every_authority_route_rejects_a_platform_token_without_administer()
   {
+    var unprotected = new List<string>();
+
+    foreach (var (method, path) in AuthorityRoutes())
+    {
     // Valid platform plane, but only a non-administrative PlatformSupport permission: authenticated yet
     // unauthorized. Reads are gated by Administer too (DEC-TEN-0025), so this must fail on GET as well.
-    using var request = Request(method, path);
-    request.Headers.Authorization = new("Bearer", SignToken(PlatformClaims(PlatformPermissionNames.ViewTenants)));
+      using var request = Request(method, path);
+      request.Headers.Authorization = new("Bearer", SignToken(PlatformClaims(PlatformPermissionNames.ViewTenants)));
 
-    var response = await Client.SendAsync(request);
+      var response = await Client.SendAsync(request);
 
-    Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+      if (response.StatusCode != HttpStatusCode.Forbidden)
+      {
+        unprotected.Add($"{method} {path} -> {response.StatusCode}");
+      }
+    }
+
+    // ---- EVERY OFFENDER, NOT THE FIRST. An assertion inside the loop stops at route one, and
+    // the day this fires it will be because SEVERAL routes were added unprotected -- *which*
+    // routes is the whole question. The theory form named them all; this restores that.
+    Assert.True(
+      unprotected.Count == 0,
+      $"{unprotected.Count} authority route(s) did not refuse a platform token without Administer: " +
+      string.Join("; ", unprotected));
   }
 
-  [Theory]
-  [MemberData(nameof(AuthorityRoutes))]
-  public async Task Every_authority_route_rejects_a_mixed_plane_token(string method, string path)
+  [Fact]
+  [Trait("Criterion", "AC-TEN-0059")]
+  // `AC-TEN-0059` at the ROUTE layer — the pipeline test proves the validator fails a mixed-plane token; this
+  // proves EVERY authority route is behind that validator. **Neither subsumes the other: a route mapped
+  // outside the authentication scheme would pass the pipeline test and fail this one.**
+  //
+  // ⚠ AND THE LOOP COLLECTS EVERY OFFENDER RATHER THAN ASSERTING INSIDE IT — worth keeping, because an
+  // assertion in the loop body stops at route one and reports a single failure where there may be six. **A
+  // sweep that fails fast tells you a route is unprotected; this one tells you WHICH routes are.**
+  public async Task Every_authority_route_rejects_a_mixed_plane_token()
   {
+    var unprotected = new List<string>();
+
+    foreach (var (method, path) in AuthorityRoutes())
+    {
     // security_plane=platform plus a forbidden tenant_id: StrictAccessTokenValidator fails the token itself.
-    using var request = Request(method, path);
-    var claims = PlatformClaims(PlatformPermissionNames.AdministerPlatformSupport);
-    claims.Add(new Claim(JwtClaimTypes.TenantId, Guid.NewGuid().ToString("D")));
-    request.Headers.Authorization = new("Bearer", SignToken(claims));
+      using var request = Request(method, path);
+      var claims = PlatformClaims(PlatformPermissionNames.AdministerPlatformSupport);
+      claims.Add(new Claim(JwtClaimTypes.TenantId, Guid.NewGuid().ToString("D")));
+      request.Headers.Authorization = new("Bearer", SignToken(claims));
 
-    var response = await Client.SendAsync(request);
+      var response = await Client.SendAsync(request);
 
-    Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+      if (response.StatusCode != HttpStatusCode.Unauthorized)
+      {
+        unprotected.Add($"{method} {path} -> {response.StatusCode}");
+      }
+    }
+
+    // ---- EVERY OFFENDER, NOT THE FIRST. An assertion inside the loop stops at route one, and
+    // the day this fires it will be because SEVERAL routes were added unprotected -- *which*
+    // routes is the whole question. The theory form named them all; this restores that.
+    Assert.True(
+      unprotected.Count == 0,
+      $"{unprotected.Count} authority route(s) did not refuse a mixed-plane token: " +
+      string.Join("; ", unprotected));
   }
 
   public async Task InitializeAsync()
@@ -174,17 +315,17 @@ public sealed class PlatformSupportAuthorityAuthorizationTests : IAsyncLifetime
   private static List<Claim> PlatformClaims(string permission)
   {
     var claims = BaseClaims().ToList();
-    claims.Add(new Claim(JwtClaimTypes.SecurityPlane, SecurityPlane.Platform));
-    claims.Add(new Claim(JwtClaimTypes.Permission, permission));
+      claims.Add(new Claim(JwtClaimTypes.SecurityPlane, SecurityPlane.Platform));
+      claims.Add(new Claim(JwtClaimTypes.Permission, permission));
     return claims;
   }
 
   private static List<Claim> TenantClaims(string permission)
   {
     var claims = BaseClaims().ToList();
-    claims.Add(new Claim(JwtClaimTypes.TenantId, Guid.NewGuid().ToString("D")));
-    claims.Add(new Claim(JwtClaimTypes.TenantUserId, "22"));
-    claims.Add(new Claim(JwtClaimTypes.Permission, permission));
+      claims.Add(new Claim(JwtClaimTypes.TenantId, Guid.NewGuid().ToString("D")));
+      claims.Add(new Claim(JwtClaimTypes.TenantUserId, "22"));
+      claims.Add(new Claim(JwtClaimTypes.Permission, permission));
     return claims;
   }
 

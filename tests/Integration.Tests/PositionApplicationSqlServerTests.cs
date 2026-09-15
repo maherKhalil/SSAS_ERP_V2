@@ -19,6 +19,11 @@ public sealed class PositionApplicationSqlServerTests
   // ================================================================================================
   [Fact]
   [Trait("Requirement", "FR-POS-0201")]
+  // ⚠ CITED BY 269: `AC-POS-0001` — *creating a position with a code and a title produces an `Active`
+  // position whose `TenantId` and `CompanyId` match the caller's trusted context.* All three clauses are
+  // here, and the TENANT one is the load-bearing part: the tenant was never in the command, so the row
+  // count filtered by `TenantId` proves the BOUNDARY stamped it rather than the caller supplying it.
+  [Trait("Criterion", "AC-POS-0001")]
   public async Task A_created_position_is_active_and_carries_the_stamped_ownership()
   {
     await using var fixture = await PositionAppFixture.CreateAsync();
@@ -46,6 +51,14 @@ public sealed class PositionApplicationSqlServerTests
   // ---- A SECOND POSITION WHOSE CODE NORMALIZES ALIKE IS REFUSED (BRULE-POS-0004).
   [Fact]
   [Trait("Rule", "BRULE-POS-0004")]
+  // ⚠ CITED BY 269 ON THE SET: `AC-POS-0003` has three clauses across three layers and this is the
+  // APPLICATION one — a normalized duplicate is refused. The `409` is
+  // `PositionEndpointTests`' conflict assertion, and *the refusal comes from the UNIQUE INDEX UNDER
+  // CONCURRENT CREATION, not only from a prior read* is
+  // `PositionSchemaSqlServerTests.Two_concurrent_inserts_of_one_code_leave_exactly_one_row`. This test
+  // alone cannot distinguish an index refusal from a pre-read refusal — which is the exact distinction
+  // the criterion was written to demand.
+  [Trait("Criterion", "AC-POS-0003")]
   public async Task A_duplicate_normalized_position_code_is_refused_within_the_company()
   {
     await using var fixture = await PositionAppFixture.CreateAsync();
@@ -61,6 +74,10 @@ public sealed class PositionApplicationSqlServerTests
   // ---- THE SAME CODE IN ANOTHER COMPANY IS NOT A CONFLICT. Uniqueness is per company, not per tenant.
   [Fact]
   [Trait("Rule", "BRULE-POS-0004")]
+  // ⚠ CITED BY 269: `AC-POS-0004`. Paired with the schema-level
+  // `The_same_position_code_is_free_in_a_second_company`, which proves the INDEX permits it rather than the
+  // handler declining to look — the two are different claims and the index is the one that binds.
+  [Trait("Criterion", "AC-POS-0004")]
   public async Task The_same_position_code_is_free_in_another_company()
   {
     await using var fixture = await PositionAppFixture.CreateAsync();
@@ -93,6 +110,21 @@ public sealed class PositionApplicationSqlServerTests
   // ================================================================================================
   [Fact]
   [Trait("Rule", "BRULE-POS-0009")]
+  // ⚠ CITED BY 269: `AC-POS-0015` — *a position may reference a grade in the same company, AND READS BACK
+  // WITH IT.* The read-back half matters: a create that accepted the reference and dropped it would satisfy
+  // the first clause alone. This is also the POSITIVE control for `AC-POS-0011` and `AC-POS-0016` next
+  // door — without a case where a grade reference SUCCEEDS, those refusals are consistent with a handler
+  // that refuses every grade.
+  // ⚠ ALSO CITED BY 269: `AC-POS-0012` — *a grade is created with a code, a name and a `RankOrder`, and
+  // READS BACK WITH ALL THREE.* Line 122 creates `("G7", "Grade 7", 70)` and the three assertions below
+  // read all three back after a real round trip. `TS-POS-0014` is that scenario.
+  //
+  // ⚠⚠ The read-back is through the POSITION's nested grade block rather than a direct `GetJobGrade`, which
+  // is if anything the stronger reading: the criterion's *reads back* is satisfied by the projection a
+  // caller actually receives, and a grade whose fields survived creation but were dropped by the read model
+  // would fail here and pass a direct-fetch test.
+  [Trait("Criterion", "AC-POS-0012")]
+  [Trait("Criterion", "AC-POS-0015")]
   public async Task A_position_may_reference_an_active_grade_in_its_own_company()
   {
     await using var fixture = await PositionAppFixture.CreateAsync();
@@ -133,6 +165,11 @@ public sealed class PositionApplicationSqlServerTests
   // distinction the previous test cannot make.
   [Fact]
   [Trait("Rule", "BRULE-POS-0011")]
+  // ⚠ CITED BY 269: `AC-POS-0011` — *a position may not reference a grade belonging to another company.*
+  // The comment above is the reason this and not its neighbour: the grade GENUINELY EXISTS, so the refusal
+  // is attributable to the company check rather than to a lookup miss. `A_grade_that_does_not_exist_is_
+  // refused_as_an_invalid_reference` cannot make that distinction and is not cited here.
+  [Trait("Criterion", "AC-POS-0011")]
   public async Task A_grade_from_another_company_is_refused()
   {
     await using var fixture = await PositionAppFixture.CreateAsync();
@@ -148,6 +185,11 @@ public sealed class PositionApplicationSqlServerTests
 
   [Fact]
   [Trait("Rule", "BRULE-POS-0009")]
+  // ⚠ CITED BY 269: `AC-POS-0016` — *a position may not reference an `Inactive` grade.* Paired with
+  // `Updating_a_position_revalidates_a_grade_that_has_since_been_deactivated`, which is the harder half:
+  // the reference was legal when made and the grade was deactivated afterwards, so a check performed only
+  // at CREATE would pass this criterion's first case and fail its intent.
+  [Trait("Criterion", "AC-POS-0016")]
   public async Task An_inactive_grade_cannot_be_assigned()
   {
     await using var fixture = await PositionAppFixture.CreateAsync();
@@ -171,6 +213,10 @@ public sealed class PositionApplicationSqlServerTests
   // silently would let the aggregate drift past `BRULE-POS-0009` without any operation having broken it.
   [Fact]
   [Trait("Rule", "BRULE-POS-0009")]
+  // ⚠ CITED BY 269: `AC-POS-0016`'s harder half — the reference was LEGAL WHEN MADE. A validation performed
+  // only at create satisfies the criterion's plain reading and still lets an update carry a now-inactive
+  // grade forward. Paired with `An_inactive_grade_cannot_be_assigned`.
+  [Trait("Criterion", "AC-POS-0016")]
   public async Task Updating_a_position_revalidates_a_grade_that_has_since_been_deactivated()
   {
     await using var fixture = await PositionAppFixture.CreateAsync();
@@ -193,6 +239,117 @@ public sealed class PositionApplicationSqlServerTests
   }
 
   // ================================================================================================
+  // ⚠⚠⚠ THE OTHER HALF OF `BRULE-POS-0011`: JOB GRADE → SALARY GRADE, WHICH NOTHING REACHED.
+  // ================================================================================================
+  //
+  // `PositionErrors.GradeInactive` guards TWO relationships through two validators:
+  //
+  //   `PositionGradeReference.ValidateJobGradeAsync:295-296`     position → JOB grade
+  //   `PositionGradeReference.ValidateSalaryGradeAsync:324-325`  job grade → SALARY grade
+  //
+  // **The two tests above cover the first. Searched with no cap, `GradeInactive` appeared in the whole
+  // `tests` tree at exactly those two sites — so the second guard was reached by nothing.**
+  //
+  // ---- ⚠⚠ THE SHARED ERROR VALUE IS A DELIBERATE DESIGN, NOT A COLLAPSE NOBODY NOTICED.
+  //
+  // `PositionErrors.cs:159-161` says so directly: the trio *"is shared by both referencing directions —
+  // Position -> JobGrade and JobGrade -> SalaryGrade — because the three failures are the same three
+  // failures."* The author enumerated both directions by name and recorded the judgement. **Cited here so
+  // the next reader who notices one code behind two guards finds the reason instead of re-opening it.**
+  //
+  // ---- ⚠⚠⚠ AND WHY THE ARRANGEMENT, NOT THE ASSERTION, IS WHAT MAKES THIS TEST ABOUT THE SALARY GUARD.
+  //
+  // `Assert.Equal(GradeInactive, …)` cannot say WHICH guard produced it — one value, two sites. So the
+  // discrimination has to come from the setup, and it comes from two facts:
+  //
+  //   **The validators are DISJOINT BY CALLER**, verified with no cap: `ValidateJobGradeAsync` is called
+  //   only from `PositionCommandHandlers:71,163`, and `ValidateSalaryGradeAsync` only from
+  //   `JobGradeCommandHandlers:75,162`. **A job-grade command never invokes the job-grade validator**, so
+  //   on this path the salary guard is the only site that can return this error.
+  //
+  //   **The job grade is asserted ACTIVE**, which rules out the update being refused for its OWN state
+  //   rather than for its reference — a different confusion, and the one the arrangement really guards.
+  //
+  // ⚠⚠⚠ MEASURED AS A 2×2, NOT AS A PLANT — ALL FOUR CELLS RUN, 2026-09-03:
+  //
+  //                              the two tests above        this test
+  //   remove the JOB guard            RED ×2                  green
+  //   remove the SALARY guard         green                    RED
+  //
+  // **Each set is sensitive to exactly its own guard and blind to the other.** A single plant would have
+  // shown only that this test reddens for something; the off-diagonal is what proves the two tests are
+  // about DIFFERENT guards rather than both about whichever one happens to run first. That is the whole
+  // claim being made by adding a test beside two that already assert the same error value.
+  [Fact]
+  [Trait("Rule", "BRULE-POS-0011")]
+  [Trait("Criterion", "AC-POS-0016")]
+  public async Task A_job_grade_may_not_point_at_an_inactive_salary_grade()
+  {
+    await using var fixture = await PositionAppFixture.CreateAsync();
+    var graph = fixture.Graph();
+
+    var salaryGradeId = await fixture.CreateSalaryGradeAsync("S7", "Band 7", 70);
+    var jobGradeId = await fixture.CreateJobGradeAsync("G7", "Grade 7", 70);
+
+    Assert.True((await graph.DeactivateSalaryGrade().HandleAsync(new DeactivateSalaryGradeCommand(
+      salaryGradeId,
+      await fixture.RowVersionAsync("SalaryGrades", "SalaryGradeId", salaryGradeId)))).IsSuccess);
+
+    // THE ARRANGEMENT, ASSERTED. The job grade must be ACTIVE or a refusal below could be about the record
+    // being updated rather than about the reference it names.
+    var arranged = await graph.GetJobGrade().HandleAsync(new GetJobGradeQuery(jobGradeId));
+    Assert.True(arranged.IsSuccess, arranged.IsFailure ? arranged.Error.Code : null);
+    Assert.Equal(JobGradeStatus.Active, arranged.Value.Status);
+    Assert.Null(arranged.Value.SalaryGradeId);
+
+    // ---- CREATE: a NEW job grade naming the retired band.
+    var refusedCreate = await graph.CreateJobGrade().HandleAsync(
+      new CreateJobGradeCommand(fixture.CompanyA, "G8", "Grade 8", 80, salaryGradeId));
+
+    Assert.True(refusedCreate.IsFailure, "a job grade was created against an inactive salary grade");
+    Assert.Equal(PositionErrors.GradeInactive, refusedCreate.Error);
+
+    // ⚠ AND NOTHING WAS WRITTEN. *Refused* means the row does not exist, which the error alone does not
+    // say — a handler that failed AFTER saving would satisfy the assertion above.
+    Assert.Equal(0, await fixture.ScalarAsync(
+      "SELECT COUNT(*) FROM [tenant].[JobGrades] WHERE [Code] = N'G8'"));
+
+    // ---- UPDATE: an EXISTING job grade repointed at it.
+    var refusedUpdate = await graph.UpdateJobGrade().HandleAsync(new UpdateJobGradeCommand(
+      jobGradeId, "G7", "Grade 7", 70, salaryGradeId,
+      await fixture.RowVersionAsync("JobGrades", "JobGradeId", jobGradeId)));
+
+    Assert.True(refusedUpdate.IsFailure, "an existing job grade was repointed at an inactive salary grade");
+    Assert.Equal(PositionErrors.GradeInactive, refusedUpdate.Error);
+
+    // UNCHANGED, read back through the query handler rather than off the row — *refused* is a claim about
+    // what a caller can subsequently see.
+    var unchanged = await graph.GetJobGrade().HandleAsync(new GetJobGradeQuery(jobGradeId));
+    Assert.True(unchanged.IsSuccess, unchanged.IsFailure ? unchanged.Error.Code : null);
+    Assert.Null(unchanged.Value.SalaryGradeId);
+
+    // ---- ⚠⚠ AND THE ALLOWED SIDE: REACTIVATION RESTORES THE ABILITY TO BE REFERENCED.
+    //
+    // The refusals above are the control — the guard is observed FIRING on this exact salary grade moments
+    // earlier — so the success below is a REVERSAL and not a default. Without them, a salary grade that had
+    // never been blocking would satisfy this leg.
+    Assert.True((await graph.ReactivateSalaryGrade().HandleAsync(new ReactivateSalaryGradeCommand(
+      salaryGradeId,
+      await fixture.RowVersionAsync("SalaryGrades", "SalaryGradeId", salaryGradeId)))).IsSuccess);
+
+    var allowed = await graph.UpdateJobGrade().HandleAsync(new UpdateJobGradeCommand(
+      jobGradeId, "G7", "Grade 7", 70, salaryGradeId,
+      await fixture.RowVersionAsync("JobGrades", "JobGradeId", jobGradeId)));
+
+    Assert.True(allowed.IsSuccess, allowed.IsFailure ? allowed.Error.Code : null);
+
+    // THE CAPABILITY, not the absence of the old error: the reference is actually there afterwards.
+    var repointed = await graph.GetJobGrade().HandleAsync(new GetJobGradeQuery(jobGradeId));
+    Assert.True(repointed.IsSuccess, repointed.IsFailure ? repointed.Error.Code : null);
+    Assert.Equal(salaryGradeId, repointed.Value.SalaryGradeId);
+  }
+
+  // ================================================================================================
   // THE DEPENDENT REFUSAL (DEC-POS-0013, BRULE-POS-0015)
   // ================================================================================================
   //
@@ -200,6 +357,13 @@ public sealed class PositionApplicationSqlServerTests
   // what makes the reference safe: without it an Active position would be left aimed at an Inactive grade.
   [Fact]
   [Trait("Decision", "DEC-POS-0013")]
+  // ⚠ CITED BY 269: `AC-POS-0029` — *a grade with `Active` positions referencing it may not be deactivated,
+  // AND DEACTIVATION DOES NOT CASCADE TO THEM.* Both clauses matter and the second is the one a refusal
+  // test would normally omit: a grade deactivation that refused AND silently deactivated the positions
+  // would satisfy the first half. ⚠ AND THE ASYMMETRY WITH `AC-POS-0028` IS THE POINT — a POSITION with
+  // holders MAY be deactivated, a GRADE with active positions MAY NOT. Two lifecycle rules that look alike
+  // and are opposite, which is why each is cited separately rather than as one lifecycle claim.
+  [Trait("Criterion", "AC-POS-0029")]
   public async Task A_job_grade_with_an_active_position_cannot_be_deactivated()
   {
     await using var fixture = await PositionAppFixture.CreateAsync();
@@ -263,6 +427,18 @@ public sealed class PositionApplicationSqlServerTests
   // repository question asked beyond the load, and the aggregate refuses only the second attempt.
   [Fact]
   [Trait("Decision", "OD-POS-005")]
+  // ⚠ CITED BY 269: `AC-POS-0028`'s HANDLER clause — deactivation SUCCEEDS and is reversible. ⚠⚠ NOTE WHAT
+  // IT DOES NOT CONTAIN: this position has NO INCUMBENTS, because `PositionAppFixture` cannot seed an
+  // employee. The comment above still says the employee half "cannot be written until Phase 3", and Phase 3
+  // has since landed — the obligation was discharged ELSEWHERE, in
+  // `EmployeeBoundarySqlServerTests.P8_A_position_deactivated_before_the_change_is_refused_and_after_it_is_
+  // retained`, which is where an employee and a deactivated position coexist.
+  //
+  // So the criterion is a set of three: this (handler succeeds), P8 (incumbent retains it), and
+  // `PositionDomainTests.Deactivation_cannot_consult_incumbents_because_it_is_given_nothing_to_consult`
+  // (the handler's behaviour cannot depend on incumbents), which is what lets the first two entail a
+  // criterion neither states.
+  [Trait("Criterion", "AC-POS-0028")]
   public async Task Deactivating_a_position_asks_no_dependent_question_and_is_reversible()
   {
     await using var fixture = await PositionAppFixture.CreateAsync();
@@ -289,6 +465,68 @@ public sealed class PositionApplicationSqlServerTests
     Assert.Equal(1, await fixture.ScalarAsync(
       $"SELECT COUNT(*) FROM [tenant].[Positions] " +
       $"WHERE [PositionId] = '{positionId}' AND [Status] = N'Active'"));
+  }
+
+  // ---- AN INACTIVE POSITION IS STILL READABLE AND STILL LISTED (`AC-POS-0026`, `TS-POS-0030`, 269).
+  //
+  // ⚠ THE LIST HALF IS THE ONE WORTH ASSERTING. A read service that quietly filtered `Inactive` out of the
+  // DEFAULT search would satisfy every other position test — the refusal tests never list, and the search
+  // and paging tests use active rows — while making a deactivated position UNFINDABLE IN THE UI THAT HAS TO
+  // OFFER IT FOR REACTIVATION. So this searches with NO status filter and asserts it comes back.
+  //
+  // ⚠⚠ AND THE MARKING IS ASSERTED, NOT ONLY THE PRESENCE. A list that returned inactive rows
+  // INDISTINGUISHABLY from active ones would satisfy *appears in lists* and still be useless to that UI.
+  //
+  // Built on `DepartmentApplicationSqlServerTests.An_inactive_department_is_still_readable_and_still_listed_
+  // marked_inactive` (`AC-DEP-0030`, item 262) — the same criterion one noun over. The seed, the no-filter
+  // search and the anti-vacuity control are copied rather than reinvented, because the sweep has already
+  // found one case where an assertion propagated between features and its CONTROL did not.
+  [Fact]
+  [Trait("Decision", "DEC-POS-0011")]
+  // ---- ⚠⚠⚠ `AC-POS-0026`: THIS CITATION HAS NEVER BEEN EXECUTED BY ANY RUN (recorded 2026-09-05).
+  //
+  // **The method below post-dates `ce9b28f`, the commit at the last green Integration run
+  // (2026-09-01 10:17).** `Integration.Tests` does not run under `GATE_SCOPE=TASK`, and `GATE_SCOPE=PHASE`
+  // is owner-parked — ***so nothing available to a developer here can change that.*** **No run has observed
+  // these assertions: this is a CLAIM, not a check, and it must not be read as coverage.**
+  //
+  // ⚠ ***THE CITATION IS NOT WITHDRAWN AND SHOULD NOT BE. "NEVER EXECUTED" IS A FACT ABOUT OBSERVATION,
+  // NOT ABOUT DESIGN*** — the two are independent axes, and this pass judged only the first.
+  //
+  // ⚠⚠ **AND THIS FILE DID NOT SAY SO.** *Found by a tree-wide walk, not by reading:* **seven citations in
+  // the repository rest on witnesses no run has ever observed, and ***EXACTLY ONE OF THE SEVEN CARRIED AN
+  // AUTHOR'S WARNING*** — `PayrollSchemaSqlServerTests`, which says *"NOT RUN… must not be reported as
+  // coverage until a PHASE run has seen it."* **Six were silent.** *That is a census of a closed population,
+  // not a sample: **the prose convention does not exist**, and a trait key for UNRUN is the only mechanism
+  // that would have caught these.*
+  [Trait("Criterion", "AC-POS-0026")]
+  public async Task An_inactive_position_is_still_readable_and_still_listed_marked_inactive()
+  {
+    await using var fixture = await PositionAppFixture.CreateAsync();
+    var graph = fixture.Graph();
+
+    var active = await fixture.CreatePositionAsync("KEEP", "Stays Active");
+    var positionId = await fixture.CreatePositionAsync("GONE", "Goes Inactive");
+
+    Assert.True((await graph.DeactivatePosition().HandleAsync(new DeactivatePositionCommand(
+      positionId, await fixture.RowVersionAsync("Positions", "PositionId", positionId)))).IsSuccess);
+
+    var read = await graph.GetPosition().HandleAsync(new GetPositionQuery(positionId));
+
+    Assert.True(read.IsSuccess, read.IsFailure ? read.Error.Code : null);
+    Assert.Equal(PositionStatus.Inactive, read.Value.Status);
+
+    // ⚠⚠ NO STATUS FILTER — the default list, which is what a caller gets without asking.
+    var listed = await graph.SearchPositions().HandleAsync(new SearchPositionsQuery());
+
+    Assert.True(listed.IsSuccess, listed.IsFailure ? listed.Error.Code : null);
+
+    var row = Assert.Single(listed.Value.Items, item => item.PositionId == positionId);
+    Assert.Equal(PositionStatus.Inactive, row.Status);
+
+    // ANTI-VACUITY: the active one is still listed too, so this is not a list that collapsed to one row or
+    // to one status — the assertion above would hold trivially over a single-row result.
+    Assert.Contains(listed.Value.Items, item => item.PositionId == active);
   }
 
   // ---- A POSITION MAY BE REACTIVATED WHILE ITS GRADE IS INACTIVE, AND THAT IS DELIBERATE.
@@ -324,6 +562,18 @@ public sealed class PositionApplicationSqlServerTests
   [InlineData("JobGrades")]
   [InlineData("SalaryGrades")]
   [Trait("Requirement", "NFR-POS-0302")]
+  // ⚠ CITED BY 269: `AC-POS-0047`'s APPLICATION clause, across all three families rather than one.
+  //
+  // ⚠⚠ *EVERY … MUTATION* IS NOT WHAT THIS PROVES, AND THE DIFFERENCE MATTERS: this exercises ONE mutation
+  // per family. The universal half is
+  // `PositionApplicationArchitectureTests.Every_position_mutation_of_an_existing_record_requires_a_row_
+  // version`, which enumerates the mutation commands and asserts each carries the token — a structural
+  // claim over the whole set that a behavioural test could only sample. Cited as a pair.
+  //
+  // The criterion's `409` is a TRANSPORT claim this cannot reach; searched `PositionEndpointTests` for a
+  // stale-token conflict assertion and did not find one, so that clause is recorded as unlocated rather
+  // than absent.
+  [Trait("Criterion", "AC-POS-0047")]
   public async Task A_stale_row_version_is_refused_on_every_family(string table)
   {
     await using var fixture = await PositionAppFixture.CreateAsync();
@@ -382,6 +632,14 @@ public sealed class PositionApplicationSqlServerTests
   // about the rank rather than about the code.
   [Fact]
   [Trait("Rule", "BRULE-POS-0007")]
+  // ⚠ CITED BY 269: `AC-POS-0061` — *a grade unique-constraint violation is distinguished correctly between
+  // the code index and the rank-order index; A RANK COLLISION DOES NOT ANSWER `job_grade.code_conflict`.*
+  //
+  // Both collisions are provoked in ONE test, which is what makes the claim a DISTINCTION rather than two
+  // separate refusals: a handler mapping every unique-index violation to the code conflict would pass a
+  // code-only test and fail here. The wire half is
+  // `PositionEndpointTests.A_duplicate_job_grade_rank_is_a_rank_conflict_not_a_code_conflict`.
+  [Trait("Criterion", "AC-POS-0061")]
   public async Task A_grade_code_conflict_and_a_rank_conflict_are_distinguishable()
   {
     await using var fixture = await PositionAppFixture.CreateAsync();
@@ -517,6 +775,16 @@ public sealed class PositionApplicationSqlServerTests
   // A distinct refusal would confirm the position exists in a company the caller may not see.
   [Fact]
   [Trait("Rule", "BRULE-POS-0002")]
+  // ⚠ CITED BY 269: `AC-POS-0007` — *reading a position outside the caller's authorized scope returns
+  // `404`, NOT `403`.* This carries the INDISTINGUISHABILITY half and carries it properly: it does not
+  // merely assert `PositionNotFound`, it seeds a REAL position in another company and asserts its error
+  // EQUALS the error for an identifier that does not exist at all. Asserting the code alone would pass
+  // against a handler that answered `NotFound` for a reason the caller could still distinguish.
+  //
+  // The HTTP half — that this surfaces as `404` and never `403` — is `PositionEndpointTests`, whose own
+  // arrangement uses an UNKNOWN identifier rather than a foreign-company one. So the two layers carry
+  // different halves and neither is the whole criterion: status there, indistinguishability here.
+  [Trait("Criterion", "AC-POS-0007")]
   public async Task A_position_outside_the_company_scope_is_indistinguishable_from_absent()
   {
     await using var fixture = await PositionAppFixture.CreateAsync();
@@ -707,11 +975,12 @@ public sealed class PositionApplicationSqlServerTests
   //
   // Silently reducing a page size of 5000 to 200 would return a page the caller did not ask for and let
   // them believe they had seen the rest.
+  // Each row names the parameter it refuses (T-260).
   [Theory]
-  [InlineData(0, 25)]
-  [InlineData(1, 0)]
-  [InlineData(1, 201)]
-  public async Task An_out_of_range_page_request_is_refused(int page, int pageSize)
+  [InlineData(0, 25, false)]
+  [InlineData(1, 0, true)]
+  [InlineData(1, 201, true)]
+  public async Task An_out_of_range_page_request_is_refused(int page, int pageSize, bool sizeIsTheFault)
   {
     await using var fixture = await PositionAppFixture.CreateAsync();
 
@@ -719,7 +988,9 @@ public sealed class PositionApplicationSqlServerTests
       new SearchPositionsQuery(Page: page, PageSize: pageSize));
 
     Assert.True(refused.IsFailure);
-    Assert.Equal(PositionErrors.InvalidPagination, refused.Error);
+    Assert.Equal(
+      sizeIsTheFault ? PositionErrors.InvalidPageSize : PositionErrors.InvalidPageNumber,
+      refused.Error);
   }
 
   private static async Task<SSAS.BuildingBlocks.Domain.Result> StalePositionAsync(

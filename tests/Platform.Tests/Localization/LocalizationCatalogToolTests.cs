@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using SSAS.Localization.CatalogTool;
 using SSAS.BuildingBlocks.Localization;
 using SSAS.BuildingBlocks.Localization.Generated;
@@ -6,6 +7,16 @@ namespace SSAS.Platform.Tests.Localization;
 
 public sealed class LocalizationCatalogToolTests
 {
+  // ⚠ THIS IS THE ACCEPT HALF AND IT MEANS NOTHING WITHOUT THE REJECT HALF BELOW. `validate` and `verify`
+  // both return 0 for the checked-in manifest, schema and generated artifacts — which is exactly what a
+  // tool that always returned 0 would also do. `Verify_rejects_stale_artifact_and_generate_is_deterministic`
+  // appends a byte to the backend artifact and requires exit code **1**, and that is what makes this test a
+  // statement about the artifacts rather than about the tool's willingness to succeed.
+  //
+  // ⚠⚠ Cited to nothing on its own: *the checked-in artifacts are current* is a repository fact, not an
+  // acceptance criterion. Its value is as the anti-vacuity partner of the determinism citation below —
+  // recorded here because the dependency runs in the direction a reader would not guess, the ACCEPT test
+  // depending on the REJECT test for its meaning.
   [Fact]
   public async Task Validate_and_verify_accept_checked_in_artifacts()
   {
@@ -16,7 +27,25 @@ public sealed class LocalizationCatalogToolTests
       "verify", "--manifest", paths.Manifest, "--schema", paths.Schema, "--backend", paths.Backend, "--client", paths.Client]));
   }
 
+  // ⚠ CITES THE SECOND CLAUSE OF `AC-LOC-0002` — *"…and GENERATES BYTE-DETERMINISTIC ARTIFACTS."* Two
+  // consecutive `generate` runs over the same manifest, compared with `ReadAllBytesAsync`.
+  //
+  // ⚠⚠ **`Assert.Equal` OVER `byte[]` IS THE CITATION, NOT A DETAIL OF IT.** The criterion says
+  // BYTE-deterministic, and a comparison of the files' TEXT would pass over a change of line endings while
+  // the artifacts differed byte for byte — which is precisely the difference the word exists to exclude.
+  // A string comparison here would be the same assertion in shape and a weaker one in fact.
+  //
+  // ⚠⚠⚠ AND THE FIRST CLAUSE IS **NOT** CARRIED HERE. `AC-LOC-0002` reads *"Manifest validation REJECTS
+  // duplicate/reordered, invalid, renamed, or reused retired ResourceKeys AND generates byte-deterministic
+  // artifacts"* — a five-item rejection list joined to a generation property. **The stale-artifact leg below
+  // is not one of those five**: it rejects a DRIFTED GENERATED FILE, not a malformed manifest. The five are
+  // `LocalizationCatalogTests`' subject. **Cited as 1 of 2 clauses, with the untested clause being itself a
+  // five-item list** — the collective-predicate shape again, in the half this file does not carry.
+  //
+  // The stale leg's own value is as the anti-vacuity partner named above: `verify` returning **1** for a
+  // mutated artifact is what makes `verify` returning 0 in the previous test a statement about artifacts.
   [Fact]
+  [Trait("Criterion", "AC-LOC-0002")]
   public async Task Verify_rejects_stale_artifact_and_generate_is_deterministic()
   {
     var source = GetPaths();
@@ -51,6 +80,23 @@ public sealed class LocalizationCatalogToolTests
     }
   }
 
+  // ⚠ EXAMINED AND UNCITED, AND THE REASON IS THE INTERESTING ONE: **NO ACCEPTANCE CRITERION MENTIONS
+  // IMPACT ANALYSIS AT ALL.** `CatalogImpactAnalyzer` classifies a release into `SecuritySensitive
+  // Incompatible`, `RemovedProhibited`, `ChangedIncompatible`, `ChangedCompatible`, `Added` and `Retired`,
+  // and that taxonomy appears nowhere in `acceptance-criteria.md`. Adjacent criteria exist — `AC-LOC-0002`
+  // on the key boundary, `AC-LOC-0031` on the compatibility fingerprint, `AC-LOC-0041` on retirement — but
+  // each governs a RULE this analyzer REPORTS ON, not the reporting. **Citing one would be adjacent-scope.**
+  //
+  // ⚠⚠ Same shape as `RequestTenantEligibilityTests`' locked-read guard: a real mechanism with real tests
+  // and nothing to cite. **A citation census is not a coverage census, and this direction of the gap —
+  // covered, uncitable — cannot be closed by citing harder.**
+  //
+  // ⚠⚠⚠ AND ONE ASSERTION HERE CANNOT FAIL INDEPENDENTLY. The `Assert.Contains(… SecuritySensitive
+  // Incompatible)` at the end is SUBSUMED by the ordered `Assert.Equal` above it, which already pins that
+  // kind in first position — if the sequence equality passes, the `Contains` cannot fail, and if it fails
+  // the `Contains` is never reached. **It is emphasis, not a check.** Left in place because it names the
+  // security case for a reader, but it should not be read as a second guarantee: the ordered comparison is
+  // the whole of the test's power, and it is a STRONGER claim than membership because it pins ORDER.
   [Fact]
   public void Impact_analysis_classifies_release_changes_and_security_blockers()
   {
@@ -88,6 +134,261 @@ public sealed class LocalizationCatalogToolTests
       ],
       impacts.Select(impact => impact.Kind));
     Assert.Contains(impacts, impact => impact.Kind == CatalogImpactKind.SecuritySensitiveIncompatible);
+  }
+
+  // ==================================================================================================
+  // ⚠⚠⚠ CLASSIFIED IS NOT BLOCKED, AND THE CRITERION SAYS *BLOCKS*.
+  // ==================================================================================================
+  //
+  // ---- FIRST, A CORRECTION TO THE COMMENT ABOVE `Impact_analysis_classifies_…`, WHICH IS FALSE.
+  //
+  // It reads *"NO ACCEPTANCE CRITERION MENTIONS IMPACT ANALYSIS AT ALL"* and concludes the analyzer is
+  // *covered, uncitable*. **`AC-LOC-0020` is the criterion for exactly this mechanism** — *"Validation
+  // reports incompatible retained overrides, BLOCKS SENSITIVE INCOMPATIBILITY, and requires ordinary
+  // review."* — and its three clauses map one-to-one onto the analyzer's own vocabulary. The spec says so
+  // in three places: `decisions-approved.md` (*"sensitive incompatibility blocks Production"*),
+  // `localization-resolution-model.md` (*"Security-sensitive incompatibility blocks Production; ordinary
+  // incompatibility requires explicit release review"*) and `requirements.md`.
+  //
+  // ⚠ **AN ABSENCE CLAIM IS THE ONE THAT ROTS FIRST, AND *covered, uncitable* IS A COMFORTABLE CONCLUSION
+  // THAT ENDS THE SEARCH.** The criterion was two documents away the whole time.
+  //
+  // ---- WHAT THIS TEST ADDS THAT THE CLASSIFIER TEST CANNOT.
+  //
+  // `Impact_analysis_classifies_release_changes_and_security_blockers` calls `CatalogImpactAnalyzer.Analyze`
+  // **directly** and asserts the six `CatalogImpactKind` values it returns. ***THAT IS THE REPORT, NOT THE
+  // REFUSAL.*** The block lives one layer up, in `CatalogToolRunner`: any `SecuritySensitiveIncompatible` or
+  // `RemovedProhibited` impact makes the tool exit **2**. **Measured before writing this: `RunAsync` is
+  // asserted five times across `tests/`, against exit codes 0 and 1 — *NEVER 2*.** So the classifier could
+  // have gone on naming the security case correctly while the release stopped being blocked, and every
+  // existing assertion would have held.
+  //
+  // ⚠⚠ THE FIRST ASSERTION IS THE ANTI-VACUITY CONTROL AND IT IS NOT DECORATION: an identical baseline must
+  // exit **0**. Without it, a runner that returned 2 unconditionally — or one that failed to load the
+  // baseline and bailed — would satisfy the interesting half. *The pair is what makes the exit code mean
+  // "this release is blocked" rather than "this tool returns 2".*
+  //
+  // ⚠⚠⚠ AND THE MUTATION IS CHOSEN TO REACH THE SENSITIVE ARM SPECIFICALLY RATHER THAN THE OTHER ONE.
+  // `RemovedProhibited` also exits 2 and would be far easier to arrange — delete a resource from the
+  // baseline — **but it would witness a DIFFERENT clause and leave the criterion's own word, *sensitive*,
+  // asserted by nothing.** Flipping `textFormat` on a `SecuritySensitiveNonOverridable` resource changes its
+  // compatibility fingerprint, so the analyzer reaches the classification branch that tests the security
+  // flag. *The resource is selected BY ITS CLASSIFICATION, not by name, so the test follows the catalog if
+  // the sensitive resources are ever renamed.*
+  [Fact]
+  [Trait("Criterion", "AC-LOC-0020")]
+  public async Task Impact_blocks_security_sensitive_incompatibility_and_clears_an_unchanged_release()
+  {
+    var paths = GetPaths();
+    var temporary = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+    Directory.CreateDirectory(temporary);
+
+    try
+    {
+      var baseline = Path.Combine(temporary, "baseline.json");
+      File.Copy(paths.Manifest, baseline);
+
+      Assert.Equal(0, await CatalogToolRunner.RunAsync([
+        "impact", "--manifest", paths.Manifest, "--schema", paths.Schema, "--baseline", baseline]));
+
+      var document = JsonNode.Parse(await File.ReadAllTextAsync(baseline))!;
+      var sensitive = document["resources"]!.AsArray()
+        .First(resource => resource!["securityClassification"]!.GetValue<string>()
+          == nameof(LocalizationSecurityClassification.SecuritySensitiveNonOverridable));
+      sensitive!["textFormat"] = nameof(LocalizationTextFormat.MultilineText);
+      await File.WriteAllTextAsync(baseline, document.ToJsonString());
+
+      Assert.Equal(2, await CatalogToolRunner.RunAsync([
+        "impact", "--manifest", paths.Manifest, "--schema", paths.Schema, "--baseline", baseline]));
+    }
+    finally
+    {
+      Directory.Delete(temporary, true);
+    }
+  }
+
+  // ==================================================================================================
+  // ⚠⚠ A SECOND NEVER-FIRED VALIDATOR BRANCH, AND DELIBERATELY CITED TO NOTHING.
+  // ==================================================================================================
+  //
+  // `SemanticCatalogValidator` refuses a resource whose English or Arabic default is not valid text. **Like
+  // the BOM branch below, its reject path had never executed**: every `validate` assertion in this tree was
+  // accept-side, and `LocalizationCatalogTests:56` asserts `NotEmpty(resource.ArabicDefault)` over the six
+  // checked-in resources — ***WHICH SAYS THE CURRENT CATALOG IS COMPLETE, NOT THAT AN INCOMPLETE ONE WOULD
+  // BE REFUSED.*** *That is the declaration-versus-realisation split: the artefact satisfying a rule is not
+  // the rule being enforced, and only one of the two survives someone adding a seventh resource.*
+  //
+  // ---- ⚠⚠⚠ WHAT THE FIRST VERSION OF THIS TEST ASSERTED, AND WHY ITS FAILURE IS THE FINDING.
+  //
+  // It blanked one resource's Arabic default and expected *"Invalid localized default for …"*.
+  // ***THE ERRORS COLLECTION CAME BACK EMPTY. A RESOURCE SHIPPING `"ar": ""` VALIDATES CLEANLY.*** Measured
+  // in both enforcers: the schema declares `"required": ["en", "ar"]` with `maxLength` and **no
+  // `minLength`**, and `LocalizationText.Create` rejects `null`, over-length and invalid characters —
+  // **never emptiness.** *So the rule is enforced at the level of KEY PRESENCE, not of TEXT.*
+  //
+  // ⚠⚠ `AC-LOC-0001` opens *"Production validation accepts an Active resource only with both `en` and
+  // `ar`"*, and **an Arabic default of `""` satisfies every mechanical reading of that while rendering as
+  // nothing to every Arabic user.** *Whether an empty default is legitimate is a product question and is
+  // reported rather than decided here* — so this test pins ONLY the boundary that is actually enforced, and
+  // the comment carries the rest. **Asserting that the empty case PASSES would freeze a possible defect
+  // into the suite as intended behaviour, which is the one thing a test must never do.**
+  //
+  // ⚠ CITED TO NOTHING. `AC-LOC-0001` has five clauses — the other four are about what a NON-PRODUCTION
+  // resolution does with an incomplete resource (flagged, diagnoses culture, English fallback, not
+  // promotable), runtime behaviour in a different component that nothing here observes. *One of five would
+  // read as five, and the first clause is not even wholly true, so the citation is refused and the test
+  // kept: the branch is worth firing whether or not a criterion gets to claim it.*
+  [Fact]
+  public async Task Validate_rejects_a_resource_whose_arabic_default_is_absent()
+  {
+    var paths = GetPaths();
+    var temporary = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+    Directory.CreateDirectory(temporary);
+
+    try
+    {
+      var manifest = Path.Combine(temporary, "localization-catalog.json");
+      File.Copy(paths.Manifest, manifest);
+
+      var document = JsonNode.Parse(await File.ReadAllTextAsync(manifest))!;
+      document["resources"]!.AsArray()[0]!["defaults"]!.AsObject().Remove("ar");
+      await File.WriteAllTextAsync(manifest, document.ToJsonString());
+
+      var incomplete = await SemanticCatalogValidator.ValidateAsync(manifest, paths.Schema);
+      Assert.False(incomplete.IsValid);
+      Assert.Contains(
+        incomplete.Errors,
+        error => error.Contains("localization-catalog.schema.v1.json", StringComparison.Ordinal));
+
+      // The control: the unmodified manifest through the SAME temporary path must validate, so the refusal
+      // above is the removed key and not the copy, the directory, or a missing sibling file.
+      File.Copy(paths.Manifest, manifest, overwrite: true);
+      Assert.True((await SemanticCatalogValidator.ValidateAsync(manifest, paths.Schema)).IsValid);
+    }
+    finally
+    {
+      Directory.Delete(temporary, true);
+    }
+  }
+
+  // ⚠ CITES THE FIRST CLAUSE OF `AC-LOC-0025` — *"Only one UTF-8-no-BOM JSON manifest/schema is
+  // authoritative; YAML and mutable SQL defaults are rejected."*
+  //
+  // **`SemanticCatalogValidator` checks the BOM — three bytes, `EF BB BF`, one `errors.Add`. NOTHING HAD
+  // EVER MADE THAT BRANCH FIRE.** The only `validate` assertions in the tree were accept-side (exit 0 for
+  // the checked-in manifest), which a validator that never rejected anything would also satisfy. *A guard
+  // whose failure path has never once executed is a guard nobody has confirmed is wired to its own alarm.*
+  //
+  // ⚠⚠⚠ THE FIRST VERSION OF THIS TEST ASSERTED THE TOOL'S **EXIT CODE**, AND THE PLANT PROVED IT A FALSE
+  // WITNESS. Breaking the BOM comparison in `SemanticCatalogValidator` — `0xEF` to `0xEE` — LEFT THE GATE
+  // GREEN. ***A BOM ALSO BREAKS `JsonDocument.Parse`, so the manifest is refused either way and `exit 1`
+  // cannot tell the BOM branch from the parser.*** **It was the near-miss with the right name: the exact
+  // defect described twelve lines below, written by the person describing it, and only the plant found it.**
+  //
+  // **So the assertion consumes the one signal that distinguishes them — the validator's own error TEXT —
+  // and calls the validator directly rather than through the runner.** *A test may only claim the resolution
+  // its instrument can actually resolve, and an exit code has one bit.*
+  //
+  // ⚠⚠ THE SECOND HALF IS THE CONTROL AND IT IS WHAT MAKES THE FIRST MEAN "BOM". **The same bytes are
+  // written back to THE SAME PATH without the three-byte prefix and must validate cleanly.** Without it, the
+  // rejection is satisfied by any difference between this temporary copy and the original — a path the tool
+  // dislikes, a permissions problem, a missing sibling file — *and every one of those would look exactly
+  // like a working BOM check.* One variable changes between the two runs and it is the BOM.
+  //
+  // ⚠⚠⚠ THE OTHER TWO CLAUSES ARE NOT CITED HERE AND ONE OF THEM IS DELIBERATELY NOT GUARDED ANYWHERE.
+  // *"Mutable SQL defaults are rejected"* is carried by `LocalizationArchitectureTests.Localization_phase_
+  // four_…`, which asserts the `AddLocalizationCore` migration contains no `LocalizationDefault` and creates
+  // exactly four tables. **`"YAML … rejected"` is TRUE BY CONSTRUCTION AND THE FAILURE IS NOT CONSTRUCTIBLE:
+  // the tool reads the one path it is handed and has no YAML reader to reject anything with.** *A guard
+  // against a shape nothing can produce would consume the attention a real check earns.*
+  [Fact]
+  [Trait("Criterion", "AC-LOC-0025")]
+  public async Task Validate_rejects_a_manifest_carrying_a_utf8_bom()
+  {
+    var paths = GetPaths();
+    var temporary = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+    Directory.CreateDirectory(temporary);
+
+    try
+    {
+      const string BomError = "The manifest must be UTF-8 without BOM.";
+      var manifest = Path.Combine(temporary, "localization-catalog.json");
+      var original = await File.ReadAllBytesAsync(paths.Manifest);
+
+      await File.WriteAllBytesAsync(manifest, [0xEF, 0xBB, 0xBF, .. original]);
+      var withBom = await SemanticCatalogValidator.ValidateAsync(manifest, paths.Schema);
+      Assert.Contains(BomError, withBom.Errors);
+
+      await File.WriteAllBytesAsync(manifest, original);
+      var withoutBom = await SemanticCatalogValidator.ValidateAsync(manifest, paths.Schema);
+      Assert.True(withoutBom.IsValid);
+      Assert.DoesNotContain(BomError, withoutBom.Errors);
+    }
+    finally
+    {
+      Directory.Delete(temporary, true);
+    }
+  }
+
+  // ==================================================================================================
+  // ⚠⚠⚠ FOUR CLOSED SETS, EACH DECLARED TWICE IN TWO LANGUAGES, TIED TOGETHER BY NOTHING.
+  // ==================================================================================================
+  //
+  // `AC-LOC-0028` opens *"Only Ordinary and SecuritySensitiveNonOverridable exist…"*. **That is a CLOSED-SET
+  // claim, and this repository states it twice: once as a C# `enum` the compiler checks, and once as a JSON
+  // Schema `enum` array the compiler has never heard of.** *Nothing reads one against the other.*
+  //
+  // ⚠ THE FAILURE IS SILENT IN BOTH DIRECTIONS AND NEITHER IS EXOTIC. Add a third C# member and the manifest
+  // validator keeps rejecting it as schema-invalid — a value the domain accepts and the catalog cannot
+  // express. Add a third SCHEMA value and manifests carrying it parse, then fail deserialisation at a layer
+  // that has no idea a schema promised it. **Both changes are one line, both compile, and every existing
+  // test stays green:** the schema is a raw string literal as far as the build is concerned, checked by
+  // nothing until something is built that reads it.
+  //
+  // ⚠⚠ ALL FOUR SETS ARE CHECKED, NOT JUST THE CRITERION'S ONE. `securityClassification` and `textFormat`
+  // are both inputs to `CompatibilityFingerprint.Calculate`, so drift in either silently changes what
+  // "compatible" means for every tenant override — the criterion names one and the mechanism has two.
+  // *`lifecycle` and `category` come along because the cost of a fifth line is nothing and the cost of
+  // discovering the gap again is what this comment cost.*
+  //
+  // ⚠⚠⚠ SET EQUALITY, DELIBERATELY, NOT SEQUENCE EQUALITY. These values cross the boundary AS STRINGS, so
+  // reordering either declaration is semantically inert. **An ordered assertion would redden on a harmless
+  // tidy of the schema, and this file already documents where that leads — a failure whose obvious remedy is
+  // to re-baseline it teaches the reader to silence the alarm.** *Sorted comparison is the claim that is
+  // actually true: the same NAMES exist on both sides.*
+  //
+  // ---- THE OTHER TWO CLAUSES OF `AC-LOC-0028` ARE NOT CARRIED HERE AND ARE NOT CARRIED ANYWHERE I FOUND.
+  //
+  // *"non-overridable mutation fails"* IS covered — `LocalizationDomainTests.Security_sensitive_resource_
+  // cannot_create_override`, cited there to `AC-LOC-0009`.
+  // ⚠ *"non-overridable PREVIEW fails"* IS NOT. `LocalizationPreviewTests` has two tests: a placeholder
+  // accept/reject pair over an ORDINARY resource, and a suspended-tenant refusal. **Neither previews a
+  // `SecuritySensitiveNonOverridable` resource**, so a preview handler that happily previewed one would be
+  // caught by nothing. Recorded rather than fixed: it is a new fixture case, not a missing assertion.
+  [Fact]
+  [Trait("Criterion", "AC-LOC-0028")]
+  public void Schema_closed_sets_match_the_domain_enums()
+  {
+    var schema = JsonNode.Parse(File.ReadAllText(GetPaths().Schema))!;
+    var properties = schema["$defs"]!["resource"]!["properties"]!;
+
+    (string Property, string[] Names)[] pairs =
+    [
+      ("securityClassification", Enum.GetNames<LocalizationSecurityClassification>()),
+      ("textFormat", Enum.GetNames<LocalizationTextFormat>()),
+      ("lifecycle", Enum.GetNames<LocalizationResourceLifecycle>()),
+      ("category", Enum.GetNames<LocalizationResourceCategory>())
+    ];
+
+    foreach (var (property, names) in pairs)
+    {
+      var declared = properties[property]!["enum"]!.AsArray()
+        .Select(value => value!.GetValue<string>())
+        .OrderBy(value => value, StringComparer.Ordinal)
+        .ToArray();
+
+      Assert.Equal(names.OrderBy(name => name, StringComparer.Ordinal).ToArray(), declared);
+    }
   }
 
   private static (string Manifest, string Schema, string Backend, string Client) GetPaths()

@@ -75,9 +75,31 @@ Before writing code, read the following in order:
 8. docs/08-Development/Development-Standards.md
 9. docs/03-Architecture/*
 10. docs/00-Master-Product-Specification/*
-11. Current Sprint
-12. Current Feature Package
-13. Functional Specification
+11. ⚠ **docs/16-Governance/Documentation-Baseline.md** *(added 2026-09-06 — see the note below)*
+12. Current Sprint
+13. Current Feature Package
+14. Functional Specification
+
+> ### ⚠⚠⚠ **NOTE ADDED 2026-09-06 — FOUR `docs/` DIRECTORIES WERE MISSING FROM THIS MAP, AND THEY HOLD THE RULES**
+>
+> **This reading order listed seven of the eleven directories under `docs/`. It never mentioned
+> `12-Feature-Packages`, `13-Implementation`, `15-Tasks` or `16-Governance` — zero occurrences of each.**
+>
+> ***THAT IS WHY THREE OF THIS PROJECT'S LOAD-BEARING RULES ARE CITED BY NOTHING. They were not orphaned by
+> anyone; the document that tells a reader where to start does not draw their directories.***
+>
+> | rule | where it lives | previously reachable from here |
+> |---|---|---|
+> | *"Documentation and implementation shall remain synchronized"* | `16-Governance/Documentation-Baseline.md:121` (`GOV-001`, **Approved**, 2026-07-30) | **no** — now item 11 above |
+> | *"Documentation is the project's source of truth"* | `00-Master-Product-Specification/Architecture-Decisions.md` (`ADR-0003`) | **reachable via item 10**, but in a four-digit id space the ADR directory does not use |
+> | a nine-condition **Definition of Done** | `12-Feature-Packages/Feature-Package-Template.md` | **no** |
+>
+> ⚠ **`13-Implementation` and `15-Tasks` are deliberately NOT added to the reading order.** They are
+> Sprint-00-scoped — `Sprint-00-Foundation`, `Task-001`, `Task-002` — and the project is at FP-015. **They
+> are accurate about Sprint 00 and were never continued; they are history, not required reading.** *Named
+> here so a reader knows they exist and why they are not in the list.*
+>
+> ***Where the Definition of Done should live is an owner question and is not settled by this note.***
 
 Do not begin implementation until the required documents have been reviewed.
 
@@ -277,6 +299,10 @@ The **Branch foundation** (branch persistence, lifecycle, mandatory user branch 
 **FP-012 Payroll Foundation is delivered and merged** (PR #51, `f465c9b`). `src/Modules/Payroll/SSAS.Payroll.*` carries Compensation, Elements and Runs, with the `20260824175418_AddPayrollFoundation` migration, the `tests/Payroll.Tests/` suite, and `tests/Architecture.Tests/PayrollArchitectureTests.cs` as its guard. Read `DEC-PAY-0016` before building anything on top of it: V1 is deliberately **jurisdiction-neutral** and ships no tax tables and no statutory deductions, so the figure it produces is gross minus configured deductions and is not a legally compliant net pay in any jurisdiction.
 
 **FP-013 Attendance is delivered and merged** (PR #52, `f9b247a`), and is the most recent module on `main`. `src/Modules/Attendance/SSAS.Attendance.*` carries Calendars, Leave, Periods and Records, with the `20260825024834_AddAttendanceFoundation` migration, the `tests/Attendance.Tests/` suite, and `tests/Architecture.Tests/AttendanceArchitectureTests.cs` as its guard. Payroll consumes it across a contracts boundary and nowhere else — `SSAS.Payroll.Application` references `SSAS.Attendance.Contracts` and its `IAttendanceSummary` alone, which `DEC-ATT-0002` and `ADR-012` require and the project reference in `SSAS.Payroll.Application.csproj` holds in place.
+
+**FP-014 Subscription is PARTLY BUILT.** The entitlement half is built and tested; the billing half does not exist. All seventeen `OD-SUB` rulings are ratified.
+**FP-015 Employee Self Service is BUILT.** The self-service routes are live, and all fourteen acceptance criteria are pinned by named tests.
+**FP-016 Platform Support Surface is BUILT.** It describes a privileged cross-tenant administration plane that is already built and pinned by tests.
 
 Do not resume completed work on the basis of an older "current sprint" heading. The repository state and the approved Feature Packages are authoritative for what has been built and what comes next.
 

@@ -4,6 +4,53 @@ namespace SSAS.Platform.Domain.TenantStorage;
 
 // Tenant-storage registry errors (ADR-017). Platform operational metadata, kept separate from both
 // tenant-plane IdentityAccessErrors and platform-authority PlatformSupportErrors.
+//
+// ==================================================================================================
+// ⚠ NONE OF THESE 118 CODES IS MAPPED TO AN HTTP STATUS, AND THAT IS CORRECT TODAY (T-129).
+// ==================================================================================================
+//
+// **No file in `SSAS.Platform.API` names a `TenantStorage.` code at all** — and no file in `src/Modules`
+// does either, which is worth stating separately because the tenant write fence's errors propagate through
+// `TenantUnitOfWork` into module handlers and therefore reach module mappers, a different path from
+// Platform's own transport. Measured, not assumed (recounted at T-213):
+//
+//   declared here                                 118
+//   returned somewhere in src/                    116
+//   mapped to a status by any API error mapper      0
+//
+// ---- AND THIS DOES NOT CONTRADICT `PropagatedErrorMappingTests` BEING GREEN.
+//
+// That guard asserts every wire code a module returns has a mapper arm, **scoped to the four modules that
+// ship an API surface** — GL, HR, Payroll, Attendance. These codes are Platform's, in a subsystem with no
+// transport, so the two instruments measure disjoint sets and both are correct. Its header records the same
+// survey from the other side: 147 unmapped-but-produced codes across `src/`, 99 of them TenantStorage.
+// **When Platform gains an administration transport, that guard's `Surfaces` list is the trigger.**
+//
+// **They are unmapped because there is no transport, not because anyone decided their statuses.** T-122
+// recorded three `RestoreChain*` codes as a landmine on that basis; **the family is the landmine, and it is
+// a hundred and seventeen codes rather than three.**
+//
+// ---- ⚠ WHAT HAPPENS THE DAY SOMEBODY BUILDS PLATFORM'S ADMINISTRATION TRANSPORT.
+//
+// **Every one of these becomes a live 500 on a business refusal** — no exception, no log entry, and a
+// handler that reads correctly. That is precisely the failure T-118 and T-125 each found one instance of,
+// **and this is a hundred and fifteen of them arriving in a single task.**
+//
+// **Whoever builds that transport will not think to check the mapper**, because nothing in the routing work
+// points here. **This comment is the pointer.** Three whole administrative surfaces are waiting on it:
+// tenants, roles, and users beyond de/reactivation — **16 of Platform's 28 permissions require no route,
+// and at least 29 `Platform.Application` handlers are named nowhere in `SSAS.Platform.API`** (T-128; the 29
+// is a floor, because a handler merely mentioned in a comment counts as routed).
+//
+// ---- AND TWO OF THE 117 ARE RETURNED BY NOTHING AND NAMED BY NO TEST.
+//
+//   TenantStorage.MigrationOwnershipNotAcquired
+//   TenantStorage.RestoreVerificationRestoreFailed
+//
+// **NOT deleted, and that is the opposite call from T-125's** — there, a dead code sat beside a LIVE route
+// whose behaviour proved it surplus. **Here there is no transport to prove anything**, and
+// `RestoreVerificationRestoreFailed` naming a condition the restore-verification flow plainly has is at
+// least as likely to be a MISSING return as a surplus constant. **Recorded for whoever owns that flow.**
 public static class TenantStorageErrors
 {
   public static readonly Error ServerKeyRequired =
@@ -409,8 +456,46 @@ public static class TenantStorageErrors
 
   // What an application write sees while a cutover holds the tenant. A CONTROLLED, VISIBLE maintenance
   // outcome rather than a generic error (ADR-020 freeze failure safety).
+  //
+  // ---- ⚠ TERMINAL FOR THE CUTOVER WINDOW. THE CALLER WAITS; RETRYING NOW CHANGES NOTHING.
+  //
+  // Two conditions raise it and both are genuinely frozen: the write-admission lock timing out (which can
+  // only happen while a freeze drain holds the tenant's exclusive applock — `TenantCutoverLockResource`
+  // .ForTenant is taken Exclusive in exactly one place, the drain, so writer load alone cannot produce it),
+  // and the copy window refusing every write. **`TenantWriteRouteStale` below is the condition that is NOT
+  // this one**, and the two were a single code until T-213.
   public static readonly Error TenantWritesFrozen =
     new("TenantStorage.TenantWritesFrozen", "Writes for this tenant are temporarily frozen by an in-progress storage cutover.");
+
+  // ==================================================================================================
+  // ⚠ NOT FROZEN — MISROUTED. RETRYABLE IMMEDIATELY, AND THAT IS THE WHOLE REASON IT EXISTS (T-213).
+  // ==================================================================================================
+  //
+  // A context created BEFORE a routing flip still holds a connection to the tenant's PREVIOUS database and
+  // does not re-resolve, so the version check never runs for it. The tenant is perfectly writable — on its
+  // new database. **Only this writer is in the wrong place.**
+  //
+  // ---- WHY IT WAS WORTH SPLITTING OUT OF `TenantWritesFrozen`, WHICH IT SHARED UNTIL T-213.
+  //
+  // **The suite already proved the remedy and the message contradicted it.** Three tests assert that a fresh
+  // context succeeds IMMEDIATELY — `A_context_created_before_the_flip_is_refused_and_a_fresh_one_succeeds`
+  // and `An_old_shared_context_stays_refused_after_completion_and_a_fresh_one_writes` — while the error they
+  // received said *"temporarily frozen by an in-progress storage cutover"*, which instructs a caller to stop
+  // and wait for a window that has already closed. **A test name specifies BEHAVIOUR and an error message
+  // specifies REMEDY; both were in the repository, both were read, and nothing ever compared them.**
+  //
+  // `DEC-L-079` and board 938's test: frozen is TERMINAL for the window, misrouted is RETRYABLE NOW. A
+  // caller can act differently on the two, which is exactly the line that decides whether a distinction is
+  // worth making.
+  //
+  // ---- ⚠ THE MESSAGE NAMES THE MISREADING AND KILLS IT, DELIBERATELY.
+  //
+  // A corrected message that merely stops being wrong leaves the old interpretation alive in whoever learned
+  // it. Saying "nothing is frozen" outright is what retires it.
+  public static readonly Error TenantWriteRouteStale =
+    new("TenantStorage.TenantWriteRouteStale",
+      "This write is bound to the tenant's previous database after a completed cutover. Re-resolve the " +
+      "tenant route and retry immediately — nothing is frozen.");
 
   // ---- Shared → Dedicated copy and exact validation (ADR-020, TS-Storage Phase E3).
   //
@@ -457,6 +542,32 @@ public static class TenantStorageErrors
   // The tenant model contains a foreign-key cycle, so no safe insertion order exists. Reported rather than
   // resolved by disabling constraints: turning off referential integrity to make a copy fit is how a copy
   // silently produces a database the application cannot trust.
+  // ---- ⚠⚠⚠ THREE VALUES, NOT ONE, AND THE MESSAGE BELOW WAS FALSE FOR TWO OF THEM (261).
+  //
+  // `TenantCutoverCopyPlan` used to return `CutoverCopyOrderUndecidable` from three places. Only the third
+  // is a cycle. The other two are PER-TABLE modelling faults in a DIFFERENT METHOD with a DIFFERENT RETURN
+  // TYPE — so an operator hitting either was told *the tenant model contains a foreign-key cycle* and sent
+  // to hunt a cycle that does not exist. THAT IS A WRONG DIAGNOSIS, NOT A VAGUE ONE.
+  //
+  // ⚠ The name stays with the cycle deliberately: five production comments cite
+  // `CutoverCopyOrderUndecidable` AS the cycle reason, and all five were read against this split and are
+  // still true. A discriminator would have left the name meaning one of three things and made every one of
+  // them ambiguous.
+  public static readonly Error CutoverTableNotCopyable =
+    new(
+      "TenantStorage.CutoverTableNotCopyable",
+      "A tenant-owned table has no primary key, or no copyable columns, so its rows cannot be compared " +
+      "or copied in a deterministic order. Give the entity a primary key in its model configuration.");
+
+  // ⚠ Reachable only as a deliberate modelling fault: `Build` already restricts itself to
+  // `ITenantOwnedEntity` implementers, so every table reaching this check HAS a `TenantId` property. This
+  // fires when a model maps such an entity while leaving that property UNMAPPED.
+  public static readonly Error CutoverTableNotTenantScoped =
+    new(
+      "TenantStorage.CutoverTableNotTenantScoped",
+      "A tenant-owned table has no mapped TenantId column, so its rows cannot be filtered to one tenant. " +
+      "Map TenantId for that entity in its model configuration.");
+
   public static readonly Error CutoverCopyOrderUndecidable =
     new("TenantStorage.CutoverCopyOrderUndecidable", "The tenant model contains a foreign-key cycle, so a safe copy order cannot be established.");
 

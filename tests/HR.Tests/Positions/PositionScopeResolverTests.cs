@@ -45,8 +45,17 @@ public sealed class PositionScopeResolverTests
   // `Platform.Tenant.Administer` widens the COMPANY dimension — an administrator reaches every active
   // company in the tenant — and grants NO operation. An administrator who was never given the HR permission
   // cannot read a position, and the scope they would have had is irrelevant to that.
+  //
+  // ⚠ CITED BY 269: `AC-POS-0044`, THE CLAUSE THIS CAN REACH — *`Platform.Tenant.Administer` … grants none
+  // of these permissions.* The criterion's other clause, *widens company scope*, is NOT asserted here: the
+  // generous `companies: [CompanyA, CompanyB]` above is ARRANGEMENT, not an assertion, and the widening is
+  // a Platform behaviour (`ADR-025` d8) proven against real SQL by the administrator company-access tests
+  // in `CompanyOwnershipBoundarySqlServerTests`. Cited for the half it carries, with the half it cannot.
+  //
+  // The write half is the Theory below, over all nine write permissions in all three families.
   [Fact]
   [Trait("Decision", "ADR-025")]
+  [Trait("Criterion", "AC-POS-0044")]
   public async Task Tenant_administration_alone_does_not_grant_the_position_read()
   {
     var resolver = Resolver(
@@ -72,6 +81,10 @@ public sealed class PositionScopeResolverTests
   [InlineData(HrPermissionNames.UpdateSalaryGrades)]
   [InlineData(HrPermissionNames.DeactivateSalaryGrades)]
   [Trait("Decision", "ADR-025")]
+  // ⚠ CITED BY 269: `AC-POS-0044`'s write half, paired with the read test above. Nine inline cases rather
+  // than one, because "grants no write" is a claim about every write permission and a single case would
+  // prove it of whichever one happened to be chosen.
+  [Trait("Criterion", "AC-POS-0044")]
   public async Task Tenant_administration_alone_grants_no_position_write(string permission)
   {
     var resolver = Resolver(permissions: ["Platform.Tenant.Administer"], companies: [CompanyA]);
@@ -107,8 +120,19 @@ public sealed class PositionScopeResolverTests
   // The most important row is the last: a caller holding EVERY position and job grade permission still
   // cannot obtain a `SalaryGradeReadScope`. That separation is the reason `HR.SalaryGrades.View` exists —
   // reading the organization chart must not also disclose the pay structure.
+  //
+  // ⚠ CITED BY 269: `AC-POS-0045` — *`HR.SalaryGrades.View` is a distinct permission; holding
+  // `HR.Positions.View` ALONE does not read salary amounts.* This is the criterion's literal sentence. Two
+  // siblings carry the rest of the claim and all three are cited: the next test proves it survives a caller
+  // holding EVERY position and job-grade permission plus the salary WRITE permission, and the one after
+  // proves the CONVERSE — `HR.SalaryGrades.View` alone grants only the salary scope, so the separation is
+  // not merely "positions do not reach pay" but a genuine partition.
+  //
+  // Each carries its own positive control: the position scope is asserted to SUCCEED before the two grade
+  // scopes are asserted to fail, so a resolver refusing everything cannot pass.
   [Fact]
   [Trait("Decision", "DEC-POS-0018")]
+  [Trait("Criterion", "AC-POS-0045")]
   public async Task The_position_view_permission_grants_neither_grade_ladder()
   {
     var resolver = Resolver(permissions: [HrPermissionNames.ViewPositions]);
@@ -126,6 +150,9 @@ public sealed class PositionScopeResolverTests
 
   [Fact]
   [Trait("Decision", "DEC-POS-0018")]
+  // ⚠ CITED BY 269: `AC-POS-0045`'s strongest leg — *ALONE* stretched to its limit. Nine permissions,
+  // including the salary WRITE permission, and the pay band is still not readable.
+  [Trait("Criterion", "AC-POS-0045")]
   public async Task Every_position_and_job_grade_permission_together_still_discloses_no_pay_band()
   {
     var resolver = Resolver(permissions:
@@ -153,6 +180,10 @@ public sealed class PositionScopeResolverTests
 
   [Fact]
   [Trait("Decision", "DEC-POS-0018")]
+  // ⚠ CITED BY 269: `AC-POS-0045`'s CONVERSE. Without this leg the criterion is satisfied by a permission
+  // that grants nothing at all; with it, `HR.SalaryGrades.View` is proven to be a real permission granting
+  // exactly one scope. *Distinct* is a two-way claim.
+  [Trait("Criterion", "AC-POS-0045")]
   public async Task The_salary_grade_view_permission_grants_only_the_salary_grade_scope()
   {
     var resolver = Resolver(permissions: [HrPermissionNames.ViewSalaryGrades]);
@@ -197,6 +228,11 @@ public sealed class PositionScopeResolverTests
   [InlineData(HrPermissionNames.ViewPositions)]
   [InlineData(HrPermissionNames.ViewJobGrades)]
   [InlineData(HrPermissionNames.ViewSalaryGrades)]
+  // ⚠ CITED BY 269: `AC-POS-0008` — *a caller whose authorized company set resolves empty is refused; NO
+  // READ RETURNS UNFILTERED RESULTS.* The second half is why "refused" is the right assertion and an empty
+  // result set would be the wrong one: an empty result claims something about the DATA, a refusal claims
+  // something about the CALLER, and only the second is true here.
+  [Trait("Criterion", "AC-POS-0008")]
   public async Task An_empty_authorized_company_set_is_refused_rather_than_unfiltered(string permission)
   {
     var resolver = Resolver(permissions: [permission], companies: []);
@@ -267,6 +303,53 @@ public sealed class PositionScopeResolverTests
     Assert.Equal(4, access.Calls);
   }
 
+  // ---- AND RE-ASKING IS NOT THE SAME AS HONOURING THE NEW ANSWER (`AC-POS-0009`, 269).
+  //
+  // ⚠ THE TEST ABOVE COUNTS CALLS. `Assert.Equal(4, access.Calls)` proves the authority is CONSULTED four
+  // times and passes, unchanged, against a resolver that asks every time, ignores every reply, and serves a
+  // set captured on the first call. CONSULTING AN AUTHORITY AND OBEYING IT ARE TWO CLAIMS, and only the
+  // first was asserted.
+  //
+  // ⚠⚠ ITS COMMENT MAKES A REAL AND CORRECT ARGUMENT — *three resolutions across three families, because
+  // one shared cache would be invisible to a single-family count* — AND EVERY WORD OF THAT CARE IS SPENT
+  // INSIDE A MEASURE OF THE INSTRUMENT'S OWN ACTIVITY RATHER THAN THE SUBJECT'S BEHAVIOUR. Careful
+  // reasoning inside a wrong frame is more convincing than careless reasoning, which is why this survived.
+  //
+  // THE REVOCATION LEAVES THE SET NON-EMPTY, ON PURPOSE. Setting `Permitted` to `[]` would refuse for the
+  // reason `An_empty_authorized_company_set_is_refused_rather_than_unfiltered` already owns, and this test
+  // would silently become a second copy of it. `[CompanyB]` means the authority still answers with a real
+  // grant that no longer covers the company this caller established.
+  //
+  // ONE FAMILY, DELIBERATELY. The refusal lives in the resolver's shared half and the empty-set Theory
+  // above already spans all three — but this criterion is about the POSITION read, and a three-family
+  // assertion would redden under a job-grade regression while naming a position criterion.
+  //
+  // NO NEW TOKEN: one resolver instance, one established company context, asked twice. That clause is
+  // carried by REUSING `resolver` rather than by any assertion.
+  //
+  // ANTI-VACUITY: the first resolution is asserted to SUCCEED and to carry `[CompanyA]`. Without that leg
+  // a resolver refusing every read passes perfectly while asserting nothing about revocation.
+  [Fact]
+  [Trait("Requirement", "NFR-POS-0303")]
+  [Trait("Criterion", "AC-POS-0009")]
+  public async Task Revoking_company_access_mid_session_refuses_the_next_position_read()
+  {
+    var access = new RecordingCompanyAccess([CompanyA]);
+    var resolver = Resolver(companyAccess: access);
+
+    var before = await resolver.ResolvePositionsAsync(new PositionScopeRequest());
+
+    Assert.True(before.IsSuccess, before.IsFailure ? before.Error.Code : null);
+    Assert.Equal([CompanyA], before.Value.Companies.CompanyIds);
+
+    access.Permitted = [CompanyB];
+
+    var after = await resolver.ResolvePositionsAsync(new PositionScopeRequest());
+
+    Assert.True(after.IsFailure);
+    Assert.Equal(PositionErrors.CompanyScopeDenied, after.Error);
+  }
+
   // ================================================================================================
   // WHAT THE RESOLVER DELIBERATELY DOES NOT CONSULT (DEC-POS-0020)
   // ================================================================================================
@@ -331,13 +414,20 @@ public sealed class PositionScopeResolverTests
   {
     public int Calls { get; private set; }
 
+    // ⚠ SETTABLE, AND ITS ABSENCE WAS THE GAP (`AC-POS-0009`, 269). This stub read an immutable
+    // primary-constructor parameter, so NO TEST IN THIS FILE COULD EXPRESS A REVOCATION — the authority
+    // could not give a different answer the second time it was asked. That is why the mid-session
+    // company×read cell was empty here and in the department resolver: not an oversight in a list of
+    // tests, but a fixture that made the test unwritable.
+    public IReadOnlyList<Guid> Permitted { get; set; } = permitted;
+
     public Task<Result<IReadOnlyList<CompanyAccessSummary>>> GetPermittedCompaniesAsync(
       Guid tenantId, long tenantUserId, CancellationToken cancellationToken = default)
     {
       Calls++;
 
       return Task.FromResult(Result.Success<IReadOnlyList<CompanyAccessSummary>>(
-        permitted.Select(id => new CompanyAccessSummary(id, "CODE", "Name")).ToArray()));
+        Permitted.Select(id => new CompanyAccessSummary(id, "CODE", "Name")).ToArray()));
     }
 
     public Task<Result> AuthorizeCompanyAsync(
@@ -345,7 +435,7 @@ public sealed class PositionScopeResolverTests
     {
       Calls++;
 
-      return Task.FromResult(permitted.Contains(companyId)
+      return Task.FromResult(Permitted.Contains(companyId)
         ? Result.Success()
         : Result.Failure(new Error("Company.Denied", "Denied.")));
     }
@@ -374,7 +464,6 @@ public sealed class PositionScopeResolverTests
 
     public string? Email => null;
 
-    public Guid? CompanyId => null;
 
     public string? SessionId => null;
 

@@ -35,7 +35,7 @@ A current `Provisioning` Tenant can be activated once and becomes authentication
 
 Every transition not listed in the approved lifecycle matrix is rejected without changing state or publishing a committed transition event.
 
-### AC-TEN-0007 — Suspension
+### AC-TEN-0007 — Suspension ends authentication eligibility and blocks selection, new sessions and refresh
 
 Suspending an `Active` Tenant makes current authentication eligibility false and blocks subsequent tenant selection, new-session, and refresh eligibility decisions.
 
@@ -228,7 +228,33 @@ The bootstrap allow-list may contain multiple unique `AuthenticationSubject` val
 
 ### AC-TEN-0049 — Concurrent bootstrap converges on one principal
 
-Concurrent bootstrap evaluations that both observe no usable authority converge, via the authoritative unique `IdentityId`/active-assignment constraints, on exactly one genesis/recovery principal (the loser's duplicate is an idempotent race outcome); no distributed lock is required.
+Concurrent bootstrap evaluations that both observe no usable authority converge on exactly one
+genesis/recovery principal (the loser's duplicate is an idempotent race outcome).
+
+> ### ⚠⚠ **CORRECTED 2026-09-06 — THE OUTCOME CLAIM SURVIVES; THE MECHANISM CLAIM DID NOT**
+>
+> **This criterion read: *"…converge, **via the authoritative unique `IdentityId`/active-assignment
+> constraints**, on exactly one genesis/recovery principal…; **no distributed lock is required**."***
+>
+> ***BOTH OF THOSE CLAUSES ARE NOW FALSE, AND THE SECOND IS FALSE IN THE LOAD-BEARING DIRECTION.***
+> `PlatformSupportBootstrapService.cs:30-36` *(range corrected 2026-09-07 — the quoted sentence begins at
+> `:30`, not `:33`)*: *"Convergence is provided by the recovery serialization
+> (`IPlatformSupportRecoverySerializer`)… **IdentityId uniqueness remains as defense-in-depth** for a
+> same-identity race… **it is no longer the primary multi-subject convergence mechanism.**"*
+> **And `PlatformSupportRecoverySerializer` *is* **an exclusive lock on the platform-support principal
+> table**, taken inside the transaction — chosen because at genesis the table is empty, so there is no row
+> to lock and a candidate-keyed lock would let two workers holding two different locks both proceed.**
+>
+> ⚠ ***SO "NO DISTRIBUTED LOCK IS REQUIRED" IS THE OPPOSITE OF WHAT SHIPPED, AND A READER REMOVING THE
+> SERIALIZER ON THIS CRITERION'S AUTHORITY WOULD REMOVE THE PRIMARY CONVERGENCE MECHANISM.***
+>
+> **The mechanism clauses are struck rather than rewritten, because *what the criterion should assert is the
+> OUTCOME, not the route* — `PlatformSupportBootstrapTests.cs:425` makes exactly that point: *"the trait
+> claims the OUTCOME — exactly one principal survives a race — and not the route."* **That outcome is still
+> true and still witnessed.** *Whether the criterion should name a mechanism at all is an owner question;
+> naming the wrong one is not.*
+>
+> **Found and written down in `PlatformSupportBootstrapTests.cs:415-425` by whoever noticed the divergence.**
 
 ### AC-TEN-0050 — Remaining configured subjects stay unprivileged
 

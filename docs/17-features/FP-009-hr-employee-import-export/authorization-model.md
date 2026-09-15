@@ -89,7 +89,7 @@ it structural rather than procedural, moved to
 | Company unauthorized, inactive, unknown, wrong tenant | `403 company.scope_denied`, indistinguishable | `FP-006`, `ADR-025` |
 | Branch selection missing for a branch-owned operation | `409 branch.selection_required` | `ADR-023` d.8 |
 | A department or position code that does not resolve in the caller's scope | A **row error** naming the column, which under `OD-DOC-003` refuses the file | `OD-DOC-004` — and it is a row error rather than a `404` because the caller addressed a file, not a department |
-| Import file malformed, header wrong, cap exceeded | `400 request.invalid` — with the per-row report as the body where rows were reachable | `DEC-DOC-0003` |
+| Import file malformed, header wrong, cap exceeded | `200` with `outcome: Refused` and the per-row report as the body — **not** a problem document *(amended 2026-09-06, owner ruling; was `400 request.invalid`)* | `DEC-DOC-0003` fixes the report's shape and names no status; the status is the endpoint's, at `EmployeeEndpointRouteBuilderExtensions.cs:741` |
 | Import key already used | `200` with the **original** run's result | `DEC-DOC-0004`; a conflict status would push callers into treating a successful idempotent replay as a failure |
 
 ## What an import may write, and what it may not

@@ -32,6 +32,39 @@ namespace SSAS.API.Tests.Infrastructure;
 // The ungated route below asserts exactly that — not that it returns 200, but that **entitlement is
 // never asked**. A route that succeeded because the resolver happened to say yes would pass a weaker
 // test and fail the day the answer changed.
+//
+// ==================================================================================================
+// ⚠⚠⚠ `AC-SUB-0021` IS **NOT** CITED HERE, AND THE REASON IS THE ROUTE THIS FILE MOUNTS.
+// ==================================================================================================
+//
+// *"A tenant with NO ENTITLEMENT AT ALL can still AUTHENTICATE, SELECT ITS TENANT, REFRESH, LOG OUT, and
+// reach PLATFORM SUPPORT and the SUBSCRIPTION SURFACE."* `TS-SUB-0020` calls it **the lock-out scenario**
+// — *"if it fails, a lapsed tenant cannot be restored without a database edit."*
+//
+// **`/platform-plane` is a route this test invents.** It exists nowhere in the product. So what is proved
+// is the MECHANISM — an ungated route never consults entitlement — and **not one of the six named
+// capabilities.** Citing `AC-SUB-0021` here would be adjacent-scope: right subject, right mechanism, and
+// no assertion about anything a customer can actually do.
+//
+// ⚠ SEARCHED BY MECHANISM, NOT BY NAME, BECAUSE THE CLAIM IS AN ABSENCE. To express *a tenant with no
+// entitlement* a test MUST configure entitlement, so it must register `ITenantEntitlementReader` or
+// `ITenantModuleEntitlement`. **Eight files do**; the six that build a host all mount synthetic routes
+// (`/gated`, `/platform-plane`, `/module/Payroll`), and the other two touch no host at all. **No test that
+// configures entitlement mounts a product authentication, tenant-selection, refresh, logout, support or
+// subscription route.** The converse also holds and is why: the real-host tests use
+// `HostWebApplicationFactory` and **configure no entitlement**, so they cannot express *a tenant with no
+// entitlement* even though they drive the real routes.
+//
+// ⚠⚠ SO THE SHAPE IS NOT THE UNEXECUTED-PATH CLASS — IT IS A **CONJUNCTION WHOSE HALVES ARE EACH TESTED
+// AND NEVER TOGETHER.** The authentication flows are well covered with no entitlement configured; the
+// entitlement refusal is well covered on invented routes. `AC-SUB-0021` is the AND of the two, and the AND
+// is asserted nowhere. **Each half being thoroughly tested is exactly what makes the gap invisible.**
+//
+// What DOES bear on it structurally: `ModuleEnablementCoverageTests.No_platform_plane_endpoint_is_gated`
+// proves over the REAL host that no platform-plane endpoint carries the gate. That is a strong argument
+// and it is still an argument — **it asserts metadata is absent, never that a lapsed tenant logs in.**
+// Recorded at both ends; the criterion keeps its honest status. A behavioural witness needs the real host
+// with a lapsed subscription, which is `Integration.Tests` and outside this loop's gate.
 public sealed class ExpiredTenantGateTests
 {
   private const string ModuleKey = "Payroll";
@@ -139,7 +172,27 @@ public sealed class ExpiredTenantGateTests
   //
   // The snapshot is read once and cached; the second request crosses the term boundary with **no write
   // and no invalidation**. This is the clock-advance proof at the HTTP surface rather than in isolation.
+  //
+  // ⚠ CITES `AC-SUB-0032` — *"A cached entitlement entry DOES NOT OUTLIVE `TermEndUtc`. A tenant cached as
+  // entitled at `TermEndUtc − 1s` is refused at `TermEndUtc + 1s` WITHOUT ANY INVALIDATION EVENT HAVING
+  // OCCURRED."* **The two `Assert.Equal(1, reader.Reads)` calls are the criterion's real content** — the
+  // first establishes the entry was cached, the second that it was never re-read. Without the second, a
+  // cache that silently evicted on every request would pass and the criterion would be about nothing.
+  //
+  // ⚠ AND CITES `AC-SUB-0028` — *"Advancing the clock past `TermEndUtc` changes the resolved state from
+  // `InTerm` to `Expired` WITH NO ROW WRITTEN AND NO JOB RUN."* *No job run* is the same `Reads == 1`;
+  // **`no row written` is carried by this host having no persistence at all rather than by an assertion**,
+  // which is weaker than it looks and is why the domain-level statement matters more: `HasExpiredAt` is a
+  // pure function of the term against the clock, so there is nothing that COULD write.
+  //
+  // ⚠⚠ THE BOUNDARY PRECISION IS NOT HERE AND DOES NOT NEED TO BE. The criterion says `−1s` and `+1s`;
+  // this crosses by a day either side. The tick-exact boundary is asserted in
+  // `SubscriptionInvariantTests.A_fixed_term_expires_after_its_end` — `HasExpiredAt(end)` false,
+  // `HasExpiredAt(end + 1 tick)` true. **Two files, one criterion: the precision lives in the domain test
+  // and the cache behaviour lives here**, and neither alone is the criterion.
   [Fact]
+  [Trait("Criterion", "AC-SUB-0032")]
+  [Trait("Criterion", "AC-SUB-0028")]
   public async Task A_request_before_expiry_caches_a_snapshot_that_still_refuses_after_it()
   {
     var reader = new StubReader(SubscriptionTerm.Fixed(Noon, Noon.AddDays(30)).Value);

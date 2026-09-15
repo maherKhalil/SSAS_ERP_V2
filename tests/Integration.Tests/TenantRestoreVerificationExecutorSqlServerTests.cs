@@ -382,7 +382,19 @@ public sealed class TenantRestoreVerificationExecutorSqlServerTests
       if (!string.IsNullOrWhiteSpace(root) && Directory.Exists(root))
       {
         try { Directory.Delete(root, recursive: true); }
+        // ⚠ TEARDOWN OF A DIRECTORY, AND UNLIKE THE CATALOG ABOVE IT IS NOT RECORDED.
+        //
+        // A file still locked by a process that has not fully exited is the normal case here, and failing
+        // the test for it would report a cleanup race as a product defect. **The leak is not lost**: the
+        // gate reaps stale backup roots at startup, because a recorder at teardown is structurally blind
+        // to a run that died before reaching it.
         catch (IOException) { }
+        // ⚠ TEARDOWN OF A DIRECTORY, AND UNLIKE THE CATALOG ABOVE IT IS NOT RECORDED.
+        //
+        // A file still locked by a process that has not fully exited is the normal case here, and failing
+        // the test for it would report a cleanup race as a product defect. **The leak is not lost**: the
+        // gate reaps stale backup roots at startup, because a recorder at teardown is structurally blind
+        // to a run that died before reaching it.
         catch (UnauthorizedAccessException) { }
       }
     }
@@ -437,7 +449,6 @@ public sealed class TenantRestoreVerificationExecutorSqlServerTests
     public string? UserId => "d7-full-path-test";
     public string? UserName => null;
     public string? Email => null;
-    public Guid? CompanyId => null;
     public string? SessionId => null;
     public string? TokenId => null;
     public IReadOnlyCollection<string> Roles => [];

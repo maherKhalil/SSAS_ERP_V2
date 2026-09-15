@@ -107,6 +107,11 @@ public sealed class PositionSchemaSqlServerTests
   [InlineData("JobGrades")]
   [InlineData("SalaryGrades")]
   [Trait("Decision", "DEC-POS-0002")]
+  // ⚠ CITED BY 269: `AC-POS-0006`'s SCHEMA clause — *`tenant.Positions` has no column referencing
+  // `tenant.Employees`.* The other clause, *a created position has no employee reference OF ANY KIND*, is
+  // `PositionDomainTests.The_position_aggregate_has_no_reference_to_any_employee`, which reads the CLR
+  // type. A column and a property are different claims and neither implies the other.
+  [Trait("Criterion", "AC-POS-0006")]
   public async Task No_position_aggregate_table_references_an_employee(string table)
   {
     await using var fixture = await PositionFixture.CreateAsync();
@@ -145,11 +150,25 @@ public sealed class PositionSchemaSqlServerTests
   //
   // Amounts are denominated in the owning Company's immutable `BaseCurrencyCode`. A per-row copy would be a
   // second source of truth for a fact the Company already owns.
+  // ⚠ CITED BY 269 ON THE SET, NOT ALONE. This is `AC-POS-0022`'s FIRST clause — *`tenant.SalaryGrades` has
+  // no currency column*. The second — *sending `currencyCode` on a write is rejected* — is carried by
+  // `PositionEndpointTests.Sending_a_currency_code_on_a_salary_grade_write_is_rejected`. A schema test
+  // cannot reach the transport claim and an API test cannot reach the column. Neither is honest alone.
   [Fact]
   [Trait("Decision", "ADR-027")]
+  [Trait("Criterion", "AC-POS-0022")]
   public async Task No_position_table_stores_a_currency()
   {
     await using var fixture = await PositionFixture.CreateAsync();
+
+    // ⚠ THE KNOWN-POSITIVE CONTROL, ADDED WITH THE CITATION (269). `Assert.Equal(0, …)` over a column count
+    // passes identically when the rule holds and when the QUERY CAN SEE NOTHING — a renamed table, a
+    // changed schema, a broken predicate. Proving the same instrument finds a column that must exist is
+    // what separates "no currency column" from "no answer". It is checked on every run, which a plant is
+    // not.
+    Assert.True(
+      await fixture.ScalarAsync(ColumnCount("SalaryGrades", "c.name LIKE N'%Amount%'")) > 0,
+      "the column query found no amount columns on SalaryGrades, so its zeroes below mean nothing");
 
     foreach (var table in new[]
       { "Positions", "JobGrades", "SalaryGrades", "EmployeePositionAssignments" })
@@ -187,6 +206,12 @@ public sealed class PositionSchemaSqlServerTests
   // ---- THE MONEY COLUMNS ARE decimal(19,4), NEVER float, real OR money (ADR-027 decision 1).
   [Fact]
   [Trait("Decision", "ADR-027")]
+  // ⚠ CITED BY 269: `AC-POS-0018`'s STORAGE clause — *amounts are stored at `decimal(19,4)`.* Read from
+  // `sys.types` and asserted as an exact string, so a widened or narrowed scale reddens. The criterion's
+  // other clause — *round-trips a three-decimal currency value WITHOUT LOSS* — is
+  // `An_unpriced_grade_materializes_with_a_null_band_and_a_priced_one_keeps_four_decimals`, which persists
+  // and reads back. A column type is not a round trip: a converter could still round on the way through.
+  [Trait("Criterion", "AC-POS-0018")]
   public async Task The_salary_band_columns_are_decimal_19_4()
   {
     await using var fixture = await PositionFixture.CreateAsync();
@@ -248,6 +273,11 @@ public sealed class PositionSchemaSqlServerTests
   [InlineData("300.0000", "200.0000", "100.0000")]
   [InlineData("100.0000", "300.0000", "200.0000")]
   [InlineData("200.0000", "100.0000", "300.0000")]
+  // ⚠ CITED BY 269: `AC-POS-0019`'s SECOND clause — *the database check constraint refuses them AS WELL
+  // WHEN WRITTEN DIRECTLY IN SQL.* That clause exists precisely because the domain half cannot reach a
+  // write that bypasses the application; the domain half is `GradeDomainTests.A_band_out_of_order_is_
+  // refused`. Two statements of one rule, and only this one holds against raw SQL.
+  [Trait("Criterion", "AC-POS-0019")]
   public async Task An_out_of_order_salary_band_is_refused_by_the_database(
     string minimum, string midpoint, string maximum)
   {
@@ -260,6 +290,11 @@ public sealed class PositionSchemaSqlServerTests
   }
 
   [Fact]
+  // ⚠ CITED BY 269: `AC-POS-0020` at the DATABASE. The domain half is
+  // `GradeDomainTests.A_negative_amount_is_refused`. ⚠ Note its sibling `A_zero_amount_is_accepted` is the
+  // boundary control: without it "negative is refused" is satisfied by a rule refusing everything at or
+  // below zero, which would forbid an unpaid or nominal band the package does not forbid.
+  [Trait("Criterion", "AC-POS-0020")]
   public async Task A_negative_salary_band_amount_is_refused_by_the_database()
   {
     await using var fixture = await PositionFixture.CreateAsync();
@@ -290,6 +325,21 @@ public sealed class PositionSchemaSqlServerTests
   // a null `Band` (not a zero-valued one), and four decimal places must survive the round trip.
   [Fact]
   [Trait("Decision", "DEC-POS-0027")]
+  // ⚠ CITED BY 269 FOR TWO CRITERIA, and it carries a clause of each.
+  //
+  // `AC-POS-0018`'s ROUND-TRIP clause — the values go in through raw SQL and come back through EF with all
+  // four decimals intact. FOUR decimals where the criterion says three: strictly stronger, since the fourth
+  // is the guard digit and a rounding that preserved four preserves three a fortiori.
+  //
+  // `AC-POS-0021`'s READ-BACK clause — *a salary grade may be created with no amounts at all, AND READS
+  // BACK WITH NULLS.* `Assert.Null(grades[0].Band)` is that, and it is materialisation rather than
+  // construction: the domain half is `GradeDomainTests.A_band_with_no_amounts_is_a_successful_absence_not_
+  // a_failure`. A value object that accepts absence and a mapping that materialises it are different claims.
+  //
+  // The two grades in one arrangement are each other's control: a priced one beside an unpriced one means
+  // neither result can be an artefact of the fixture producing only one shape.
+  [Trait("Criterion", "AC-POS-0018")]
+  [Trait("Criterion", "AC-POS-0021")]
   public async Task An_unpriced_grade_materializes_with_a_null_band_and_a_priced_one_keeps_four_decimals()
   {
     await using var fixture = await PositionFixture.CreateAsync();
@@ -334,6 +384,10 @@ public sealed class PositionSchemaSqlServerTests
   }
 
   [Fact]
+  // ⚠ CITED BY 269: `AC-POS-0004` at the INDEX. Paired with the application-level
+  // `The_same_position_code_is_free_in_another_company` — the handler permitting it and the index
+  // permitting it are different facts, and the index is the one that binds a direct write.
+  [Trait("Criterion", "AC-POS-0004")]
   public async Task The_same_position_code_is_free_in_a_second_company()
   {
     await using var fixture = await PositionFixture.CreateAsync();
@@ -367,6 +421,12 @@ public sealed class PositionSchemaSqlServerTests
   // the index rather than in application logic that a race can step around.
   [Fact]
   [Trait("Decision", "DEC-POS-0007")]
+  // ⚠ CITED BY 269: `AC-POS-0003`'s HARDEST clause — *the refusal comes from the UNIQUE INDEX UNDER
+  // CONCURRENT CREATION, NOT ONLY FROM A PRIOR READ.* Only a genuinely concurrent pair can distinguish
+  // those two: a sequential duplicate is refused by the pre-read and proves nothing about the index. The
+  // application-level refusal is `PositionApplicationSqlServerTests.A_duplicate_normalized_position_code_
+  // is_refused_within_the_company` and the `409` is in `PositionEndpointTests`.
+  [Trait("Criterion", "AC-POS-0003")]
   public async Task Two_concurrent_inserts_of_one_code_leave_exactly_one_row()
   {
     await using var fixture = await PositionFixture.CreateAsync();
@@ -389,6 +449,12 @@ public sealed class PositionSchemaSqlServerTests
   // provide.
   [Fact]
   [Trait("Decision", "DEC-POS-0006")]
+  // ⚠ CITED BY 269: `AC-POS-0013` — *two grades in the same company and ladder may not share a
+  // `RankOrder`; THE REFUSAL COMES FROM THE UNIQUE INDEX.* The second clause is why this is the citation
+  // and not an application-level refusal: asserting the INDEX NAME in the exception message is what makes
+  // "from the index" a fact rather than an inference. A handler pre-check would produce the same refusal
+  // with no index involved at all.
+  [Trait("Criterion", "AC-POS-0013")]
   public async Task A_duplicate_rank_is_refused_within_one_ladder_and_company()
   {
     await using var fixture = await PositionFixture.CreateAsync();
@@ -481,6 +547,11 @@ public sealed class PositionSchemaSqlServerTests
   // CHECK CONSTRAINTS AND REFERENTIAL BEHAVIOUR
   // ================================================================================================
   [Fact]
+  // ⚠ CITED BY 269: `AC-POS-0005` at the DATABASE — a blank or whitespace-only title or code is refused
+  // even by a write that bypasses the application entirely. The domain half is
+  // `PositionDomainTests.An_invalid_code_is_refused` / `An_invalid_title_is_refused`. Both are needed: the
+  // domain refuses what the application can express, the check constraint refuses what SQL can.
+  [Trait("Criterion", "AC-POS-0005")]
   public async Task A_blank_code_or_title_is_refused_by_the_database()
   {
     await using var fixture = await PositionFixture.CreateAsync();
@@ -576,6 +647,11 @@ public sealed class PositionSchemaSqlServerTests
   // an update that cannot happen.
   [Fact]
   [Trait("Decision", "DEC-POS-0021")]
+  // ⚠ CITED BY 269: `AC-POS-0048`'s COLUMN clause — *`EmployeePositionAssignment` has no `RowVersion`
+  // column.* Asserted at the schema, paired with `EmployeeBoundarySqlServerTests.P7_...` for the
+  // serialization clause. The aggregates being asserted to HAVE one in the same test is the control: an
+  // absence proven beside a presence cannot be a query that sees no rowversions anywhere.
+  [Trait("Criterion", "AC-POS-0048")]
   public async Task The_aggregates_carry_a_rowversion_and_the_history_does_not()
   {
     await using var fixture = await PositionFixture.CreateAsync();
@@ -605,6 +681,9 @@ public sealed class PositionSchemaSqlServerTests
       await work;
       return true;
     }
+  // The exception IS the answer here, not an error being swallowed: `Capture` exists to turn "did this
+  // statement get refused" into a bool, and a `SqlException` is the refusal. Anything that is NOT a
+  // SqlException still propagates and fails the test, which is what keeps this from being a blanket catch.
     catch (SqlException)
     {
       return false;
@@ -925,7 +1004,6 @@ public sealed class PositionSchemaSqlServerTests
 
       public string? Email => null;
 
-      public Guid? CompanyId => null;
 
       public string? SessionId => null;
 

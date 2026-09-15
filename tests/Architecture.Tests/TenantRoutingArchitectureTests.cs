@@ -102,9 +102,47 @@ public sealed class TenantRoutingArchitectureTests
       "Azure.Messaging.ServiceBus", "RabbitMQ", "Confluent.Kafka", "MassTransit", "NServiceBus"
     ];
 
+    // ================================================================================================
+    // ⚠⚠ NOT CONVERTED TO A DECLARED READ, AND THAT IS A DECISION RATHER THAN AN OMISSION (272)
+    // ================================================================================================
+    //
+    // Item `272` converted the boundary guards to read DECLARED dependencies out of the `.csproj`, because
+    // `GetReferencedAssemblies()` omits a reference no type is taken from and a declared-but-unused
+    // dependency is latent capability the emitted reading cannot see.
+    //
+    // ⚠ THAT REASONING DOES NOT APPLY HERE, AND APPLYING IT WOULD ADD A VACUOUS ASSERTION. Which of the two
+    // readings is stronger is a function of HOW THE DEPENDENCY CAN ARRIVE: for a direct ProjectReference,
+    // declared ⊃ emitted; **for a package that could only arrive TRANSITIVELY, declared is EMPTY BY
+    // CONSTRUCTION**. Not one of these seven brokers can appear in a `.csproj` of ours today, so a declared
+    // check on them would pass forever, for a reason no reader would guess, while reading as extra rigour.
+    //
+    // The whole repository declares ELEVEN `PackageReference` lines across three projects; none is a broker.
+    //
+    // ---- ⚠⚠⚠ THE MECHANISM IS CONTROLLED. THE SEVEN LITERALS ARE NOT, AND CANNOT BE.
+    //
+    // The control below proves the emitted read and the prefix match both FIRE, using a prefix that really
+    // is referenced. That closes *the matcher is wired* for all seven branches at once.
+    //
+    // **What it cannot close is the SPELLING.** A misspelt `RabbitMQ` silently never matches and no witness
+    // can prove otherwise, because the ban exists precisely BECAUSE nothing references these. That is the
+    // identical shape as `273`'s `EffectiveToUtc` — no symbol in the tree, so no `nameof`, no positive, and
+    // the residual is NAMED rather than guarded. Cited so the next reader finds the reasoning instead of
+    // re-deriving it.
+    //
+    // And the ban itself stays meaningful: adding RabbitMQ tomorrow is exactly the constructible change it
+    // exists to refuse.
+    Assert.Contains(
+      InfrastructureAssembly.GetReferencedAssemblies(),
+      reference => reference.Name?.StartsWith("Microsoft.", StringComparison.OrdinalIgnoreCase) == true);
+
     foreach (var assembly in new[] { ApplicationAssembly, InfrastructureAssembly })
     {
       var referenced = assembly.GetReferencedAssemblies().Select(name => name.Name ?? string.Empty).ToArray();
+
+      // The same instrument is shown to see SOMETHING on each assembly, so a zero below means "no broker"
+      // rather than "no references read at all".
+      Assert.NotEmpty(referenced);
+
       foreach (var broker in brokers)
       {
         Assert.DoesNotContain(referenced, name => name.StartsWith(broker, StringComparison.OrdinalIgnoreCase));
@@ -153,9 +191,15 @@ public sealed class TenantRoutingArchitectureTests
     using var context = ModelOnlyPlatformContext();
 
     Assert.Null(context.Model.FindEntityType(typeof(TenantRoutingCacheEntry)));
-    Assert.DoesNotContain(
-      context.Model.GetEntityTypes(),
-      entity => entity.ClrType.Name.Contains("RoutingCache", StringComparison.Ordinal));
+    var persisted = context.Model.GetEntityTypes()
+      .Where(entity => entity.ClrType.Name.Contains("RoutingCache", StringComparison.Ordinal))
+      .Select(entity => entity.ClrType.Name)
+      .ToArray();
+
+    Assert.True(persisted.Length == 0,
+      $"version-aware routing has acquired persistence: {string.Join(", ", persisted)}. The design turns " +
+      "on a version column that already exists on TenantDatabaseAssignment, and a cache entity would make " +
+      "the routing table an authority rather than an optimisation (ADR-020).");
 
     // The version this design turns on is a column that already exists on the assignment.
     var assignment = context.Model.FindEntityType(typeof(TenantDatabaseAssignment));
@@ -223,7 +267,6 @@ public sealed class TenantRoutingArchitectureTests
     public string? UserId => "architecture-tests";
     public string? UserName => null;
     public string? Email => null;
-    public Guid? CompanyId => null;
     public string? SessionId => null;
     public string? TokenId => null;
     public IReadOnlyCollection<string> Roles => [];

@@ -75,6 +75,11 @@ public sealed class DepartmentEndpointTests : IClassFixture<DepartmentApiTestHos
   }
 
   [Fact]
+  // ⚠ CITED BY 265: `AC-DEP-0002`, the `companyId` half. This test was the UNCITED evidence that showed the
+  // criterion was wrong — the behaviour was already asserted; it was the specification that was stale.
+  // Paired with `D5b`, which carries `tenantId`: the two are independent entries in a per-call-site
+  // allowlist, so neither covers the other.
+  [Trait("Criterion", "AC-DEP-0002")]
   public async Task D5_Create_rejects_an_undeclared_field()
   {
     const string body = """
@@ -87,12 +92,46 @@ public sealed class DepartmentEndpointTests : IClassFixture<DepartmentApiTestHos
     Assert.Equal("request.invalid", await DepartmentApiTestHost.ProblemCodeAsync(response));
   }
 
+  // ---- THE SAME RULE FOR `tenantId`, AND A SEPARATE TEST BECAUSE THE ALLOWLIST IS PER-NAME (265).
+  //
+  // ⚠ `ReadStrictJsonAsync` DOES NOT DERIVE THE ACCEPTED MEMBERS FROM `CreateDepartmentRequest`. It takes an
+  // explicit `fields` DICTIONARY built at the call site -- currently code / name / parentDepartmentId in
+  // `DepartmentEndpointRouteBuilderExtensions` -- and rejects any name absent from it. So `companyId` and
+  // `tenantId` are TWO INDEPENDENT ENTRIES in an allowlist, not two faces of one derived rule: adding
+  // `tenantId` to that dictionary would bind and honour it WHILE `D5`, WHICH WITNESSES `companyId` ONLY,
+  // STAYS GREEN. A shared mechanism argues against a second test only when the subjects cannot diverge.
+  //
+  // The value names a DIFFERENT tenant from the host's own, so what is refused is the cross-tenant
+  // assertion the criterion is about and not merely a malformed field.
+  //
+  // ⚠ CITED BY 265 ONLY AFTER THE CRITERION WAS CORRECTED (`b679214`). `AC-DEP-0002` used to say body
+  // identifiers are *IGNORED, NOT HONOURED* and that such a request *produces a department in the caller's
+  // own tenant* — and the product does NEITHER, it REFUSES with 400. Citing it then would have attached a
+  // criterion to a test contradicting its stated behaviour. `AC-DEP-0035`, in the SAME document, stated the
+  // opposite disposition for the same class of undeclared field and the code implements 0035's rule: the
+  // specification disagreed with itself and the implementation picked the safer side.
+  [Fact]
+  [Trait("Criterion", "AC-DEP-0002")]
+  public async Task D5b_Create_rejects_an_undeclared_tenant_id()
+  {
+    const string body = """
+      {"code":"FIN","name":"Finance","tenantId":"33333333-3333-3333-3333-333333333333"}
+      """;
+
+    var response = await Send(HttpMethod.Post, Route, CreateToken, body);
+
+    // `request.invalid` rather than only the status: a 400 could also be a missing required field, and
+    // `code` and `name` are both present here precisely so that route to 400 is closed.
+    Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    Assert.Equal("request.invalid", await DepartmentApiTestHost.ProblemCodeAsync(response));
+  }
+
   // ---- THE FIRST OF THE TWO UNIQUE-CONSTRAINT CONTEXTS.
   //
   // On create, Persistence.UniqueConstraint means the unique index on NormalizedCode had the last word —
   // the same answer the pre-check gives, so a race and a sequential duplicate are indistinguishable.
   [Fact]
-  public async Task D6_A_unique_constraint_on_create_is_a_code_conflict()
+  public async Task D6_A_unique_constraint_violation_on_create_maps_to_a_code_conflict()
   {
     host.UnitOfWork.Failure = IdentityAccessErrors.UniqueConstraintViolation;
 
@@ -293,7 +332,7 @@ public sealed class DepartmentEndpointTests : IClassFixture<DepartmentApiTestHos
   //
   // It must be indistinguishable from a stale rowversion, because both mean "somebody got there first".
   [Fact]
-  public async Task D23_A_unique_constraint_on_assign_manager_is_a_concurrency_conflict()
+  public async Task D23_A_unique_constraint_violation_on_assign_manager_maps_to_a_concurrency_conflict()
   {
     host.UnitOfWork.Failure = IdentityAccessErrors.UniqueConstraintViolation;
 
@@ -307,7 +346,11 @@ public sealed class DepartmentEndpointTests : IClassFixture<DepartmentApiTestHos
 
   // And the rowversion loser gets the identical answer, which is what "indistinguishable" means.
   [Fact]
-  public async Task D24_A_rowversion_conflict_on_assign_manager_answers_identically()
+  // CITED BY B18 pass 20 as the only assertion of `AC-DEP-0048`'s `409` clause -- for ONE mutation.
+  // The criterion says every department mutation; the other six map their concurrency conflict
+  // nowhere that a test reads.
+  [Trait("Criterion", "AC-DEP-0048")]
+  public async Task D24_A_concurrency_conflict_on_assign_manager_maps_identically()
   {
     host.UnitOfWork.Failure = IdentityAccessErrors.ConcurrencyConflict;
 
@@ -330,6 +373,142 @@ public sealed class DepartmentEndpointTests : IClassFixture<DepartmentApiTestHos
 
     Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
     Assert.Equal("department.manager_invalid", await DepartmentApiTestHost.ProblemCodeAsync(response));
+  }
+
+  // ================================================================================================
+  // ⚠⚠⚠ `OD-DEP-003` READING (i) — THE DEPARTMENTAL SELF-MANAGEMENT BAN. RED ON PURPOSE (2026-09-06).
+  // ================================================================================================
+  //
+  // The owner CLOSED `OD-DEP-003` on 2026-08-20 adopting reading (iii) (`decisions-approved.md:27`), and
+  // (iii) is *"(i) now, (ii) when a reporting line is introduced"* (`README.md:213`). Reading (i) is
+  // *"An employee may not be the manager of the department they themselves belong to"*, marked
+  // **enforceable in FP-007 — Yes, fully**. `AC-DEP-0023` states it in BOTH directions.
+  //
+  // ⚠⚠ THE PRODUCT DOES NOT ENFORCE IT AND SAYS SO IN WRITING. `DepartmentManagerCommandHandlers.cs:68-70`:
+  // *"DEPARTMENT MEMBERSHIP IS NOT CONSULTED EITHER, in either direction… `Employee.DepartmentId ==
+  // Department.Id` is explicitly NOT a rule."* **That comment and the code it describes are ONE commit —
+  // `245f64b`, 2026-08-20 16:18 — and the ruling reached the repository at `4a84e7d`, 2026-08-21 05:03.**
+  // *So the argument predates the decision's recording, and `git log` on that file returns exactly one
+  // commit: it has never been reopened. This is a stale position, not a live dissent.*
+  //
+  // ***WRITTEN RED AND VERIFIED RED BEFORE THE FIX EXISTED*** — it failed at the `Assert.NotEqual` below with
+  // *Expected: Not OK / Actual: OK*, because the assignment SUCCEEDED and seated the manager. **The fix
+  // (`DepartmentManagerCommandHandlers`, `employee.DepartmentId == department.Id` →
+  // `DepartmentErrors.ManagerInOwnDepartment`) turned it green.** *Recorded because a guard that has never
+  // failed is indistinguishable from one that cannot.*
+  //
+  // ⚠ IT ASSERTS BEHAVIOUR AND DELIBERATELY NOT A PROBLEM CODE. The manager refusals collapse to one wire
+  // code on purpose — `DepartmentApiErrorMapper` keeps *nonexistent*, *another company's*, *terminated* and
+  // now *own department* all as `department.manager_invalid`, so a department caller cannot probe the
+  // employee set. Asserting that code here would therefore prove almost nothing about WHICH rule fired.
+  // What is asserted is what the ruling requires: the assignment does not succeed, and no manager is seated.
+  [Fact]
+  public async Task An_employee_cannot_be_made_manager_of_the_department_they_belong_to()
+  {
+    // ⚠⚠⚠ THE EMPLOYEE IS STAMPED INTO THE DEPARTMENT THE HANDLER *LOADS*, NOT THE ONE THE ROUTE NAMES.
+    // The first version of this test used `DepartmentApiTestHost.DepartmentId` — the id in the URL — and
+    // the stub repository ignores the requested id and returns a `Department` whose `Id` came from
+    // `Department.Create`, i.e. a fresh `Guid` per reset. **The two arms of this pair were therefore the
+    // SAME arrangement and neither employee was ever a member**, so the guard stayed red after the fix and
+    // the companion proved nothing. *A route parameter and an aggregate's identity are different things
+    // here, and only the second reaches `employee.DepartmentId == department.Id`.*
+    //
+    // Everything else is the seeded ELIGIBLE state — same tenant, same company, not terminated — so
+    // membership is the only difference between this arrangement and the companion below.
+    host.EmployeeRepository.Employee = EmployeeInDepartment(host.Repository.Department!.Id);
+
+    var response = await Send(
+      HttpMethod.Post, $"{Route}/{DepartmentApiTestHost.DepartmentId}/manager", UpdateToken,
+      ValidAssignManagerBody);
+
+    Assert.NotEqual(HttpStatusCode.OK, response.StatusCode);
+    Assert.Null(host.Repository.Manager);
+  }
+
+  // ---- THE ANTI-VACUITY COMPANION, AND IT IS NOT OPTIONAL.
+  //
+  // A handler that refused EVERY assignment would satisfy the guard above completely while destroying the
+  // feature. This is the same arrangement with ONE field changed, and it must keep passing — before the
+  // fix and after it.
+  [Fact]
+  public async Task An_employee_in_another_department_may_still_be_made_manager()
+  {
+    // ⚠ THE ARRANGEMENT IS ASSERTED, NOT ASSUMED. The employee must be in a department that is NOT the one
+    // the handler loads, and relying on a constant failing to collide with a freshly generated `Guid` would
+    // leave this test's meaning resting on a fact nobody wrote down — which is precisely the defect its
+    // twin above carried. The inequality is therefore stated before the act.
+    var elsewhere = Employees.EmployeeApiTestHost.DepartmentA;
+    Assert.NotEqual(host.Repository.Department!.Id, elsewhere);
+
+    host.EmployeeRepository.Employee = EmployeeInDepartment(elsewhere);
+
+    var response = await Send(
+      HttpMethod.Post, $"{Route}/{DepartmentApiTestHost.DepartmentId}/manager", UpdateToken,
+      ValidAssignManagerBody);
+
+    Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    Assert.NotNull(host.Repository.Manager);
+  }
+
+  // ================================================================================================
+  // ⚠⚠⚠ THE OTHER HALF OF READING (i) IS NOT ENFORCED, AND THIS FILE MUST NOT BE READ AS IF IT WERE.
+  // ================================================================================================
+  //
+  // `AC-DEP-0023` and `OD-DEP-003` reading (i) are a STATE INVARIANT — *"an employee may not BE the manager
+  // of the department they themselves belong to"* — and **a state has two routes into it**:
+  //
+  //     ***ASSIGN*** — make a member of this department its manager   ***CLOSED***, by the pair above
+  //     ***MOVE***   — move the manager into the department they head ***NOT ENFORCED***
+  //
+  // ***A READER WHO MEETS THE FIXED ASSIGN PATH WILL CONCLUDE THE RULE IS ENFORCED. IT IS HALF ENFORCED,
+  // AND HALF A STATE INVARIANT IS NOT A WITNESS FOR IT*** — which is why neither test above carries a
+  // `Criterion` trait for `AC-DEP-0023` and why this file does not cite it.
+  //
+  // ⚠ WHY THE MOVE GUARD IS ABSENT RATHER THAN FAILING. `ChangeEmployeeDepartmentCommandHandler` **cannot
+  // learn who manages a department**: its constructor is `(IEmployeeRepository, ITenantUnitOfWork,
+  // ICurrentTenant, ICurrentCompany, ICurrentUser, IDateTimeProvider)` — no `IDepartmentRepository` — and
+  // `IEmployeeRepository`'s entire surface (`GetByIdAsync`, the two `Exists` probes, the four
+  // `FindAssignable…` lookups) carries **no manager read at all**. Its destination check runs through
+  // `CreateEmployeeCommandHandler.ValidateDepartmentAsync(employees, …)`, which answers company-and-active
+  // and nothing else. ***So a test written today could assert "this move is refused" but could NOT express
+  // "this employee manages the destination" — a guard demanding that EVERY move be refused. That is the
+  // fixture dictating the claim, and it was not written for that reason.***
+  //
+  // ⚠⚠ IT IS DEFERRED, NOT FORGOTTEN, AND THE REASON IS DATA. The assign fix can only prevent NEW
+  // violations; the move fix would refuse an operation on rows nobody edited. **No unique index, check
+  // constraint or foreign key ties `DepartmentManagers.EmployeeId` to `Employees.DepartmentId`, so a
+  // department whose current manager belongs to it is representable and may already exist.** *The owner
+  // holds that question, and the seam — a new dependency, or a manager read beside
+  // `FindAssignableDepartmentAsync` — is a design decision recorded as open rather than taken quietly.*
+
+  // Builds the seeded eligible employee, stamped into a NAMED department. `StampInitialAssignment` refuses
+  // a second call, so the department has to be chosen at construction rather than changed afterwards.
+  private static SSAS.HR.Domain.Employees.Employee EmployeeInDepartment(Guid departmentId)
+  {
+    var employee = SSAS.HR.Domain.Employees.Employee.Create(
+      SSAS.HR.Domain.Employees.EmployeeNumber.Create("EMP-00147").Value,
+      SSAS.HR.Domain.Employees.EmployeeFullName.Create("Layla Haddad").Value,
+      null,
+      new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero),
+      "hr-user",
+      Guid.NewGuid(),
+      new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero)).Value;
+
+    employee.TenantId = DepartmentApiTestHost.TenantId;
+    employee.CompanyId = DepartmentApiTestHost.CompanyA;
+    employee.BranchId = DepartmentApiTestHost.BranchA;
+
+    employee.StampInitialAssignment(
+      DepartmentApiTestHost.TenantId,
+      DepartmentApiTestHost.CompanyA,
+      DepartmentApiTestHost.BranchA,
+      departmentId,
+      Employees.EmployeeApiTestHost.PositionA,
+      "seed",
+      Guid.NewGuid(),
+      new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero));
+
+    return employee;
   }
 
   // ================================================================================================
@@ -372,6 +551,9 @@ public sealed class DepartmentEndpointTests : IClassFixture<DepartmentApiTestHos
   }
 
   [Fact]
+  // CITED BY B18 pass 21: `AC-DEP-0027` at the API layer, mapping the refusal to a conflict. See
+  // `Deactivation_is_refused_while_an_active_child_remains` in the department SQL suite.
+  [Trait("Criterion", "AC-DEP-0027")]
   public async Task D29_Deactivating_a_department_with_active_children_is_refused()
   {
     host.Repository.HasActiveChildren = true;
@@ -398,17 +580,36 @@ public sealed class DepartmentEndpointTests : IClassFixture<DepartmentApiTestHos
   // suite's convention — the stub establisher does not read the header, and the REAL one's five-step
   // validation is proven against live state in Integration.Tests. What this layer owns, and what is
   // asserted here, is the answer that reaches the caller.
+  // ---- ⚠ AND THE TWO CONDITIONS ANSWER DIFFERENTLY SINCE T-268, DELIBERATELY.
+  //
+  // Both arrive by the same route and look alike, which is why they are asserted side by side rather than
+  // in separate tests. Only one of them is a **precondition**:
+  //
+  //   `Company.InvalidSelectionFormat` -> `request.invalid`
+  //       The header is malformed. **Fix your input and try again** -- an ordinary validation failure,
+  //       and one of the 129 domain codes that collapse into the generic code.
+  //
+  //   `Company.SelectionRequired`      -> `company.selection_required`
+  //       The header is absent and no company is selected. **You are not in a state where this request
+  //       means anything**: the remedy is a DIFFERENT call -- select a company -- and then this same
+  //       request unchanged. A client that cannot tell it from a malformed field cannot offer the picker.
+  //
+  // Both stay 400. Each is a client error, and the actionable difference is carried by the code, because
+  // **the status is the category and the code is the instruction.** A reader who finds this assertion
+  // changed should be able to see from here that it was intended.
   [Theory]
-  [InlineData("Company.SelectionRequired")]
-  [InlineData("Company.InvalidSelectionFormat")]
-  public async Task D30_A_missing_or_malformed_company_header_is_a_validation_failure(string code)
+  [InlineData("Company.SelectionRequired", "company.selection_required")]
+  [InlineData("Company.InvalidSelectionFormat", "request.invalid")]
+  public async Task D30_A_missing_company_selection_is_a_precondition_and_a_malformed_one_is_not(
+    string code, string expectedWireCode)
   {
     host.CompanyContext.Error = new SSAS.BuildingBlocks.Domain.Error(code, "malformed");
 
     var response = await Send(HttpMethod.Get, Route, ViewToken);
 
+    // Still 400 for both -- the category did not change, only the instruction.
     Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-    Assert.Equal("request.invalid", await DepartmentApiTestHost.ProblemCodeAsync(response));
+    Assert.Equal(expectedWireCode, await DepartmentApiTestHost.ProblemCodeAsync(response));
   }
 
   [Fact]

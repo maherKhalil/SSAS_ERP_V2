@@ -1,4 +1,5 @@
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
+using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.BuildingBlocks.Tenancy.Persistence;
@@ -29,6 +30,7 @@ public sealed record ActivateEmployeeCommand(
 public sealed class DeactivateEmployeeCommandHandler(
   IEmployeeRepository employees,
   ITenantUnitOfWork unitOfWork,
+  ICurrentCompany currentCompany,
   ICurrentUser currentUser,
   IDateTimeProvider clock)
 {
@@ -40,6 +42,7 @@ public sealed class DeactivateEmployeeCommandHandler(
     return await EmployeeStatusTransition.ExecuteAsync(
       employees,
       unitOfWork,
+      currentCompany,
       currentUser,
       command.EmployeeId,
       command.ExpectedRowVersion,
@@ -51,6 +54,7 @@ public sealed class DeactivateEmployeeCommandHandler(
 public sealed class ActivateEmployeeCommandHandler(
   IEmployeeRepository employees,
   ITenantUnitOfWork unitOfWork,
+  ICurrentCompany currentCompany,
   ICurrentUser currentUser,
   IDateTimeProvider clock)
 {
@@ -62,6 +66,7 @@ public sealed class ActivateEmployeeCommandHandler(
     return await EmployeeStatusTransition.ExecuteAsync(
       employees,
       unitOfWork,
+      currentCompany,
       currentUser,
       command.EmployeeId,
       command.ExpectedRowVersion,
@@ -78,20 +83,30 @@ internal static class EmployeeStatusTransition
   internal static async Task<Result> ExecuteAsync(
     IEmployeeRepository employees,
     ITenantUnitOfWork unitOfWork,
+    ICurrentCompany currentCompany,
     ICurrentUser currentUser,
     Guid employeeId,
     byte[] expectedRowVersion,
     Func<Employee, string, Result> transition,
     CancellationToken cancellationToken)
   {
-    if (string.IsNullOrWhiteSpace(currentUser.UserId))
+    if (currentCompany.CompanyId is not { } companyId ||
+      string.IsNullOrWhiteSpace(currentUser.UserId))
     {
       return Result.Failure(EmployeeErrors.InvalidActor);
     }
 
-    // Scoped by the repository's trusted tenant and by the company and branch write boundaries at save.
+    // ---- THE COMPANY COMPARISON LIVES HERE, ONCE, FOR THE SAME REASON THE VERSION CHECK DOES.
+    //
+    // Two handlers differing only in which aggregate method they call must not differ in whether they
+    // check the caller's company — a comparison present in one and absent in the other would be a security
+    // difference nobody chose, and it would be invisible because each handler reads correctly on its own.
+    //
+    // IT IS FUSED WITH THE NULL CHECK AND ABOVE THE VERSION CHECK, which is the whole remedy: an employee
+    // outside the caller's company must be reported ABSENT, in the same words, before any check whose
+    // answer depends on that employee's content can run.
     var employee = await employees.GetByIdAsync(employeeId, cancellationToken);
-    if (employee is null)
+    if (employee is null || employee.CompanyId != companyId)
     {
       return Result.Failure(EmployeeErrors.NotFound);
     }

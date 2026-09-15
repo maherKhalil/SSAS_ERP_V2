@@ -514,7 +514,6 @@ public sealed class TenantBackupFoundationSqlServerTests
 
     public string? Email => null;
 
-    public Guid? CompanyId => null;
 
     public string? SessionId => null;
 

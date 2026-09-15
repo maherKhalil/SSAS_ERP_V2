@@ -127,9 +127,12 @@ public sealed class ExportEmployeesQueryHandler(
     }
 
     var ceiling = query.Ceiling ?? limits.MaximumRows;
+    // ⚠ NOT A PAGE SIZE, AND IT WAS SHARING THE PAGINATION CODE (T-260). `Ceiling` caps the TOTAL rows
+    // an export may return; it is not a page of anything. A caller told "page size invalid" for a bad
+    // ceiling would go looking at a parameter it never sent.
     if (ceiling < 1)
     {
-      return Result.Failure<EmployeeExportResult>(EmployeeErrors.InvalidPagination);
+      return Result.Failure<EmployeeExportResult>(EmployeeErrors.InvalidExportCeiling);
     }
 
     var scope = await scopeResolver.ResolveAsync(

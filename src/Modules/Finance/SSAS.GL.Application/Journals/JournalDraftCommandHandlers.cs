@@ -133,6 +133,15 @@ public sealed class UpdateJournalDraftCommandHandler(
       return updated;
     }
 
+    // ---- THE OLD LINES ARE DELETED EXPLICITLY FIRST (FP-013 follow-up).
+    //
+    // The platform sets every foreign key to `Restrict` after the module contributors run, so this type's
+    // configured cascade never applies and the lines `ReplaceLines` clears would be orphans nothing deletes,
+    // against a non-nullable foreign key EF cannot null. Updating a draft that already had lines failed on
+    // exactly that — unobserved, because this path had never been driven against real SQL through this
+    // handler. Payroll's identical defect is what led anyone to look.
+    await drafts.RemoveLinesAsync(draft, cancellationToken);
+
     // Lines are REPLACED WHOLESALE rather than patched — see `JournalDraft.ReplaceLines` for why. An empty
     // list is a legitimate edit: it clears the draft back to a header, which a user rebuilding a journal
     // from scratch needs.

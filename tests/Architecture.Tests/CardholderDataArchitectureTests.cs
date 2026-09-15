@@ -265,7 +265,30 @@ public sealed class CardholderDataArchitectureTests(ITestOutputHelper output)
   // ==================================================================================================
   // THE GUARD.
   // ==================================================================================================
+  // ---- ⚠ CITED FOR `AC-SUB-0048`, WHICH THIS ALREADY WITNESSED AND WHICH NOTHING CITED.
+  //
+  // FP-014 states it as: *"No request body accepted, no response body returned, and no log statement
+  // written by this package carries a primary account number, card verification value, cardholder name or
+  // expiry date. Asserted over the transport contract types by reflection, so a field added later fails a
+  // test rather than a review."*
+  //
+  // **Three of its four clauses are witnessed here, and the fourth is NOT — the file says so above.**
+  //
+  //   request bodies   WITNESSED, and more strongly than asked: the scan is over every production type,
+  //                    not only transport contracts, and it forbids CAPABILITY rather than content.
+  //   response bodies  WITNESSED, same scan.
+  //   by reflection    WITNESSED — that is the mechanism the criterion names, over a broader surface.
+  //   log statements   ***NOT WITNESSED.*** A capability guard removes the members a log could read FROM,
+  //                    but says nothing about a raw parameter or a provider callback logged verbatim —
+  //                    `ADR-029`'s second named edge, and the header comment already records that "none of
+  //                    those is a test".
+  //
+  // ⚠⚠ The citation is added because at least one clause is genuinely witnessed, and the unwitnessed clause
+  // is named here rather than left for a reader to discover. **A criterion id is read later as PROVEN, so
+  // the clause this does NOT reach has to travel with the id.** The trait sits on this test and not on the
+  // controls below, because the controls prove the guard can fire — they assert nothing about card data.
   [Fact]
+  [Trait("Criterion", "AC-SUB-0048")]
   public void No_production_type_declares_a_member_capable_of_holding_cardholder_data()
   {
     var (offenders, _, _, _) = Scan();

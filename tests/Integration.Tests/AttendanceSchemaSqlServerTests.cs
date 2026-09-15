@@ -3,6 +3,8 @@ using SSAS.BuildingBlocks.Application.Abstractions.Identity;
 using SSAS.BuildingBlocks.Application.Abstractions.Tenancy;
 using SSAS.BuildingBlocks.Application.Abstractions.Time;
 using Microsoft.EntityFrameworkCore;
+using SSAS.Attendance.Domain.Leave;
+using SSAS.Attendance.Application.Permissions;
 using SSAS.Attendance.Domain.Calendars;
 using SSAS.Attendance.Domain.Periods;
 using SSAS.Attendance.Domain.Records;
@@ -26,8 +28,28 @@ namespace SSAS.Integration.Tests;
 // catches a hand-written migration.
 public sealed class AttendanceSchemaSqlServerTests
 {
+  // ---- ⚠ CITES `AC-ATT-0033` — *"Every persisted application string column is `nvarchar`, verified
+  // **against the created database**, not against the model."*
+  //
+  // **The last clause is why this test is here rather than in an architecture suite**, and it is asserted
+  // by construction: the query reads `sys.columns`, so a model that CLAIMS `nvarchar` while the migration
+  // wrote `varchar` fails here and passes anywhere that inspects EF's opinion.
+  //
+  // ⚠⚠ THE POPULATION IS A NAME PREFIX, AND IT IS COMPLETE TODAY — CHECKED, NOT ASSUMED. All seven
+  // attendance tables are prefixed: `AttendanceCalendarHolidays`, `AttendanceLeaveBalances`,
+  // `AttendanceLeaveRequests`, `AttendanceLeaveTypes`, `AttendancePeriods`, `AttendanceRecords`,
+  // `AttendanceWorkingCalendars`. *The leave and calendar tables are inside `LIKE 'Attendance%'` because
+  // of the convention, not because the filter names them.* **So a future attendance table that broke the
+  // prefix would fall silently out of this population**, which is the list-shaped hazard in prefix form and
+  // the honest bound of the citation.
+  //
+  // ⚠⚠⚠ AND IT IS TIER 2. `Integration.Tests` is outside `GATE_SCOPE=TASK`; this ran green on
+  // 2026-09-01 and has not run since. **Verified to PREDATE that baseline before the citation was written**
+  // — a test added after it would never have executed at all, and stamping that tier 2 would put a claim
+  // where a check appears to be.
   [Fact]
   [Trait("Decision", "DEC-ATT-0005")]
+  [Trait("Criterion", "AC-ATT-0033")]
   public async Task Every_attendance_string_column_is_nvarchar()
   {
     await using var fixture = await AttendanceFixture.CreateAsync();
@@ -237,258 +259,174 @@ public sealed class AttendanceSchemaSqlServerTests
     Assert.Equal(2m, rows.Sum(row => row.UnpaidAbsenceQuantity));
   }
 
-  private sealed class AttendanceFixture : IAsyncDisposable
+
+  // ================================================================================================
+  // TWO ATTENDANCE REPOSITORIES, EXECUTED FOR THE FIRST TIME (item 238).
+  // ================================================================================================
+  //
+  // Item 237 measured every production type with coverage. `AttendanceRecordRepository` and
+  // `LeaveBalanceRepository` were two of six query-bearing types with ZERO executed lines -- the product
+  // runs them and no test ever had.
+  //
+  // ⚠ Their siblings in the same file are covered: `WorkingCalendarRepository`,
+  // `AttendancePeriodRepository`, `LeaveTypeRepository` and `LeaveRequestRepository` all execute. **Six
+  // repositories in one file, four exercised and two not** -- which is the coverage-shaped version of
+  // the asymmetry instrument, inside a single source file.
+  [Fact]
+  public async Task The_record_repository_reads_by_id_and_by_employee_period()
   {
-    private const string Actor = "fp013-attendance-tests";
+    await using var fixture = await AttendanceFixture.CreateAsync();
+    var recordId = await fixture.SeedRecordAsync();
 
-    public static readonly DateOnly RecordDate = new(2026, 9, 14);
+    await using var context = fixture.CreateContext();
+    var repository = new AttendanceRecordRepository(new RepositoryContext(context));
 
-    private readonly string token = Guid.NewGuid().ToString("N")[..12];
+    var byId = await repository.GetByIdAsync(recordId);
+    Assert.NotNull(byId);
+    Assert.Equal(fixture.Employee, byId!.EmployeeId);
 
-    private string catalog = string.Empty;
+    var forPeriod = await repository.GetForEmployeePeriodAsync(fixture.PeriodId, fixture.Employee);
+    Assert.Single(forPeriod);
 
-    public Guid Tenant { get; } = Guid.NewGuid();
-
-    public Guid CompanyA { get; } = Guid.NewGuid();
-
-    public Guid Employee { get; } = Guid.NewGuid();
-
-    public Guid BranchId { get; } = Guid.NewGuid();
-
-    public Guid PeriodId { get; private set; }
-
-    public static async Task<AttendanceFixture> CreateAsync()
-    {
-      var fixture = new AttendanceFixture();
-      await fixture.InitializeAsync();
-      return fixture;
-    }
-
-    public TenantDbContext CreateContext()
-    {
-      var options = new DbContextOptionsBuilder<TenantDbContext>()
-        .UseSqlServer(ConnectionFor(catalog))
-        .Options;
-
-      return new TenantDbContext(
-        options, new FixtureUser(), new FixtureTenant(Tenant), new FixtureClock(),
-        branchAuthorizer: new GrantingBranchAuthorizer(BranchId),
-        companyAuthorizer: new GrantingCompanyAuthorizer(CompanyA),
-        modelContributors: [new AttendanceTenantModelContributor()]);
-    }
-
-    // ---- ONE CONTEXT, ONE SAVE (the FP-012 scar).
-    //
-    // Seeding an append-only row across two contexts made `PreventAppendOnlyMutation` throw during SETUP,
-    // which reads as an environment problem rather than as the fixture bug it is. Everything below is built
-    // and saved once.
-    public async Task<Guid> SeedRecordAsync()
-    {
-      await using var context = CreateContext();
-
-      var period = AttendancePeriod.Create(
-        CompanyA, "September 2026", new DateOnly(2026, 9, 1), new DateOnly(2026, 9, 30)).Value;
-      period.TenantId = Tenant;
-
-      var record = AttendanceRecord.Observe(
-        CompanyA, period.Id, Employee, RecordDate,
-        workedQuantity: 8m, overtimeQuantity: 0m, overtimeTier: null,
-        paidAbsenceQuantity: 0m, unpaidAbsenceQuantity: 0m, note: null).Value;
-
-      // The write boundary stamps this in production; the fixture supplies it because no branch context
-      // exists here. Stated so nobody reads it as the application's normal path.
-      record.BranchId = BranchId;
-      record.TenantId = Tenant;
-
-      context.Set<AttendancePeriod>().Add(period);
-      context.Set<AttendanceRecord>().Add(record);
-      await context.SaveChangesAsync();
-
-      PeriodId = period.Id;
-      return record.Id;
-    }
-
-    public async Task<int> ScalarAsync(string sql)
-    {
-      await using var connection = new SqlConnection(ConnectionFor(catalog));
-      await connection.OpenAsync();
-      await using var command = connection.CreateCommand();
-      command.CommandText = sql;
-      return Convert.ToInt32(
-        await command.ExecuteScalarAsync(), System.Globalization.CultureInfo.InvariantCulture);
-    }
-
-    private async Task InitializeAsync()
-    {
-      catalog = $"SSAS_FP013_Tenant_{token}";
-
-      await MasterAsync($"CREATE DATABASE [{catalog}]");
-      await MigrateAsync();
-      await SeedCompanyAsync(CompanyA, "CMPA");
-      await SeedBranchAsync();
-    }
-
-    private async Task MigrateAsync()
-    {
-      await using var connection = new SqlConnection(ConnectionFor(catalog));
-
-      var options = new DbContextOptionsBuilder<TenantDbContext>()
-        .UseSqlServer(connection, sql => sql.MigrationsHistoryTable(
-          TenantPersistenceConstants.MigrationHistoryTable,
-          TenantPersistenceConstants.MigrationHistorySchema))
-        .Options;
-
-      await using var context = new TenantDbContext(
-        options, new FixtureUser(), new FixtureTenant(Tenant), new FixtureClock(),
-        modelContributors: [new AttendanceTenantModelContributor()]);
-
-      await context.Database.MigrateAsync();
-    }
-
-    // Copied verbatim from Payroll's fixture, which copied GL's. Status and StatusChangeReasonCode are
-    // STRINGS and the timestamps are SYSDATETIMEOFFSET — FP-012's first attempt guessed integers and
-    // SYSUTCDATETIME, and `CK_Companies_Status` refused it during setup.
-    private Task SeedCompanyAsync(Guid companyId, string code) =>
-      ExecuteAsync($"""
-        INSERT INTO [tenant].[Companies]
-          ([CompanyId], [TenantId], [CompanyCode], [NormalizedCompanyCode], [CompanyName],
-           [BaseCurrencyCode], [Status], [StatusChangeReasonCode], [StatusChangedUtc], [StatusChangedBy],
-           [CreatedUtc], [CreatedBy], [ModifiedUtc], [ModifiedBy])
-        VALUES
-          ('{companyId}', '{Tenant}', N'{code}', N'{code}', N'Company {code}',
-           'SAR', N'Active', N'Created', SYSDATETIMEOFFSET(), N'{Actor}',
-           SYSDATETIMEOFFSET(), N'{Actor}', SYSDATETIMEOFFSET(), N'{Actor}');
-        """);
-
-    // Attendance is the first module outside HR with a branch foreign key, so this is the first fixture
-    // outside HR that has to seed a Branch.
-    //
-    // ---- THE COLUMN SET WAS GUESSED FIRST, AND SQL SERVER REFUSED IT.
-    //
-    // The first attempt copied the COMPANY seed's shape — a Status/StatusChangedUtc/StatusChangedBy triple
-    // — because the two tables look alike. Branches has `IsActive`, a plain bit, and every one of those
-    // three columns is invalid. Eight tests failed during SETUP, which reads as an environment problem
-    // rather than as the fixture bug it was.
-    //
-    // This statement is now copied from `DepartmentAppFixture`, which has been seeding Branches correctly
-    // since FP-007 — the same remedy the company seed above records, applied to the same class of mistake
-    // one table over.
-    private async Task SeedBranchAsync()
-    {
-      var columns = await ScalarAsync("""
-        SELECT COUNT(*) FROM sys.tables AS t
-        JOIN sys.schemas AS s ON s.schema_id = t.schema_id
-        WHERE s.name = 'tenant' AND t.name = 'Branches';
-        """);
-
-      if (columns == 0)
-      {
-        return;
-      }
-
-      await ExecuteAsync($"""
-        INSERT INTO [tenant].[Branches]
-          ([BranchId], [TenantId], [BranchCode], [NormalizedBranchCode], [BranchName],
-           [IsMainBranch], [IsActive], [CreatedUtc], [CreatedBy], [ModifiedUtc], [ModifiedBy])
-        VALUES
-          ('{BranchId}', '{Tenant}', N'BR1', N'BR1', N'Branch One',
-           1, 1, SYSDATETIMEOFFSET(), N'{Actor}', SYSDATETIMEOFFSET(), N'{Actor}');
-        """);
-    }
-
-    private async Task ExecuteAsync(string sql)
-    {
-      await using var connection = new SqlConnection(ConnectionFor(catalog));
-      await connection.OpenAsync();
-      await using var command = connection.CreateCommand();
-      command.CommandText = sql;
-      await command.ExecuteNonQueryAsync();
-    }
-
-    private static async Task MasterAsync(string sql)
-    {
-      await using var connection = new SqlConnection(ConnectionFor("master"));
-      await connection.OpenAsync();
-      await using var command = connection.CreateCommand();
-      command.CommandText = sql;
-      await command.ExecuteNonQueryAsync();
-    }
-
-    private static string ConnectionFor(string name) =>
-      IntegrationSqlEnvironment.ForCatalog(name);
-
-    public async ValueTask DisposeAsync()
-    {
-      if (string.IsNullOrEmpty(catalog))
-      {
-        return;
-      }
-
-      await MasterAsync($"""
-        IF DB_ID('{catalog}') IS NOT NULL
-        BEGIN
-          ALTER DATABASE [{catalog}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
-          DROP DATABASE [{catalog}];
-        END
-        """);
-    }
-
-    // The same nested stubs Payroll's fixture carries, and per-file for the same reason: each integration
-    // fixture composes the production graph it is testing, and a shared stub would quietly become a fifth
-    // opinion about what a request carries.
-    private sealed class FixtureUser : ICurrentUser
-    {
-      public string? UserId => Actor;
-
-      public string? UserName => Actor;
-
-      public string? Email => null;
-
-      public Guid? CompanyId => null;
-
-      public string? SessionId => null;
-
-      public string? TokenId => null;
-
-      public IReadOnlyCollection<string> Roles => [];
-
-      public IReadOnlyCollection<string> Permissions => [];
-    }
-
-    private sealed class FixtureTenant(Guid tenantId) : ICurrentTenant
-    {
-      public Guid? TenantId => tenantId;
-    }
-
-    private sealed class FixtureClock : IDateTimeProvider
-    {
-      public DateTimeOffset UtcNow => DateTimeOffset.UtcNow;
-    }
-
-    // ---- AND THE BRANCH AUTHORIZER, WHICH THE FIRST ATTEMPT OMITTED AND THE BOUNDARY CAUGHT.
-    //
-    // `AttendanceRecord` is the first branch-owned entity outside HR, and `TenantDbContext.ApplyBranchRules`
-    // refuses a branch-owned write when no authorizer is present: *"A trusted branch context is required to
-    // save branch-owned entities."* Setting `record.BranchId` directly is NOT enough, and that is the point
-    // — the boundary stamps and authorizes from a TRUSTED source rather than trusting the value on the row.
-    //
-    // Three tests failed on that before this existed. The machinery working exactly as `OD-ATT-0011`
-    // requires is what produced the failure.
-    private sealed class GrantingBranchAuthorizer(Guid branchId) : SSAS.Platform.Application.Branches.IBranchWriteAuthorizer
-    {
-      public Task<SSAS.BuildingBlocks.Domain.Result<Guid>> AuthorizeCurrentBranchAsync(
-        Guid tenantId, CancellationToken cancellationToken = default) =>
-        Task.FromResult(SSAS.BuildingBlocks.Domain.Result.Success(branchId));
-    }
-
-    // Grants the one company the fixture seeded. It does NOT weaken the company boundary: the write boundary
-    // still runs, still authorizes and still refuses anything else — this stands in for the platform
-    // authority a request would carry, which no fixture has.
-    private sealed class GrantingCompanyAuthorizer(Guid companyId) : ICompanyWriteAuthorizer
-    {
-      public Task<SSAS.BuildingBlocks.Domain.Result<Guid>> AuthorizeCurrentCompanyAsync(
-        Guid tenantId, CancellationToken cancellationToken = default) =>
-        Task.FromResult(SSAS.BuildingBlocks.Domain.Result.Success(companyId));
-    }
+    // ⚠ THE CONTROL. Both assertions above are satisfied by a repository that ignores its arguments and
+    // returns the only row in the table; an unknown id and a foreign employee must answer empty.
+    Assert.Null(await repository.GetByIdAsync(Guid.NewGuid()));
+    Assert.Empty(await repository.GetForEmployeePeriodAsync(fixture.PeriodId, Guid.NewGuid()));
   }
+
+  [Fact]
+  public async Task The_leave_balance_repository_finds_a_balance_by_its_four_part_key()
+  {
+    await using var fixture = await AttendanceFixture.CreateAsync();
+    var employee = Guid.NewGuid();
+    var seeded = await fixture.SeedLeaveAsync(fixture.CompanyA, "BAL", employee);
+
+    await using var context = fixture.CreateContext();
+
+    var balance = LeaveBalance.Create(
+      fixture.CompanyA, employee, seeded.OrdinaryTypeId, 2026, 30m).Value;
+    balance.TenantId = fixture.Tenant;
+    context.Set<LeaveBalance>().Add(balance);
+    await context.SaveChangesAsync();
+
+    var repository = new LeaveBalanceRepository(new RepositoryContext(context));
+
+    Assert.NotNull(await repository.GetByIdAsync(balance.Id));
+    Assert.NotNull(await repository.GetForEmployeeAsync(
+      fixture.CompanyA, employee, seeded.OrdinaryTypeId, 2026));
+
+    // ⚠ THE CONTROL, AND IT IS PER KEY PART. `GetForEmployeeAsync` takes FOUR arguments, and a lookup
+    // that dropped any one of them would still find this row from the other three. Each case below moves
+    // exactly one part.
+    Assert.Null(await repository.GetForEmployeeAsync(
+      Guid.NewGuid(), employee, seeded.OrdinaryTypeId, 2026));
+    Assert.Null(await repository.GetForEmployeeAsync(
+      fixture.CompanyA, Guid.NewGuid(), seeded.OrdinaryTypeId, 2026));
+    Assert.Null(await repository.GetForEmployeeAsync(
+      fixture.CompanyA, employee, seeded.SensitiveTypeId, 2026));
+    Assert.Null(await repository.GetForEmployeeAsync(
+      fixture.CompanyA, employee, seeded.OrdinaryTypeId, 2027));
+  }
+
+  private sealed class RepositoryContext(TenantDbContext context)
+    : SSAS.BuildingBlocks.Infrastructure.Persistence.ITenantDbContextAccessor
+  {
+    public Task<DbContext> GetRequiredAsync(CancellationToken cancellationToken = default) =>
+      Task.FromResult<DbContext>(context);
+  }
+
+  // ================================================================================================
+  // THE COMPANY PREDICATE AND THE SENSITIVITY REDACTION, AGAINST THE REAL READ SERVICE (item 233).
+  // ================================================================================================
+  //
+  // ---- WHY THIS DID NOT EXIST, AND WHY THE REASON DIFFERS FROM PAYROLL'S AND GL'S.
+  //
+  // `AttendanceReadService` was constructed by no test in any suite. Unlike Payroll and GL, the cause was
+  // NOT a host that skips `AddAttendanceInfrastructure` -- this host calls it. The host then registers
+  // `AddSingleton<IAttendanceReadService>(Reads)`, an explicit stub, and last registration wins.
+  //
+  // One symptom, two causes. A single remedy aimed at composition would have left this module untouched
+  // while looking complete.
+  //
+  // ---- ⚠ THE REDACTION IS BELOW THE SEAM EVERY FAST SUITE RUNS AT, AND THAT IS NOT AN ACCIDENT.
+  //
+  // `maySeeSensitive` is resolved ONCE before the projection so redaction cannot depend on evaluation
+  // order, and the redaction happens IN THE SQL PROJECTION so the value never crosses the wire or reaches
+  // a query log. Both decisions are right, and both are exactly what put the behaviour where only a real
+  // database can observe it. The verification cost moved with the care.
+  //
+  // ---- FOUR CLAUSES, NAMED, PLUS THE COMPANY PREDICATE.
+  [Fact]
+  public async Task A_leave_read_is_company_scoped_and_redacts_only_the_sensitive_type()
+  {
+    await using var fixture = await AttendanceFixture.CreateAsync();
+
+    var employee = Guid.NewGuid();
+    var a = await fixture.SeedLeaveAsync(fixture.CompanyA, "AAA", employee);
+    await fixture.SeedLeaveAsync(fixture.CompanyB, "BBB", employee, monthOffset: 6);
+
+    await using var context = fixture.CreateContext();
+
+    // ---- THE COMPANY PREDICATE. Company B's id is passed with a scope authorized for A, which isolates
+    // the SCOPE predicate from the PARAMETER.
+    var privileged = AttendanceFixture.Reads(context, fixture.Resolver(true, fixture.CompanyA));
+
+    var own = await privileged.GetLeaveRequestsAsync(fixture.CompanyA, employee);
+    Assert.True(own.IsSuccess, own.IsFailure ? own.Error.Code : null);
+    Assert.Equal(2, own.Value.Count);
+
+    var others = await privileged.GetLeaveRequestsAsync(fixture.CompanyB, employee);
+    Assert.True(others.IsSuccess, others.IsFailure ? others.Error.Code : null);
+    Assert.Empty(others.Value);
+
+    // ---- CLAUSE 1: a caller WITH `ViewSensitive` sees WHICH TYPE.
+    var seen = own.Value.Single(view => view.LeaveTypeId == a.SensitiveTypeId);
+    Assert.Equal("AAA-SICK", seen.LeaveTypeCode);
+    Assert.False(seen.IsTypeRedacted);
+
+    // ---- CLAUSE 2: a caller WITHOUT it still gets THE ROW, redacted.
+    //
+    // This is the half that matters. A service that dropped the row entirely would satisfy every
+    // "cannot see the type" assertion while destroying the fact that the person is away at all.
+    var ordinaryCaller = AttendanceFixture.Reads(context, fixture.Resolver(false, fixture.CompanyA));
+
+    var restricted = await ordinaryCaller.GetLeaveRequestsAsync(fixture.CompanyA, employee);
+    Assert.True(restricted.IsSuccess, restricted.IsFailure ? restricted.Error.Code : null);
+    Assert.Equal(2, restricted.Value.Count);
+
+    var redacted = restricted.Value.Single(view => view.LeaveTypeId == a.SensitiveTypeId);
+    Assert.Null(redacted.LeaveTypeCode);
+    Assert.Null(redacted.LeaveTypeName);
+    Assert.True(redacted.IsTypeRedacted);
+
+    // ---- CLAUSE 3: the ORDINARY type stays visible IN THE SAME RESPONSE.
+    //
+    // Without this, a service that redacted EVERY row for an unprivileged caller passes clauses 1 and 2
+    // both. Sensitivity is a property of the TYPE, not of the REQUEST, and only both kinds present at
+    // once can tell a discriminating rule from a blanket one.
+    var stillVisible = restricted.Value.Single(view => view.LeaveTypeId == a.OrdinaryTypeId);
+    Assert.Equal("AAA-ANN", stillVisible.LeaveTypeCode);
+    Assert.False(stillVisible.IsTypeRedacted);
+
+    // ---- CLAUSE 4: THE SELF-SERVICE EXEMPTION, WHICH IS A RULING AND NOT AN OVERSIGHT.
+    //
+    // `GetLeaveRequestsForEmployeeAsync` passes `maySeeSensitive: true` deliberately: the party the
+    // redaction protects is the SUBJECT, and on this route the subject IS the caller. `ViewSensitive` is
+    // an administrative grant no plain employee holds, so applying the rule here would hide a person's
+    // own sick leave from themselves as a nameless gap in their own list.
+    //
+    // It is the clause a well-meaning change breaks, because "redact unless the caller is an
+    // administrator" sounds like the safer rule. The caller below holds NO sensitive permission.
+    var scope = await fixture.Resolver(false, fixture.CompanyA)
+      .ResolveCompanyOnlyAsync(AttendancePermissionNames.ViewLeave);
+    Assert.True(scope.IsSuccess, scope.IsFailure ? scope.Error.Code : null);
+
+    var mine = await ordinaryCaller.GetLeaveRequestsForEmployeeAsync(scope.Value, employee);
+    Assert.True(mine.IsSuccess, mine.IsFailure ? mine.Error.Code : null);
+
+    var ownSensitive = mine.Value.Single(view => view.LeaveTypeId == a.SensitiveTypeId);
+    Assert.Equal("AAA-SICK", ownSensitive.LeaveTypeCode);
+    Assert.False(ownSensitive.IsTypeRedacted);
+  }
+
 }

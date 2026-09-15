@@ -43,6 +43,24 @@ public sealed class AccountActionTokenConfiguration : IEntityTypeConfiguration<A
     builder.HasIndex(token => new { token.Purpose, token.AuthenticationAccountId })
       .IsUnique()
       .HasFilter("[ConsumedUtc] IS NULL AND [RevokedUtc] IS NULL AND [TenantUserId] IS NULL");
+    // ==============================================================================================
+    // WHAT THIS INDEX RESTS ON (item 180). `TenantId` IS NULLABLE AND THE FILTER NEVER MENTIONS IT.
+    // ==============================================================================================
+    //
+    // SQL Server treats NULLs as EQUAL in a unique index, so read alone this is the defect shape: two rows
+    // with `TenantId` null and the same `(Purpose, TenantUserId)` would collide, and the second insert
+    // would be refused. **It is safe because `TenantUserId IS NOT NULL` implies `TenantId IS NOT NULL`**,
+    // and that implication is `AccountActionToken`'s ownership binding, not anything stated here.
+    //
+    // ⚠ THE BINDING IS HELD BY THE FACTORY SIGNATURES, NOT BY A TEST. `AccountActionToken.CreateInvitation`
+    // takes `Guid tenantId` and `long tenantUserId` -- NON-NULLABLE -- and `CreatePasswordReset` takes
+    // neither. There is no other public entry point, so a mixed binding is not EXPRESSIBLE, and no test
+    // asserting "a mixed binding throws" can be written through the public API. The private constructor's
+    // `ArgumentException` is a backstop for a path only EF and those factories use.
+    //
+    // **So what would break this index is widening either parameter to a nullable type.** That is a
+    // deliberate signature change the compiler forces you to make, and this comment is the only thing that
+    // would tell you the index depends on it. Item 180 reports a cheap way to make that mechanical.
     builder.HasIndex(token => new { token.Purpose, token.TenantId, token.TenantUserId })
       .IsUnique()
       .HasFilter("[ConsumedUtc] IS NULL AND [RevokedUtc] IS NULL AND [TenantUserId] IS NOT NULL");

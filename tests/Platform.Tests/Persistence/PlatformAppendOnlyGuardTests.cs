@@ -25,11 +25,25 @@ namespace SSAS.Platform.Tests.Persistence;
 //
 // ---- THE TEST ENTITY IS TEST-ONLY, AND DELIBERATELY SO.
 //
-// No production Platform entity implements `IAppendOnlyEntity` today and none is added here — FP-014's
-// entities arrive with FP-014. The entity is injected into the real `PlatformDbContext` model through a
-// replaced `IModelCustomizer`, so the guard under test is the production one on the production context
-// rather than a copy of it. Adding a production marker to make a test compile would be the opposite
-// trade: changing shipped code to suit a test.
+// ⚠⚠⚠ THAT SENTENCE HAS ROTTED AND IS CORRECTED HERE RATHER THAN DELETED. It read: *"No production
+// Platform entity implements `IAppendOnlyEntity` today and none is added here — FP-014's entities arrive
+// with FP-014."* **FP-014 HAS SINCE ARRIVED: `TenantSubscription` and `TenantEntitlementGrant` both carry
+// the marker.** The claim was true when written and is now false, which is the ordinary fate of an
+// absence — and it is the kind that misleads quietly, because a reader checking whether any subscription
+// record is append-only would find this sentence and stop.
+//
+// **THE PROBE REMAINS CORRECT, AND FOR A BETTER REASON THAN THE ORIGINAL ONE.** It is not a stand-in for a
+// production entity that does not exist; it **isolates the GUARD from any one entity's configuration**, so
+// these four tests keep meaning the same thing when FP-014's mapping changes. The entity is injected into
+// the real `PlatformDbContext` model through a replaced `IModelCustomizer`, so the guard under test is the
+// production one on the production context rather than a copy of it.
+//
+// ⚠⚠ AND THE PROBE IS WHY THIS FILE ALONE CANNOT CARRY `AC-SUB-0003`. **A probe entity cannot witness
+// that `TenantSubscription` CARRIES the marker** — strip the interface and every test here stays green.
+// That half is `SubscriptionResidencyArchitectureTests.An_append_only_commercial_record_declares_no_
+// rowversion_and_no_modified_columns`, measured: removing `IAppendOnlyEntity` from `TenantSubscription`
+// reddens it and nothing else in seven suites. ***THE CRITERION NEEDS BOTH HALVES AND THEY LIVE IN
+// DIFFERENT SUITES: one proves the guard refuses, the other proves the record is inside its reach.***
 public sealed class PlatformAppendOnlyGuardTests
 {
   [Fact]
@@ -46,6 +60,38 @@ public sealed class PlatformAppendOnlyGuardTests
   // The guard must refuse the SECOND write, not the first. A guard that refused Added as well would be
   // indistinguishable from a broken table, and every append-only record in the product is written once.
   [Fact]
+  [Trait("Criterion", "AC-SUB-0003")]
+  // `AC-SUB-0003`, pasted — *"An attempt to update or delete a subscription record is **refused**, not
+  // silently ignored, and the refusal comes from the persistence guard rather than from a handler that
+  // remembered to check"*
+  //
+  // Three clauses and this file carries all three: **REFUSED** (the mutation does not commit), **NOT
+  // SILENTLY IGNORED** (an exception, asserted by type and message rather than by the row being unchanged
+  // — *a silently-ignored update also leaves the row unchanged*), and **FROM THE PERSISTENCE GUARD** —
+  // which is what makes the fixture's shape load-bearing: **these tests drive `PlatformDbContext` directly,
+  // with no handler anywhere in the picture, so the refusal cannot be coming from one that remembered.**
+  // ⚠ See the header for the half this file cannot carry.
+  [Trait("Criterion", "AC-SUB-0044")]
+  // ==================================================================================================
+  // `AC-SUB-0044`, quoted to its terminal full stop and PASTED rather than retyped — *"**`PlatformDbContext`
+  // refuses `Modified` and `Deleted` for `IAppendOnlyEntity`**, by the same mechanism
+  // `TenantDbContext.PreventAppendOnlyMutation` uses and called from its own `SaveChangesAsync`. **No
+  // FP-014 entity may carry `IAppendOnlyEntity` until this exists** — the interface without the guard is
+  // the appearance of immutability with none of it."*
+  // ==================================================================================================
+  //
+  // ⚠ THE CRITERION IS PARTLY A SEQUENCING RULE, WHICH IS UNUSUAL AND WORTH NAMING: *no FP-014 entity may
+  // carry the interface UNTIL this exists.* Both halves now hold — the guard is at
+  // `PlatformDbContext:207`, called from `SaveChangesAsync` at `:163`, and `TenantSubscription` and
+  // `TenantEntitlementGrant` carry `IAppendOnlyEntity`. **The ordering itself is not assertable after the
+  // fact**: nothing here could tell whether the guard preceded the interface, and the criterion's point
+  // was to stop a window in which the marker existed without enforcement.
+  //
+  // ⚠⚠ THE FOUR TESTS IN THIS FILE ARE WHY THE CITATION IS SAFE, AND TWO OF THEM ARE THE INTERESTING ONES:
+  // beyond refusing `Modified` and `Deleted`, they close **the synchronous entry point** and **the inner
+  // overload** — *a guard called from one `SaveChangesAsync` overload is bypassed by every other route
+  // into the same change tracker*, which is exactly how "the appearance of immutability" survives a test
+  // that only drives the happy path. Planted: the guard's condition made unreachable — **all four red.**
   public async Task Modifying_a_written_append_only_record_is_refused()
   {
     await using var scope = await AppendOnlyScope.CreateAsync();
@@ -258,7 +304,6 @@ public sealed class PlatformAppendOnlyGuardTests
     public string? UserId => "append-only-tests";
     public string? UserName => null;
     public string? Email => null;
-    public Guid? CompanyId => null;
     public string? SessionId => null;
     public string? TokenId => null;
     public IReadOnlyCollection<string> Roles => [];

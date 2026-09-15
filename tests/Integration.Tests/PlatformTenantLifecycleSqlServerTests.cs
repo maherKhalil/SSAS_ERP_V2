@@ -127,13 +127,13 @@ public sealed class PlatformTenantLifecycleSqlServerTests
     var firstHandler = new CreateTenantCommandHandler(
       new GatedTenantRepository(new TenantRepository(firstContext), gate),
       new TrialSubscriptionIssuer(new TenantSubscriptionRepository(firstContext), new TestClock()),
-      new PlatformUnitOfWork(firstContext, firstDispatcher),
+      TestUnitOfWork.Platform(firstContext, firstDispatcher),
       new TestCurrentUser(),
       new TestClock());
     var secondHandler = new CreateTenantCommandHandler(
       new GatedTenantRepository(new TenantRepository(secondContext), gate),
       new TrialSubscriptionIssuer(new TenantSubscriptionRepository(secondContext), new TestClock()),
-      new PlatformUnitOfWork(secondContext, secondDispatcher),
+      TestUnitOfWork.Platform(secondContext, secondDispatcher),
       new TestCurrentUser(),
       new TestClock());
 
@@ -283,7 +283,7 @@ public sealed class PlatformTenantLifecycleSqlServerTests
   private static Task<Result<int>> SaveAsync(
     PlatformDbContext context,
     IDomainEventDispatcher? dispatcher = null) =>
-    new PlatformUnitOfWork(context, dispatcher ?? new NoOpDomainEventDispatcher()).SaveChangesAsync();
+    TestUnitOfWork.Platform(context, dispatcher ?? new NoOpDomainEventDispatcher()).SaveChangesAsync();
 
   private static async Task<string> ReadStringAsync(PlatformDbContext context, string commandText)
   {
@@ -435,7 +435,6 @@ public sealed class PlatformTenantLifecycleSqlServerTests
     public string? UserId => "integration-actor";
     public string? UserName => null;
     public string? Email => null;
-    public Guid? CompanyId => null;
     public string? SessionId => null;
     public string? TokenId => null;
     public IReadOnlyCollection<string> Roles => [];

@@ -1,4 +1,4 @@
-﻿using Microsoft.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using SSAS.BuildingBlocks.Application.Abstractions.Identity;
@@ -446,8 +446,14 @@ public sealed class TenantBackupProviderSqlServerTests
     // at the source by running two overlapping competitors. One check, one execution, one assertion.
     using var competing = fixture.StartCompetingBackup();
 
-    Assert.True(await fixture.WaitForCompetingBackupAsync(TimeSpan.FromSeconds(30)),
-      "the competing backup never became visible, so the in-flight path was not exercised");
+    // Built only on the failure path (item 189): describing a competitor kills it, and an assertion
+    // message argument is evaluated even when the assertion passes.
+    if (!await fixture.WaitForCompetingBackupAsync(TimeSpan.FromSeconds(30)))
+    {
+      Assert.Fail(
+        "the competing backup never became visible, so the in-flight path was not exercised." +
+        $"{Environment.NewLine}{await competing.DescribeAsync()}");
+    }
 
     var outcome = await fixture.Executor().ExecuteAsync(
       id, TenantDatabaseBackupOperation.SqlServerFull());
@@ -838,7 +844,7 @@ public sealed class TenantBackupProviderSqlServerTests
     public CompetingBackup StartCompetingBackup() =>
       new(StartCompetitor(), StartCompetitor());
 
-    private System.Diagnostics.Process StartCompetitor()
+    private SqlcmdChildProcess StartCompetitor()
     {
       var path = Path.Combine(BackupRoot, $"competing_{Guid.NewGuid():N}.bak");
       var builder = new SqlConnectionStringBuilder(Configured());
@@ -878,7 +884,7 @@ public sealed class TenantBackupProviderSqlServerTests
         $"WHILE SYSDATETIME() < @deadline BEGIN " +
         $"BACKUP DATABASE [{TargetCatalog}] TO DISK = N'{path}' WITH INIT, CHECKSUM; END");
 
-      return System.Diagnostics.Process.Start(start)!;
+      return SqlcmdChildProcess.Start(start);
     }
 
     public async Task<bool> WaitForCompetingBackupAsync(TimeSpan timeout)
@@ -903,34 +909,40 @@ public sealed class TenantBackupProviderSqlServerTests
     // raw processes in a `using` was never sufficient on its own.
     public sealed class CompetingBackup : IDisposable
     {
-      private readonly System.Diagnostics.Process[] processes;
+      private readonly SqlcmdChildProcess[] processes;
 
-      internal CompetingBackup(params System.Diagnostics.Process[] processes) =>
+      internal CompetingBackup(params SqlcmdChildProcess[] processes) =>
         this.processes = processes;
+
+      // What BOTH competitors said and how each left, for an assertion message (item 189). Numbered,
+      // because "one of them died immediately and the other ran fine" is a different diagnosis from
+      // "neither ever started", and an undifferentiated dump cannot tell them apart.
+      public async Task<string> DescribeAsync()
+      {
+        var descriptions = new List<string>(processes.Length);
+
+        for (var index = 0; index < processes.Length; index++)
+        {
+          descriptions.Add(
+            $"competitor {index + 1} of {processes.Length}: " +
+            await processes[index].DescribeAsync().ConfigureAwait(false));
+        }
+
+        return string.Join(Environment.NewLine, descriptions);
+      }
 
       public void Dispose()
       {
         foreach (var process in processes)
         {
-          KillProcess(process);
           process.Dispose();
         }
       }
     }
 
-    public static void KillProcess(System.Diagnostics.Process process)
-    {
-      try
-      {
-        if (!process.HasExited)
-        {
-          process.Kill(entireProcessTree: true);
-        }
-      }
-      catch (InvalidOperationException)
-      {
-      }
-    }
+    // `KillProcess` stood here and its only caller was `CompetingBackup.Dispose`. Both the kill and its
+    // note -- that `HasExited` then `Kill` is a race whose losing branch is the outcome the kill wanted --
+    // moved to `SqlcmdChildProcess` (item 189).
 
     public Task SetRecoveryModelAsync(string model) =>
       ExecuteOnAsync("master", $"ALTER DATABASE [{TargetCatalog}] SET RECOVERY {model}");
@@ -999,11 +1011,33 @@ public sealed class TenantBackupProviderSqlServerTests
       }
       catch (IOException)
       {
-        // Files are written by the SQL Server service account; if this process cannot remove them that is a
-        // test-environment ACL matter, not something production code should be given the power to solve.
+        // ⚠ THE REASON THIS SWALLOW USED TO GIVE WAS WRONG, AND A WRONG REASON STOPS THE NEXT PERSON
+        // LOOKING (T-217). It said the files are written by the SQL Server service account and that a
+        // failure to remove them is "a test-environment ACL matter". **Checked on 2026-08-30: deleting a
+        // service-account-owned `.bak` from this process succeeds immediately** — the test user holds Full
+        // control on the folder, which carries delete-subfolders-and-files, so the child's own ACL does not
+        // block it.
+        //
+        // What actually survives is artefacts from runs that DIED before teardown, which no catch block can
+        // ever clean up because none of it runs. **That is handled by the reap at the start of the next
+        // gate (`reap_to_zero` step 6), not here.** This catch remains only so a genuinely locked file —
+        // SQL Server still holding a handle — cannot turn a passing test into a failing one.
       }
       catch (UnauthorizedAccessException)
       {
+        // ⚠ BARE UNTIL T-237, DIRECTLY BENEATH A COMMENT ARGUING THAT A SWALLOW NEEDS A CORRECT REASON.
+        //
+        // T-217 rewrote the `IOException` reason above and did not look two lines down. **A swallow with no
+        // reason is the case that comment is about**, and it survived the pass that fixed its neighbour.
+        //
+        // The reason it should have: **this is the environment the `IOException` note rules OUT for THIS
+        // machine, not everywhere.** T-217 measured that the test user here holds Full control on the
+        // backup folder and can delete a service-account-owned `.bak`. A CI account, or a machine whose
+        // ProgramData ACLs differ, may not — and on such a box the failure is genuinely environmental.
+        //
+        // Swallowed rather than thrown for the same reason as the neighbour: **a cleanup failure must never
+        // replace a real test result.** The artefacts it leaves are recovered by `reap_to_zero` step 6 at
+        // the start of the next gate, which is outside this process and therefore outside this failure.
       }
     }
   }
@@ -1016,7 +1050,6 @@ public sealed class TenantBackupProviderSqlServerTests
 
     public string? Email => null;
 
-    public Guid? CompanyId => null;
 
     public string? SessionId => null;
 

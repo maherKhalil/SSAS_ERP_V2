@@ -161,6 +161,13 @@ There is **no global company query filter and no global branch query filter**. O
 
 `ADR-025` decision 10 rejects a global company filter because a filter pinned to one company makes authorized multi-company reads unexpressible. `ADR-023` has never defined a global branch filter, for the same reason at the branch level. Company and branch scoping are enforced by **explicit predicates plus executable architecture guards** (`TS-EMP-0110`, `TS-EMP-0111`).
 
+⚠⚠ **CORRECTED 2026-09-01 — THE IDENTIFIER DOES NOT RESOLVE, AND THE CLAIM IS TRUE. THESE ARE DIFFERENT FINDINGS AND ONLY THE FIRST IS A DEFECT.** `TS-EMP-0110` and `TS-EMP-0111` return **zero files in `tests/`**. **The guards they promise DO exist,
+under descriptive names:** `EmployeeReadScopeArchitectureTests.No_global_query_filter_scopes_company_or_branch`
+(`tests/Architecture.Tests/EmployeeReadScopeArchitectureTests.cs:278`) and
+`CompanyOwnershipArchitectureTests.The_company_dimension_adds_no_global_query_filter`
+(`tests/Architecture.Tests/CompanyOwnershipArchitectureTests.cs:194`). **Read those names instead of the
+scenario ids.**
+
 This is a deliberate divergence from the machinery sketched in `ADR-014` decision 6, superseded and recorded in `ADR-014` revision 1.1, Correction D.
 
 ## Shared→Dedicated cutover

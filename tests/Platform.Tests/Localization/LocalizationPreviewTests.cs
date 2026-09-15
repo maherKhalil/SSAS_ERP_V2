@@ -10,7 +10,30 @@ namespace SSAS.Platform.Tests.Localization;
 
 public sealed class LocalizationPreviewTests
 {
+  // ⚠ CITES *VALIDATES FULLY* FROM `AC-LOC-0036` — *"Manage-only Preview VALIDATES FULLY yet
+  // writes/caches/emits/logs nothing and returns encoded text only."*
+  //
+  // The validation half is asserted on both sides: a matching placeholder set is ACCEPTED and returns the
+  // direction and the parsed placeholders, and a mismatched one is REJECTED with
+  // `localization.placeholder_mismatch`. A preview that validated nothing would pass an accept-only test.
+  //
+  // ---- ⚠⚠ WHAT IS **NOT** ASSERTED HERE, AND THE DISTINCTION MATTERS MORE THAN THE CITATION.
+  //
+  // *Writes/caches nothing* is TRUE BY CONSTRUCTION rather than by assertion: `CreateHandler` supplies a
+  // catalog, an eligibility check, a tenant and a user — **there is no repository and no unit of work to
+  // call.** That is the same claim `LocalizationArchitectureTests.Preview_handler_has_no_infrastructure_or_
+  // persistence_dependency` makes at the assembly level, one layer down at the constructor. Neither is an
+  // observation that nothing was written.
+  //
+  // ⚠⚠⚠ AND *EMITS NOTHING* AND *LOGS NOTHING* ARE CARRIED BY NEITHER TEST — for the same reason the
+  // audit-gate pair could not carry its own two: **THERE IS NO OBSERVABLE.** No event counter and no log
+  // capture exists in this fixture, so *emits nothing* is not a missing `Assert` but a MISSING INSTRUMENT,
+  // and the remedy is fixture work rather than another line here.
+  //
+  // ⚠ BOUND: eight other test files mention preview and were NOT examined for this criterion, so this is
+  // *not carried by the two tests examined*, not *uncovered*. The search that settles it is those files.
   [Fact]
+  [Trait("Criterion", "AC-LOC-0036")]
   public async Task Preview_reuses_catalog_text_and_placeholder_validation_without_persistence()
   {
     var handler = CreateHandler(TenantStatus.Active);
@@ -55,7 +78,6 @@ public sealed class LocalizationPreviewTests
     public string? UserId => "preview-user";
     public string? UserName => null;
     public string? Email => null;
-    public Guid? CompanyId => null;
     public string? SessionId => null;
     public string? TokenId => null;
     public IReadOnlyCollection<string> Roles => [];

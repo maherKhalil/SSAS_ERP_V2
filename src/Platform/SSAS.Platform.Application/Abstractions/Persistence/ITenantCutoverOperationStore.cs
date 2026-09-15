@@ -33,8 +33,17 @@ public interface ITenantCutoverOperationStore
     CancellationToken cancellationToken = default);
 
   // Records the first application write that reached the cutover target. Write-once and idempotent.
+  //
+  // ITS RESULT DECIDES WHETHER THE WRITE MAY PROCEED (T-135). A failure means the observation is known
+  // NOT to be recorded, and the caller must refuse the write rather than let a genuine target write land
+  // while the platform still believes none has.
+  //
+  // The physical database is taken so the implementation can revalidate, against freshly read state, that
+  // the write it is fencing is still legal before retrying (T-139) — a retry decided only by "the
+  // timestamp is still null" would record an observation for a write that is no longer permitted.
   Task<Result> RecordPostCutoverWriteAsync(
     long cutoverOperationId,
+    long tenantDatabaseId,
     string actor,
     CancellationToken cancellationToken = default);
 

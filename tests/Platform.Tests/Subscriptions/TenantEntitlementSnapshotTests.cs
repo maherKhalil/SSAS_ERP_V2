@@ -1,3 +1,4 @@
+using System.Reflection;
 using SSAS.Platform.Application.Subscriptions;
 using SSAS.Platform.Domain.Enums;
 using SSAS.Platform.Domain.Subscriptions;
@@ -153,4 +154,79 @@ public sealed class TenantEntitlementSnapshotTests
       term: SubscriptionTerm.Fixed(Noon, Noon.AddDays(1)).Value,
       limits: new Dictionary<string, long> { ["Seats"] = 100 })
       .LimitAt("Seats", Noon.AddDays(2)));
+
+  // ================================================================================================
+  // ⚠⚠⚠ TRIPWIRE FOR AC-SUB-0022, WHICH IS VACUOUS TODAY AND WILL NOT STAY THAT WAY.
+  // ================================================================================================
+  //
+  // *"The enabled-module response contains module keys and **nothing else** — no price, plan name, term,
+  // cap, invoice or payment state. The criterion is failed by any additional field, including one that
+  // seems harmless."*
+  //
+  // **THERE IS NO ENABLED-MODULE RESPONSE.** `ITenantModuleEntitlement` has exactly one member — one key
+  // in, one boolean out — so a set-valued response cannot be assembled without ADDING A MEMBER TO THE
+  // CONTRACT. *That is a fact about the interface's shape, not about how hard anyone searched.*
+  //
+  // ---- ⚠⚠⚠ SO WHY GUARD IT HERE, ON THIS RECORD, AND NOT ON THE MISSING ENDPOINT.
+  //
+  // ***THE HAZARD IS NAMED AND IT IS SITTING IN THIS FILE'S SUBJECT.*** Whoever builds "list my modules"
+  // reaches for `PlanModules`, and `PlanModules` arrives bolted to `Term`, `PlanLimits` and
+  // `SubscriptionPlanId` — **which are the term, the cap and the plan name that AC-SUB-0022 forbids by
+  // name.** The obvious implementation returns this record or a projection of it, and the obvious
+  // projection leaks three of the six fields the criterion lists.
+  //
+  // *They will be building a listing. They will not be building a disclosure rule.* **"And nothing else"
+  // is the side effect nobody is looking at**, which is the whole test for whether a tripwire earns its
+  // place — the same test `AC-SUB-0036` FAILED and is recorded as failing in `SubscriptionInvariantTests`.
+  //
+  // ---- ⚠⚠⚠ AND HERE IS WHAT THIS GUARD DOES **NOT** CATCH. READ THIS BEFORE TRUSTING ITS SILENCE.
+  //
+  //     WHAT IT CATCHES        a MEMBER being added to `TenantEntitlementSnapshot`
+  //     WHAT IT DOES NOT       a ROUTE beginning to SERIALISE this record to a tenant caller
+  //
+  // ***SOMEBODY CAN SHIP THE LEAKING ENDPOINT TOMORROW WITHOUT TOUCHING ONE FIELD OF THIS RECORD, AND THIS
+  // TEST STAYS GREEN THROUGHOUT.*** **Its silence is not a statement that nothing is disclosed.** A guard
+  // whose comment implies it watches the other event is worse than no guard, because it teaches the next
+  // reader that green means safe.
+  //
+  // ⚠⚠ A CONSUMPTION GUARD — *"nothing tenant-facing serialises this type"* — WOULD catch the real
+  // hazard, and was REFUSED ON ITS PRECONDITION rather than on cost. **Measured 2026-09-05: 34 distinct
+  // response types across 10 files, and 10 of those 10 files changed in the last 60 days — a 100% change
+  // rate.** *And that 34 is a FLOOR, not the population*: the matcher sees `Results.Ok(new Foo(...))` and
+  // is blind to every handler returning a variable. **An absence over a population I cannot close, moving
+  // at 100% per sixty days, is a tripwire that fires on unrelated work and gets deleted — and deleting it
+  // would take the disposition with it.**
+  //
+  // ⚠ SO WHAT THIS ACTUALLY BUYS IS THE MESSAGE, AND THAT IS STATED RATHER THAN IMPLIED. The next person
+  // to add a field here reads this comment. That is the entire mechanism. *It is the route-ban lesson
+  // again: redundant for detection, load-bearing for telling a reader what they have just acquired.*
+  [Fact]
+  [Trait("Tripwire", "AC-SUB-0022")]
+  // ---- ⚠⚠⚠ PLANT-BACKED 2026-09-05. **PLANT:** `string? PlantedBillingReference = null` added to the
+  // `TenantEntitlementSnapshot` record. **RED:** this test, `Assert.Equal() Failure: Collections differ`.
+  // **REVERT → GREEN**, confirmed alongside the two subscription tripwires: `Passed: 3, Failed: 0`.
+  //
+  // ⚠⚠ **AND THIS IS THE STRONGEST OF THE NINE TRIPWIRES BECAUSE ITS SUBJECT EXISTS.** *The other eight
+  // assert an ABSENCE and cannot fail while the absence holds — which is forever, until the one day it
+  // matters — so their detection can only ever be shown by a plant.* ***THIS ONE IS A BIND OVER A LIVE TYPE:
+  // it can fail for its stated reason on any ordinary day, and the plant only confirms what its shape
+  // already promised.***
+  public void The_snapshot_carries_exactly_these_members_and_three_of_them_are_forbidden_in_a_response()
+  {
+    Assert.Equal(
+      ["Grants", "PlanLimits", "PlanModules", "SubscriptionPlanId", "TenantId", "Term"],
+      typeof(TenantEntitlementSnapshot)
+        .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+        .Select(property => property.Name)
+        .OrderBy(name => name, StringComparer.Ordinal));
+
+    // The three AC-SUB-0022 names, pinned against the record rather than restated in prose — a comment
+    // saying "Term is forbidden" rots the day someone renames it; this fails.
+    var members = typeof(TenantEntitlementSnapshot)
+      .GetProperties(BindingFlags.Public | BindingFlags.Instance).Select(p => p.Name).ToArray();
+    Assert.Contains("Term", members);                 // the TERM the criterion forbids
+    Assert.Contains("PlanLimits", members);           // the CAP
+    Assert.Contains("SubscriptionPlanId", members);   // the PLAN identity
+    Assert.Contains("PlanModules", members);          // and the one field a response IS allowed to carry
+  }
 }

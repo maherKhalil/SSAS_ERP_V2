@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 using SSAS.BuildingBlocks.Domain;
+using SSAS.HR.Application.Employees.Reads;
+using SSAS.HR.Application.ImportExport;
 using SSAS.HR.Domain.Employees;
 using SSAS.HR.Domain.ImportExport;
 using SSAS.HR.Infrastructure.Persistence;
@@ -24,6 +26,56 @@ public sealed class ImportExportArchitectureTests
   // is a READ, and routing its audit record through write authorization would make a read-only caller unable
   // to export — or, worse, make the audit silently gate the read.
   //
+  // ================================================================================================
+  // ⚠⚠⚠ `nationalId` CANNOT LEAVE THROUGH AN EXPORT, AND THE CRITERION DEMANDS THAT OVER *EVERY* EXPORT.
+  // ================================================================================================
+  //
+  // `AC-DOC-0023` — *"No export carries `nationalId`. Asserted over **every** export the surface can produce
+  // — every filter combination, every scope mode, every permission set — rather than over one representative
+  // call. A rule with no exceptions is testable as a rule, and this is the one field in the module where
+  // 'we checked the usual path' is not good enough."*
+  //
+  // ***THE CRITERION ASKS FOR A UNIVERSAL AND A CALL-BASED TEST CANNOT GIVE ONE.*** A hundred exports with
+  // a hundred filters would still be a sample, and the criterion says so in its own words. **What makes the
+  // universal reachable is that the surface has exactly ONE column contract and ONE row type: an export can
+  // only emit what `ExportEmployeesQueryHandler.Columns` names, out of what `EmployeeExportRow` carries.**
+  // *Close both and no filter, scope or permission can open a third path — the quantifier is discharged
+  // structurally rather than by enumeration.*
+  //
+  // ⚠ THE ROW TYPE IS THE LOAD-BEARING HALF. A column list is a list of STRINGS and could be edited to name
+  // a field the row does not have (harmless) or fail to name one it does (invisible). **`EmployeeExportRow`
+  // is a record: to export a national id, somebody must first add it there, and this assertion is what that
+  // person meets.** *The column check alone would pass a row type that carried the value silently.*
+  //
+  // ⚠⚠ AND THE COUNT EQUALITY IS NOT TIDINESS. **It is what stops the two halves drifting apart**: a
+  // seventh property on the row with no matching column would slip past both `DoesNotContain` checks while
+  // putting the value one line of serialisation away from the wire. *The pair only closes the surface while
+  // the pair stays the same size.*
+  //
+  // ⚠⚠⚠ WHAT THIS DOES NOT COVER, STATED BECAUSE THE CRITERION'S SCOPE IS WIDER THAN ITS SUBJECT: it says
+  // nothing about the IMPORT direction, and nothing about `nationalId` reaching a caller through the
+  // employee READ surface, which is a different criterion and a different route.
+  [Fact]
+  [Trait("Criterion", "AC-DOC-0023")]
+  public void No_export_column_or_row_field_can_carry_a_national_id()
+  {
+    var columns = ExportEmployeesQueryHandler.Columns;
+    var fields = typeof(EmployeeExportRow)
+      .GetProperties()
+      .Select(property => property.Name)
+      .ToArray();
+
+    // ANTI-VACUITY, BOTH SIDES. A renamed type or an emptied list would satisfy every `DoesNotContain`
+    // below by holding nothing at all, and "no export carries it" would pass having read no export shape.
+    Assert.NotEmpty(columns);
+    Assert.NotEmpty(fields);
+
+    Assert.DoesNotContain(columns, column => column.Contains("national", StringComparison.OrdinalIgnoreCase));
+    Assert.DoesNotContain(fields, field => field.Contains("national", StringComparison.OrdinalIgnoreCase));
+
+    Assert.Equal(columns.Count, fields.Length);
+  }
+
   // Asserted as a PAIR. Either half alone would still pass if somebody made the classification uniform,
   // which is exactly the change this exists to catch.
   [Fact]
@@ -152,8 +204,8 @@ public sealed class ImportExportArchitectureTests
 
     // The Modified pair is absent from the model too, not merely unset on the type: this record is never
     // modified, so a column for it would be permanently equal to its created counterpart.
-    Assert.Null(entity.FindProperty("ModifiedUtc"));
-    Assert.Null(entity.FindProperty("ModifiedBy"));
+    Assert.Null(entity.FindProperty(nameof(SSAS.BuildingBlocks.Domain.IAuditableEntity.ModifiedUtc)));
+    Assert.Null(entity.FindProperty(nameof(SSAS.BuildingBlocks.Domain.IAuditableEntity.ModifiedBy)));
 
     // Employee carries a real rowversion, so the exclusion above is a distinction rather than a default.
     Assert.Contains(
@@ -185,7 +237,6 @@ public sealed class ImportExportArchitectureTests
 
     public string? Email => null;
 
-    public Guid? CompanyId => null;
 
     public string? SessionId => null;
 

@@ -135,6 +135,38 @@ public sealed class TenantDatabaseRecoveryReadinessMatrixTests
       TenantDatabaseRecoveryReadinessEvaluator.Evaluate(inputs, Now));
   }
 
+  // ---- ⚠ THE ABSENT POLICY — THE THIRD CLAUSE OF THAT BRANCH, AND THE ONLY ONE THAT HAD NO TEST.
+  //
+  // `Evaluate` refuses on `!PolicyExists || !PolicyEnabled || ManagementMode != AutomaticByPlatform`. The
+  // second clause is covered by `A_disabled_policy_is_unprotected` above and the third by
+  // `A_policy_the_platform_may_not_execute_is_unprotected`. **`PolicyExists: false` appeared nowhere in any
+  // suite** — the fixture below hard-codes `PolicyExists: true` and every case derived from it inherited
+  // that, so the first clause had never been exercised for the reason it claims.
+  //
+  // ---- WHY IT IS NOT AN EDGE CASE: IT IS THE STATE A REAL DATABASE IS IN.
+  //
+  // `TenantDatabaseBackupPolicy.Create` has no production caller — its call sites are all in test
+  // fixtures — so nothing in the product writes a policy row. A platform-managed database therefore
+  // reaches this evaluator with **no policy at all**, which is exactly the input this test supplies and
+  // the one the matrix had never been asked about.
+  //
+  // ---- IT DISCRIMINATES, WHICH IS WHY IT SITS HERE RATHER THAN IN THE THEORY ABOVE.
+  //
+  // `Healthy()` leaves `PolicyEnabled` true and `ManagementMode` automatic, so the other two disjuncts are
+  // false and only this one can produce the refusal. **Delete `!inputs.PolicyExists` from that condition
+  // and this case falls through every later branch to `Protected`** — the assertion changes value across
+  // the clause it names, rather than merely agreeing with it.
+  [Fact]
+  [Trait("Criterion", "ADR-022")]
+  public void A_platform_managed_database_with_no_policy_at_all_is_unprotected()
+  {
+    var inputs = Healthy() with { PolicyExists = false };
+
+    Assert.Equal(
+      TenantDatabaseRecoveryReadinessStatus.Unprotected,
+      TenantDatabaseRecoveryReadinessEvaluator.Evaluate(inputs, Now));
+  }
+
   // ---- Recovery model (ADR-022 §9, v1.2).
 
   [Fact]

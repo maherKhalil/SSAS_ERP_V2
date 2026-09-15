@@ -30,6 +30,15 @@
     <!-- Design-time only: the migration tool reuses the ONE fail-fast connection-string contract rather
          than restating it, so ADR-018's operational procedure cannot drift between them. -->
     <InternalsVisibleTo Include="SSAS.Tenant.MigrationTool" />
+    <!-- T-253: the cutover contributor set is consumed by BOTH Integration.Tests and Architecture.Tests, so
+         it lives in one support assembly rather than being copied. `ITenantModelSource` is internal, and
+         this grant replaces nothing: Integration.Tests reached it through the grant above when the same
+         definition sat inside that project. -->
+    <InternalsVisibleTo Include="SSAS.TestSupport.CutoverModel" />
+    <!-- T-253: six cutover-manifest checks moved here from the Integration suite. They assert facts
+         about the COMPOSED tenant model, which is an internal service, for the same reason the API tests
+         are granted access above. Proving it from outside the composition would prove something else. -->
+    <InternalsVisibleTo Include="SSAS.Architecture.Tests" />
   </ItemGroup>
 
 </Project>

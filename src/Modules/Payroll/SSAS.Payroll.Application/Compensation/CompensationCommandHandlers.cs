@@ -1,9 +1,11 @@
 using SSAS.BuildingBlocks.Domain;
 using SSAS.BuildingBlocks.Tenancy.Persistence;
+using SSAS.HR.Contracts.Employment;
 using SSAS.Payroll.Application.Abstractions;
 using SSAS.Payroll.Application.Permissions;
 using SSAS.Payroll.Application.Reads;
 using SSAS.Payroll.Domain.Compensation;
+using SSAS.Payroll.Domain.Runs;
 
 namespace SSAS.Payroll.Application.Compensation;
 
@@ -17,6 +19,7 @@ public sealed record RecordCompensationCommand(
   Guid EmployeeId,
   DateTimeOffset EffectiveFromUtc,
   decimal BaseAmount,
+  SalaryType SalaryType,
   IReadOnlyList<(Guid PayElementId, decimal? RateOrAmount)> Assignments,
   // ---- THE BAND OBSERVATION IS SUPPLIED, NOT FETCHED (OD-PAY-0004, DEC-PAY-0017).
   //
@@ -33,7 +36,16 @@ public sealed record RecordCompensationCommand(
 public sealed class RecordCompensationCommandHandler(
   IEmployeeCompensationRepository compensation,
   IPayrollScopeResolver scope,
-  ITenantUnitOfWork unitOfWork)
+  ITenantUnitOfWork unitOfWork,
+
+  // ---- ⚠ THE DEPENDENCY IS THE POINT, NOT A COST (T-153).
+  //
+  // `DEC-PAY-0017` refuses a fifth field on the roster projection because a widened projection is read
+  // with no call site changing. **This constructor IS the call site changing**, and every future consumer
+  // of an employment type will have to change one too.
+  //
+  // `DEC-PAY-0014` is not crossed: this reads, and Payroll still writes nothing to HR.
+  IEmployeeEngagementDirectory engagement)
 {
   public async Task<Result<Guid>> HandleAsync(
     RecordCompensationCommand command, CancellationToken cancellationToken = default)
@@ -47,8 +59,25 @@ public sealed class RecordCompensationCommandHandler(
       return Result.Failure<Guid>(authorized.Error);
     }
 
+    // ---- THE PAIRING, CHECKED BEFORE ANYTHING IS BUILT OR WRITTEN.
+    //
+    // After authorisation deliberately: **an unauthorised caller must not learn whether an employee
+    // exists in HR**, and answering `CompensationEmployeeNotInHr` first would tell them.
+    var employmentType = await engagement.GetEmploymentTypeAsync(command.EmployeeId, cancellationToken);
+
+    if (employmentType is null)
+    {
+      return Result.Failure<Guid>(PayrollErrors.CompensationEmployeeNotInHr);
+    }
+
+    if (employmentType is EmploymentType.Contract)
+    {
+      return Result.Failure<Guid>(PayrollErrors.CompensationNotAvailableForContract);
+    }
+
     var record = EmployeeCompensation.Create(
-      command.CompanyId, command.EmployeeId, command.EffectiveFromUtc, command.BaseAmount, command.Assignments);
+      command.CompanyId, command.EmployeeId, command.EffectiveFromUtc, command.BaseAmount, command.Assignments,
+      command.SalaryType);
     if (record.IsFailure)
     {
       return Result.Failure<Guid>(record.Error);
@@ -56,7 +85,25 @@ public sealed class RecordCompensationCommandHandler(
 
     // Recorded, never enforced. An out-of-band amount is a real business event — retention, acting-up, a
     // legacy arrangement — and `OD-PAY-0004` ruled it is warned about rather than refused.
-    record.Value.RecordGradeBandObservation(command.WasOutsideGradeBand, command.GradeBandObservation);
+    //
+    // ---- BUT ONLY FOR A MONTHLY SALARY (T-107), AND THE REASON IS THAT THE BAND STATES NO BASIS.
+    //
+    // `SalaryBand` carries `MinimumAmount`, `MidpointAmount` and `MaximumAmount` and **declares no basis at
+    // all** — nothing in `SalaryGrade` or `SalaryBand` says whether 5000 means a month, a year or an hour.
+    // Monthly is simply the only basis the product has ever expressed, so comparing an HOURLY rate against
+    // one is "outside the band" by arithmetic and says nothing about the employee.
+    //
+    // **And the observation is deliberately stored rather than recomputed** so the record is honest about
+    // what was true when the amount was set (see `EmployeeCompensation`). A false observation would
+    // therefore be FROZEN into that employee's history by a rule built to protect history — which is why
+    // this suppresses rather than corrects.
+    //
+    // The comparison is unfounded for every type, strictly speaking; monthly is merely the one where the
+    // unstated basis happens to be right. Stating a basis on the band is HR's to rule, not Payroll's.
+    if (command.SalaryType is SalaryType.Monthly)
+    {
+      record.Value.RecordGradeBandObservation(command.WasOutsideGradeBand, command.GradeBandObservation);
+    }
 
     await compensation.AddAsync(record.Value, cancellationToken);
 

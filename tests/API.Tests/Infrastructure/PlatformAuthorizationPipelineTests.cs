@@ -44,6 +44,27 @@ public sealed class PlatformAuthorizationPipelineTests : IAsyncLifetime
   // ---- STEP 24 / STEP 25 : platform token success + missing permission ----
 
   [Fact]
+  // ⚠ CITES THE PERMIT HALF OF `AC-IAM-0003` — *"An App Owner / App Support actor WITH THE REQUIRED
+  // PLATFORM PERMISSION CAN PERFORM an approved support action…"* — AND ONLY THAT HALF. The rest of the
+  // sentence is *"…in a SELECTED TENANT, and the action is AUDITED"*, and neither is observed here: this
+  // is a test route with no tenant target, and nothing reads an audit record.
+  //
+  // ⚠⚠ THE PERMIT HALF IS WORTH CITING ON ITS OWN BECAUSE IT IS THE ONLY POSITIVE IN A LANDSCAPE OF
+  // REFUSALS. `PlatformSupportAuthorityAuthorizationTests` has FOUR tests and every one asserts a refusal:
+  // anonymous, tenant-plane token, platform token without `Administer`, mixed-plane token. **A pipeline
+  // that refused EVERYTHING satisfies all four.** This is the test that makes them mean *the gate
+  // discriminates* rather than *the gate is shut*.
+  //
+  // The three refusals below it in this file are the same shape and depend on it identically — and the
+  // pairing runs both ways, since without them a pipeline that ALLOWED everything would satisfy this one.
+  //
+  // ⚠⚠⚠ AND THE AUDIT CLAUSE IS UNOBSERVED ANYWHERE, WHICH MAKES IT THE THIRD OF ITS KIND TONIGHT.
+  // `AC-IAM-0023` (*every security-sensitive change records timestamp and actor*) and `AC-IAM-0024` (*no
+  // secret in any log*) are the other two, and all three ask for a record to EXIST rather than for a
+  // behaviour to happen. **A support action is exactly the kind of change `AC-IAM-0023` covers, so the
+  // audit half of this criterion is uncovered for the same structural reason and not by separate
+  // neglect.** Cited as the permit half; the rest is recorded, not claimed.
+  [Trait("Criterion", "AC-IAM-0003")]
   public async Task Valid_platform_token_with_the_required_permission_is_authorized()
   {
     using var request = PlatformRequest("/platform-test/administer", permissions: [Administer]);
@@ -79,6 +100,21 @@ public sealed class PlatformAuthorizationPipelineTests : IAsyncLifetime
   // ---- STEP 27 : real platform token against a tenant policy ----
 
   [Fact]
+  [Trait("Criterion", "AC-TEN-0029")]
+  // `AC-TEN-0029` — *"FP-005 Company and Localization routes REMAIN TENANT-PLANE: they still require a
+  // validated current tenant and `PermissionScope.Tenant` permissions through the EXISTING `RequirePermission`
+  // handler, UNAFFECTED by the platform plane."*
+  //
+  // ⚠ THIS IS A REGRESSION CRITERION, SO ITS WITNESS IS A NON-EVENT, AND THAT SHAPES WHAT CAN CARRY IT. The
+  // assertion here is that a REAL platform token — correctly issued, structurally valid — **cannot satisfy a
+  // tenant permission policy.** The tenant plane being unchanged is proved by the tenant pipeline continuing
+  // to work in `AuthorizationPipelineTests`, which predates the platform plane entirely; **this test adds the
+  // half that file cannot have — that the NEW plane did not become a second way in.**
+  //
+  // ⚠⚠ THE NAMED ROUTES ARE NOT EXERCISED HERE. The criterion names FP-005 Company and Localization routes;
+  // this uses the pipeline's own `/tenant-test` endpoints. **The property is proved at the POLICY, which is
+  // what those routes use — a class argument, and the class is the `RequirePermission` handler the criterion
+  // itself names.** Recorded because the criterion names specific routes and this does not visit them.
   public async Task Real_platform_token_cannot_satisfy_a_tenant_permission_policy()
   {
     using var request = PlatformRequest("/tenant-test/permission", permissions: [Administer, "test.permission"]);
@@ -91,6 +127,20 @@ public sealed class PlatformAuthorizationPipelineTests : IAsyncLifetime
   // ---- STEP 28 : mixed-plane token is rejected at authentication ----
 
   [Fact]
+  [Trait("Criterion", "AC-TEN-0059")]
+  // `AC-TEN-0059` — *"A token combining `security_plane=platform` with any `tenant_id` (or `tenant_user_id`)
+  // is rejected STRUCTURALLY, NOT IGNORED."*
+  //
+  // ⚠ **THE STATUS CODE IS THE WHOLE CITATION.** A 401 means `StrictAccessTokenValidator` failed the TOKEN;
+  // a 403 would have meant the token was accepted and the request merely unauthorized — which is precisely
+  // the *ignored* outcome the criterion forbids. **The two failures look equally red and mean opposite
+  // things**, so a future simplification that relaxed this to `Assert.False(IsSuccessStatusCode)` would keep
+  // the test green and delete the criterion.
+  //
+  // ⚠⚠ THE `tenant_user_id` HALF IS NOT COVERED. The criterion names `tenant_id` OR `tenant_user_id`; only
+  // `tenant_id` is planted here. **A validator that rejected one and ignored the other passes.** The route
+  // sweep in `PlatformSupportAuthorityAuthorizationTests.Every_authority_route_rejects_a_mixed_plane_token`
+  // carries the same trait and the same gap — it plants `tenant_id` too.
   public async Task Mixed_plane_token_is_rejected_at_authentication_before_authorization()
   {
     using var request = new HttpRequestMessage(HttpMethod.Get, "/platform-test/administer");

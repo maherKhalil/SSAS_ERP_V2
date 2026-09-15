@@ -1,3 +1,4 @@
+using SSAS.HR.Contracts.Employment;
 using SSAS.BuildingBlocks.Domain;
 using SSAS.HR.Domain.Events;
 
@@ -59,7 +60,8 @@ public sealed class Employee
     NationalId? nationalId,
     DateTimeOffset employmentDate,
     string actor,
-    DateTimeOffset occurredUtc) : base(employeeId)
+    DateTimeOffset occurredUtc,
+    EmploymentType employmentType) : base(employeeId)
   {
     EmployeeNumber = employeeNumber;
     normalizedEmployeeNumber = employeeNumber.NormalizedValue;
@@ -67,6 +69,7 @@ public sealed class Employee
     NationalId = nationalId;
     normalizedNationalId = nationalId?.NormalizedValue;
     EmploymentDate = employmentDate.ToUniversalTime();
+    EmploymentType = employmentType;
     Status = EmployeeStatus.Active;
     StatusChangeReasonCode = EmployeeStatusChangeReason.Created;
     StatusChangedUtc = occurredUtc.ToUniversalTime();
@@ -132,6 +135,14 @@ public sealed class Employee
   // Null until termination, and required once terminated. A check constraint keeps the two from disagreeing.
   public DateTimeOffset? TerminationDate { get; private set; }
 
+  // ---- HOW THIS EMPLOYEE IS ENGAGED (T-153). See `EmploymentType` for why this is not a pay field.
+  //
+  // `FullTime` is `default`, so every employee written before T-153 keeps the arrangement they already
+  // had. **Payroll reads this through a purpose-named contract call, never through the roster
+  // projection** — `DEC-PAY-0017` pins that projection's field list, and widening it would let every
+  // future payroll feature read the value with no call site changing for anyone to review.
+  public EmploymentType EmploymentType { get; private set; }
+
   public EmployeeStatus Status { get; private set; }
 
   public EmployeeStatusChangeReason StatusChangeReasonCode { get; private set; }
@@ -176,7 +187,8 @@ public sealed class Employee
     DateTimeOffset employmentDate,
     string actor,
     Guid eventId,
-    DateTimeOffset occurredUtc)
+    DateTimeOffset occurredUtc,
+    EmploymentType employmentType = EmploymentType.FullTime)
   {
     if (employeeNumber is null)
     {
@@ -199,7 +211,8 @@ public sealed class Employee
     }
 
     return Result.Success(new Employee(
-      Guid.NewGuid(), employeeNumber, fullName, nationalId, employmentDate, actor.Trim(), occurredUtc));
+      Guid.NewGuid(), employeeNumber, fullName, nationalId, employmentDate, actor.Trim(), occurredUtc,
+      employmentType));
   }
 
   // Called by the application once the trusted tenant, company and branch are known — which is after the

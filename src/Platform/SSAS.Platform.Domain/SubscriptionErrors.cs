@@ -36,9 +36,34 @@ public static class SubscriptionErrors
 
   // ---- THE ADDITIVE-GRANT REFUSAL (`OD-SUB-0011`, `DEC-L-009`).
   //
-  // Refused at write time so the mistake is visible at the moment someone makes it. Resolution ALSO takes
-  // `max(plan, grants)`, so a grant that somehow named a lower value could not lower anything — the two are
-  // deliberate belt and braces, and this error is the loud half.
+  // Refused at write time so the mistake is visible at the moment someone makes it.
+  //
+  // ---- ⚠⚠⚠ THE REDUNDANCY CLAIM BELOW WAS INVERTED. CORRECTED 2026-09-06; THE ORIGINAL IS KEPT BECAUSE
+  // ---- IT IS THE RECORD OF WHAT WAS BELIEVED, AND A READER NEEDS TO KNOW THE CLAIM WAS MADE.
+  //
+  // THIS COMMENT PREVIOUSLY CONTINUED: *"Resolution ALSO takes `max(plan, grants)`, so a grant that somehow
+  // named a lower value could not lower anything — the two are deliberate belt and braces, and this error is
+  // the loud half."*
+  //
+  // ***THAT IS BACKWARDS. THIS ERROR IS NOT THE LOUD HALF; IT IS THE HALF THE PRODUCT NEVER REACHES.***
+  //
+  //   `TenantEntitlementGrant.RaiseLimit` (`:122`) is the only producer of this error, and **nothing in
+  //   `src/` calls it** — the sole references are its own definition and two comments. It is exercised by
+  //   `SubscriptionInvariantTests` and `TenantEntitlementResolutionTests` and by nothing the product runs.
+  //   *Unit-tested is not reachable, and the tests are what make the absence easy to miss.*
+  //
+  //   `TenantEntitlement.cs:142-144`'s `Math.Max` is therefore not the backup. **It is the whole enforcement
+  //   that executes.** That file already says so: *"remove the write-time check and this still cannot lower
+  //   a cap."* The two comments disagreed and this one was wrong.
+  //
+  // ⚠⚠ ***DO NOT SIMPLIFY `Math.Max(current, granted)` AS REDUNDANT WITH THIS REFUSAL.*** Deleting it removes
+  // the only lowering guard that runs, this error does not fire in its place, and **every test stays green** —
+  // the failure is invisible in exactly the direction that makes the change look like tidying.
+  //
+  // Evidence and the full reasoning: `SubscriptionInvariantTests.cs:906-927`.
+  //
+  // ⚠ Whether `RaiseLimit` SHOULD be reachable is a product question (`AC-SUB-0016`), not a comment's to
+  // settle. Nothing here changes behaviour.
   public static readonly Error GrantWouldNotRaise = new(
     "Subscription.GrantWouldNotRaise",
     "An entitlement grant may only raise a limit above the plan's value; it may never lower one.");

@@ -1,60 +1,17 @@
-# Task Plan
+# SSAS_ERP_V2 Macro-Roadmap & Task Plan
 
-## Phase 4: FP-014 Subscription Billing API Implementation
+## Phase 1: ERP API Completion
+- [ ] **Task 1: FP-001 & FP-003 Unrouted Endpoints**
+  Wire up the 17 missing HTTP Minimal API endpoints for Custom Role Management, User Role Assignments, and Support-scoped Tenant User administration. These routes are marked [NOT ROUTED] in the API contracts but their MediatR handlers already exist. Write corresponding integration tests in 	ests/API.Tests to verify.
 
-- [x] **Task 1: FP-014 Permissions & Authorization Configuration**
-  Add the missing permissions defined in `docs/17-features/FP-014-subscription/api-contracts.md`: `Platform.Plans.View`, `Platform.Plans.Administer`, `Platform.Subscriptions.View`, `Platform.Subscriptions.Administer`, `Platform.EntitlementGrants.Administer`, `Platform.Invoices.View`, and `Platform.Invoices.Administer`. Ensure they are registered in the authorization/permission catalogue.
+## Phase 2: ERP FrontEnd
+*(Tasks to be defined once Phase 1 is fully complete)*
 
-- [x] **Task 2: FP-014 Plans API**
-  Implement the MediatR command/query handlers, HTTP routes, and unit tests for the Plans API under `/api/platform/plans`:
-  - `GET /api/platform/plans`
-  - `GET /api/platform/plans/{planId}`
-  - `POST /api/platform/plans`
-  - `PUT /api/platform/plans/{planId}`
-  - `POST /api/platform/plans/{planId}/retire`
-  - `PUT /api/platform/plans/{planId}/modules`
-  - `PUT /api/platform/plans/{planId}/limits`
-  - `PUT /api/platform/plans/{planId}/prices`
+## Phase 3: HIS API
+*(Tasks to be defined once Phase 2 is fully complete. Includes finishing the HIS EF Core integrations and API surface.)*
 
-- [x] **Task 3: FP-014 Subscriptions API**
-  Implement the command/query handlers, HTTP routes, and unit tests for the Subscriptions API (using append-only semantics):
-  - `GET /api/platform/tenants/{tenantId}/subscriptions`
-  - `GET /api/platform/tenants/{tenantId}/subscriptions/current`
-  - `POST /api/platform/tenants/{tenantId}/subscriptions`
-  - `GET /api/platform/subscriptions`
+## Phase 4: HIS Frontend
+*(Tasks to be defined once Phase 3 is fully complete. Will integrate seamlessly into the ERP frontend architecture.)*
 
-- [x] **Task 4: FP-014 Entitlement Grants API**
-  Implement the command/query handlers, HTTP routes, and unit tests for Entitlement Grants:
-  - `GET /api/platform/tenants/{tenantId}/grants`
-  - `POST /api/platform/tenants/{tenantId}/grants`
-  - `POST /api/platform/tenants/{tenantId}/grants/revoke`
-
-- [x] **Task 5: FP-014 Invoices API**
-  Implement the command/query handlers, HTTP routes, and unit tests for Invoices:
-  - `GET /api/platform/invoices`
-  - `GET /api/platform/invoices/{invoiceId}`
-  - `GET /api/platform/tenants/{tenantId}/invoices`
-  - `POST /api/platform/invoices`
-  - `PUT /api/platform/invoices/{invoiceId}` (draft edits only)
-  - `POST /api/platform/invoices/{invoiceId}/issue`
-  - `POST /api/platform/invoices/{invoiceId}/void`
-  - `GET /api/platform/invoices/{invoiceId}/attempts`
-
-- [x] **Task 6: FP-014 Tenant Enabled Modules Read API**
-  Implement the handler and route for `GET /api/platform/modules/enabled`. This route must be exempt from module enablement checks and available to any authenticated tenant user.
-
-## Phase 5: HIS (Health Information System) Integration
-
-- [x] **Task 7: HIS Entity Scaffolding (Core Schemas)**
-  Generate the EF Core entities for core clinical schemas (e.g., `BloodBank`, `Emergency`, `Pharmacy`) as outlined in `docs/15-Tasks/HIS-Tables-Specification.md`. Ensure `ITenantOwnedEntity` is implemented for all tables to strictly enforce the new `TenantId` requirement.
-
-- [x] **Task 8: HIS Entity Scaffolding (Supporting Schemas)**
-  Generate the remaining EF Core entities for supporting clinical schemas (e.g., `Radiology`, `Laboratory`, `InPatient`, `OutPatient`) ensuring `TenantId` tenancy logic is perfectly mapped.
-
-- [x] **Task 9: HIS EF Core Migrations**
-  Integrate the new HIS entities into the DbContext and generate the EF Core migration script to create these tables in the SSAS_ERP_V2 database.
-
-## Phase 4.1: ERP Defect Resolution (FP-014)
-
-- [x] **Task 10: PlatformDbContext EF Core Migrations & API Test Fixes**
-  Generate the missing EF Core migration for the FP-014 Subscription entities in `PlatformDbContext`. Resolve the `PlatformModelHasNoPendingChangesTests` failure and fix any remaining `SubscriptionApiErrorMapper` or infrastructure test failures to ensure the ERP backend is perfectly clean.
+## Phase 5: Complete Data Migration Script
+*(Tasks to be defined once Phase 4 is fully complete. Will combine both ERP and HIS data migrations into the final schema mappings.)*

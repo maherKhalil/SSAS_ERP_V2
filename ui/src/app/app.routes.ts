@@ -5,7 +5,11 @@ import { permissionGuard } from './core/guards/permission-guard';
 import { Shell } from './layout/shell/shell';
 
 export const routes: Routes = [
-  { path: '', redirectTo: 'modules', pathMatch: 'full' },
+  { path: '', redirectTo: 'login', pathMatch: 'full' },
+  { 
+    path: 'login', 
+    loadComponent: () => import('./features/auth/login').then(m => m.LoginComponent) 
+  },
   { path: 'modules', component: ModuleSelectorComponent, canActivate: [authGuard] },
   {
     path: '',

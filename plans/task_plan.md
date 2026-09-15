@@ -48,7 +48,7 @@
 - [x] **Task 7: HIS Entity Scaffolding (Core Schemas)**
   Generate the EF Core entities for core clinical schemas (e.g., `BloodBank`, `Emergency`, `Pharmacy`) as outlined in `docs/15-Tasks/HIS-Tables-Specification.md`. Ensure `ITenantOwnedEntity` is implemented for all tables to strictly enforce the new `TenantId` requirement.
 
-- [ ] **Task 8: HIS Entity Scaffolding (Supporting Schemas)**
+- [x] **Task 8: HIS Entity Scaffolding (Supporting Schemas)**
   Generate the remaining EF Core entities for supporting clinical schemas (e.g., `Radiology`, `Laboratory`, `InPatient`, `OutPatient`) ensuring `TenantId` tenancy logic is perfectly mapped.
 
 - [ ] **Task 9: HIS EF Core Migrations**

@@ -1,0 +1,20 @@
+using System;
+using SSAS.BuildingBlocks.Domain;
+
+namespace SSAS.HIS.Domain.Entities.OutPatient
+{
+    public class DiagnosisQuestion : ITenantOwnedEntity
+    {
+        public int Id { get; set; }
+        public int CostCenterID { get; set; }
+        public int DiagnosisGroupID { get; set; }
+        public string DiagnosisQuestionName { get; set; }
+        public string OrderQuest { get; set; }
+        public string CreatedBy { get; set; }
+        public DateTime CreatedDate { get; set; }
+        public string LastModifiedBy { get; set; }
+        public DateTime LastModifiedDate { get; set; }
+        public int CompanyID { get; set; }
+        public Guid TenantId { get; set; }
+    }
+}

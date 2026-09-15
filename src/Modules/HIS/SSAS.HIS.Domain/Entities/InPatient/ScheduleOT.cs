@@ -1,0 +1,25 @@
+using System;
+using SSAS.BuildingBlocks.Domain;
+
+namespace SSAS.HIS.Domain.Entities.InPatient
+{
+    public class ScheduleOT : ITenantOwnedEntity
+    {
+        public int Id { get; set; }
+        public int OperationID { get; set; }
+        public DateTime OperationDate { get; set; }
+        public int PatientID { get; set; }
+        public int SurgeonID { get; set; }
+        public int NurseID { get; set; }
+        public int SurgeryID { get; set; }
+        public DateTime StartTime { get; set; }
+        public DateTime EndTime { get; set; }
+        public string Remarks { get; set; }
+        public string CreatedBy { get; set; }
+        public DateTime CreatedDate { get; set; }
+        public string LastModifiedBy { get; set; }
+        public DateTime LastModifiedDate { get; set; }
+        public int CompanyID { get; set; }
+        public Guid TenantId { get; set; }
+    }
+}

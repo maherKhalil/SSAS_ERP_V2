@@ -1,4 +1,4 @@
-﻿using System.Xml.Linq;
+using System.Xml.Linq;
 
 namespace SSAS.Architecture.Tests;
 
@@ -107,7 +107,8 @@ public sealed class ProjectDependencyArchitectureTests
       // Payroll and exactly as intended. The list is an INVENTORY OF WHAT IS DELIBERATELY REACHABLE, so
       // extending it is the acknowledgement — not a formality to be done reflexively when the test goes red.
       ,"SSAS.Attendance.API",
-      "SSAS.Attendance.Infrastructure"
+      "SSAS.Attendance.Infrastructure",
+      "SSAS.HIS.Infrastructure"
     };
 
     Assert.All(host.References, reference => Assert.Contains(reference, allowedReferences));

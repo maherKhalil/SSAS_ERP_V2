@@ -14,7 +14,7 @@ public class BloodStreamDetails : Entity<string>, ITenantOwnedEntity
     public string? Performhandhygiene { get; set; }
     public string? Maintainaseptictechnique { get; set; }
     public string? Thedisinfectionofcatheterhub { get; set; }
-    public string? UseaCVC { get; set; }
+    public string? UseaCentralVenousCatheter { get; set; }
     public string? Usesteriletransparent { get; set; }
     public string? Gauzedressings { get; set; }
     public string? Transparentdressings { get; set; }

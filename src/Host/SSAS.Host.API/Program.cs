@@ -35,7 +35,7 @@ using SSAS.Platform.Application.Subscriptions;
 using SSAS.Platform.Infrastructure.Subscriptions;
 using SSAS.Platform.API.Subscriptions;
 using SSAS.Platform.API.TenantUsers;
-using SSAS.Platform.API.Subscriptions;
+using SSAS.HIS.Infrastructure;
 
 Log.Logger = new LoggerConfiguration()
   .WriteTo.Console(formatProvider: CultureInfo.InvariantCulture)
@@ -82,7 +82,8 @@ try
     // Without it, every payroll approval would fail to resolve a dependency at REQUEST time rather than at
     // startup -- which is precisely the class of failure the eager composition below exists to prevent.
     .AddAttendanceModule()
-    .AddAttendanceInfrastructure();
+    .AddAttendanceInfrastructure()
+    .AddHisInfrastructure(builder.Configuration);
 
   // ---- MODULE PERMISSION DEFINITIONS, REGISTERED EXPLICITLY (ADR-012 r1.2, FP-006P).
   //

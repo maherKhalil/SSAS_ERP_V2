@@ -37,7 +37,8 @@ public sealed class ReadSideEscapeArchitectureTests
     typeof(SSAS.GL.Infrastructure.Persistence.AccountConfiguration).Assembly,
     typeof(SSAS.Payroll.Infrastructure.Persistence.PayElementConfiguration).Assembly,
     typeof(SSAS.Platform.Infrastructure.Identity.ActionTokenService).Assembly,
-    typeof(SSAS.BuildingBlocks.Infrastructure.Persistence.DomainEventDispatcher).Assembly
+    typeof(SSAS.BuildingBlocks.Infrastructure.Persistence.DomainEventDispatcher).Assembly,
+    typeof(SSAS.HIS.Infrastructure.Persistence.HisDbContext).Assembly
   ];
 
   private static readonly Assembly[] Application =

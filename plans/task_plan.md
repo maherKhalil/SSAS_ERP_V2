@@ -3,19 +3,24 @@
 ## Phase 1: All ERP Backend
 *(Strict Rule: Must complete ALL ERP modules before Phase 2)*
 - [x] **Task 1.1: FP-001 & FP-003 Unrouted Endpoints**
-- [ ] **Task 1.2: FP-010 HR Employee Documents API**
-  Build the MediatR Handlers and Minimal APIs for Employee Documents as specified in docs/17-features/FP-010-hr-employee-documents.
-- [ ] **Task 1.3: FP-015 Employee Self-Service API**
-  Build the MediatR Handlers and Minimal APIs for the Employee Self-Service module as specified in docs/17-features/FP-015-self-service.
-
+- [ ] **Task 1.2: FP-010 HR Employee Documents**
+- [ ] **Task 1.3: FP-015 Employee Self-Service**
 - [ ] **Task 1.4: FP-017 Inventory Management**
-  Build MediatR Handlers and Minimal APIs for warehouse management and stock tracking.
 - [ ] **Task 1.5: FP-018 Procurement**
-  Build MediatR Handlers and Minimal APIs for purchase orders and supplier management.
-- [ ] **Task 1.6: FP-019 Accounts Payable & Receivable**
-  Build MediatR Handlers and Minimal APIs for vendor billing, client invoicing, and payments.
+- [ ] **Task 1.6: FP-019 Accounts Payable (AP) & Accounts Receivable (AR)**
 - [ ] **Task 1.7: FP-020 Fixed Assets**
-  Build MediatR Handlers and Minimal APIs for asset tracking and depreciation.
+- [ ] **Task 1.8: FP-021 Reporting & Advanced BI**
+- [ ] **Task 1.9: FP-022 Notifications**
+- [ ] **Task 1.10: FP-023 Customers & CRM**
+- [ ] **Task 1.11: FP-024 Vendors**
+- [ ] **Task 1.12: FP-025 Banking**
+- [ ] **Task 1.13: FP-026 Tax / VAT**
+- [ ] **Task 1.14: FP-027 Budgeting**
+- [ ] **Task 1.15: FP-028 Sales**
+- [ ] **Task 1.16: FP-029 HR Recruitment**
+- [ ] **Task 1.17: FP-030 HR Performance**
+- [ ] **Task 1.18: FP-031 Manufacturing**
+- [ ] **Task 1.19: FP-032 ERP AI**
 
 ## Phase 2: All ERP FrontEnd (Angular + Tailwind)
 - [x] *(Initial shell completed, but will remain paused until Phase 1 is 100% finished)*
@@ -36,4 +41,3 @@
 
 ## Phase 5: Complete Data Migration Script
 - [ ] *(Locked)*
-

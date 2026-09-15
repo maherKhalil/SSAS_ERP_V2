@@ -23,7 +23,7 @@ public static class EntitlementGrantsEndpointRouteBuilderExtensions
   {
     ArgumentNullException.ThrowIfNull(endpoints);
 
-    var group = endpoints.MapGroup("/api/platform/tenants/{tenantId:guid}/grants").WithTags("Platform Entitlement Grants");
+    var group = endpoints.MapGroup("/api/platform/tenants/{tenantId}/grants").WithTags("Platform Entitlement Grants");
 
     group.MapGet("", GetTenantGrantsAsync)
       .RequirePlatformPermission(PlatformPermissionNames.ViewSubscriptions)

@@ -28,7 +28,7 @@ public static class TenantSubscriptionsEndpointRouteBuilderExtensions
       .RequirePlatformPermission(PlatformPermissionNames.ViewSubscriptions)
       .WithName("PlatformSubscriptionsGetAll");
 
-    var tenantGroup = endpoints.MapGroup("/api/platform/tenants/{tenantId:guid}/subscriptions").WithTags("Platform Tenant Subscriptions");
+    var tenantGroup = endpoints.MapGroup("/api/platform/tenants/{tenantId}/subscriptions").WithTags("Platform Tenant Subscriptions");
 
     tenantGroup.MapGet("", GetTenantSubscriptionsAsync)
       .RequirePlatformPermission(PlatformPermissionNames.ViewSubscriptions)

@@ -28,6 +28,7 @@ public static class SubscriptionApiErrorMapper
       "Invoice.NotFound" => ProblemResults.RequestInvalid,
       "Invoice.AlreadyVoided" => ProblemResults.ConcurrencyConflict,
       "Persistence.WriteFailure" => ProblemResults.WriteFailure,
+      "Persistence.UniqueConstraint" => ProblemResults.ConcurrencyConflict,
       _ => ProblemResults.WriteFailure
     };
   }

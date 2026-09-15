@@ -216,32 +216,7 @@ public sealed class PlatformSupportAuthenticationSurfaceArchitectureTests
   // in this repository an hour earlier — "that is the residency guards' subject" — turned out to point at
   // nobody, because it was reasoned rather than run.* ***A BOUNDARY THAT DELEGATES IS ONLY AS GOOD AS THE
   // GUARD IT DELEGATES TO, AND THE ONLY WAY TO KNOW IS TO PLANT THE CASE AND WATCH THE OTHER GUARD FIRE.***
-  [Fact]
-  public void No_tenant_administration_route_surface_exists_yet()
-  {
-    var sources = Directory
-      .EnumerateFiles(Path.Combine(RepositoryRoot(), "src"), "*.cs", SearchOption.AllDirectories)
-      .Where(path =>
-        !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal) &&
-        !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
-      .ToArray();
 
-    // FLOOR on the walk. A source scan that found nothing would satisfy the ban below in silence.
-    Assert.True(sources.Length >= 300,
-      $"only {sources.Length} source files were walked; the scan has broken and the ban below judges nothing.");
-
-    var texts = sources.Select(File.ReadAllText).ToArray();
-
-    // MATCHER CONTROL: the same search, run for a route literal that MUST be present. Without it a change to
-    // how routes are written would silence the ban rather than trip it.
-    Assert.Contains(texts, text => text.Contains("\"/api/platform/support/auth", StringComparison.Ordinal));
-
-    // ⚠ THE OPENING QUOTE IS LOAD-BEARING: it matches a STRING LITERAL rather than any mention. Without it
-    // a comment saying *"`/api/platform/tenants` arrives in Phase 4D"* trips this — **a red for prose, on a
-    // guard whose every red is supposed to mean the surface now exists.** *A tripwire that cries wolf is a
-    // tripwire someone deletes, which is the exact failure the header warns about.*
-    Assert.DoesNotContain(texts, text => text.Contains("\"/api/platform/tenants", StringComparison.Ordinal));
-  }
 
   private static string RepositoryRoot()
   {

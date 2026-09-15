@@ -28,7 +28,7 @@ public static class InvoicesEndpointRouteBuilderExtensions
       .RequirePlatformPermission(PlatformPermissionNames.ViewInvoices)
       .WithName("PlatformInvoicesGet");
 
-    group.MapGet("/{invoiceId:guid}", GetInvoiceByIdAsync)
+    group.MapGet("/{invoiceId}", GetInvoiceByIdAsync)
       .RequirePlatformPermission(PlatformPermissionNames.ViewInvoices)
       .WithName("PlatformInvoiceByIdGet");
 
@@ -36,23 +36,23 @@ public static class InvoicesEndpointRouteBuilderExtensions
       .RequirePlatformPermission(PlatformPermissionNames.AdministerInvoices)
       .WithName("PlatformInvoicesCreate");
 
-    group.MapPut("/{invoiceId:guid}", UpdateInvoiceAsync)
+    group.MapPut("/{invoiceId}", UpdateInvoiceAsync)
       .RequirePlatformPermission(PlatformPermissionNames.AdministerInvoices)
       .WithName("PlatformInvoicesUpdate");
 
-    group.MapPost("/{invoiceId:guid}/issue", IssueInvoiceAsync)
+    group.MapPost("/{invoiceId}/issue", IssueInvoiceAsync)
       .RequirePlatformPermission(PlatformPermissionNames.AdministerInvoices)
       .WithName("PlatformInvoicesIssue");
 
-    group.MapPost("/{invoiceId:guid}/void", VoidInvoiceAsync)
+    group.MapPost("/{invoiceId}/void", VoidInvoiceAsync)
       .RequirePlatformPermission(PlatformPermissionNames.AdministerInvoices)
       .WithName("PlatformInvoicesVoid");
 
-    group.MapGet("/{invoiceId:guid}/attempts", GetInvoiceAttemptsAsync)
+    group.MapGet("/{invoiceId}/attempts", GetInvoiceAttemptsAsync)
       .RequirePlatformPermission(PlatformPermissionNames.ViewInvoices)
       .WithName("PlatformInvoiceAttemptsGet");
 
-    var tenantGroup = endpoints.MapGroup("/api/platform/tenants/{tenantId:guid}/invoices").WithTags("Platform Tenant Invoices");
+    var tenantGroup = endpoints.MapGroup("/api/platform/tenants/{tenantId}/invoices").WithTags("Platform Tenant Invoices");
     
     tenantGroup.MapGet("", GetTenantInvoicesAsync)
       .RequirePlatformPermission(PlatformPermissionNames.ViewInvoices)

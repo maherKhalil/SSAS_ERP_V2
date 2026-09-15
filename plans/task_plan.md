@@ -51,5 +51,10 @@
 - [x] **Task 8: HIS Entity Scaffolding (Supporting Schemas)**
   Generate the remaining EF Core entities for supporting clinical schemas (e.g., `Radiology`, `Laboratory`, `InPatient`, `OutPatient`) ensuring `TenantId` tenancy logic is perfectly mapped.
 
-- [ ] **Task 9: HIS EF Core Migrations**
+- [x] **Task 9: HIS EF Core Migrations**
   Integrate the new HIS entities into the DbContext and generate the EF Core migration script to create these tables in the SSAS_ERP_V2 database.
+
+## Phase 4.1: ERP Defect Resolution (FP-014)
+
+- [x] **Task 10: PlatformDbContext EF Core Migrations & API Test Fixes**
+  Generate the missing EF Core migration for the FP-014 Subscription entities in `PlatformDbContext`. Resolve the `PlatformModelHasNoPendingChangesTests` failure and fix any remaining `SubscriptionApiErrorMapper` or infrastructure test failures to ensure the ERP backend is perfectly clean.

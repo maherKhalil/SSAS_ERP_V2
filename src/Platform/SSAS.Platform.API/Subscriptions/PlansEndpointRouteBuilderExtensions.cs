@@ -24,7 +24,7 @@ public static class PlansEndpointRouteBuilderExtensions
       .RequirePlatformPermission(PlatformPermissionNames.ViewPlans)
       .WithName("PlatformPlansList");
 
-    group.MapGet("/{planId:guid}", GetPlanByIdAsync)
+    group.MapGet("/{planId}", GetPlanByIdAsync)
       .RequirePlatformPermission(PlatformPermissionNames.ViewPlans)
       .WithName("PlatformPlansGetById");
 
@@ -32,23 +32,23 @@ public static class PlansEndpointRouteBuilderExtensions
       .RequirePlatformPermission(PlatformPermissionNames.AdministerPlans)
       .WithName("PlatformPlansCreate");
 
-    group.MapPut("/{planId:guid}", UpdatePlanAsync)
+    group.MapPut("/{planId}", UpdatePlanAsync)
       .RequirePlatformPermission(PlatformPermissionNames.AdministerPlans)
       .WithName("PlatformPlansUpdate");
 
-    group.MapPost("/{planId:guid}/retire", RetirePlanAsync)
+    group.MapPost("/{planId}/retire", RetirePlanAsync)
       .RequirePlatformPermission(PlatformPermissionNames.AdministerPlans)
       .WithName("PlatformPlansRetire");
 
-    group.MapPut("/{planId:guid}/modules", UpdatePlanModulesAsync)
+    group.MapPut("/{planId}/modules", UpdatePlanModulesAsync)
       .RequirePlatformPermission(PlatformPermissionNames.AdministerPlans)
       .WithName("PlatformPlansUpdateModules");
 
-    group.MapPut("/{planId:guid}/limits", UpdatePlanLimitsAsync)
+    group.MapPut("/{planId}/limits", UpdatePlanLimitsAsync)
       .RequirePlatformPermission(PlatformPermissionNames.AdministerPlans)
       .WithName("PlatformPlansUpdateLimits");
 
-    group.MapPut("/{planId:guid}/prices", UpdatePlanPricesAsync)
+    group.MapPut("/{planId}/prices", UpdatePlanPricesAsync)
       .RequirePlatformPermission(PlatformPermissionNames.AdministerPlans)
       .WithName("PlatformPlansUpdatePrices");
 

@@ -25,6 +25,7 @@
     <ProjectReference Include="..\..\Modules\Attendance\SSAS.Attendance.API\SSAS.Attendance.API.csproj" />
     <ProjectReference Include="..\..\Modules\Attendance\SSAS.Attendance.Infrastructure\SSAS.Attendance.Infrastructure.csproj" />
     <ProjectReference Include="..\..\Modules\HIS\SSAS.HIS.Infrastructure\SSAS.HIS.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\Modules\HIS\SSAS.HIS.API\SSAS.HIS.API.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

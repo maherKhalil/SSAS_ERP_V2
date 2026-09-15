@@ -1,3 +1,5 @@
+using SSAS.HIS.API;
+using SSAS.HIS.API.Endpoints;
 using SSAS.HR.API.Departments;
 using SSAS.HR.API.Employees;
 using SSAS.HR.API.Positions;
@@ -83,6 +85,7 @@ try
     // startup -- which is precisely the class of failure the eager composition below exists to prevent.
     .AddAttendanceModule()
     .AddAttendanceInfrastructure()
+    .AddHisModule()
     .AddHisInfrastructure(builder.Configuration);
 
   // ---- MODULE PERMISSION DEFINITIONS, REGISTERED EXPLICITLY (ADR-012 r1.2, FP-006P).
@@ -106,6 +109,7 @@ try
   // caller -- FP-006P's incident, where HR's constants existed, no catalog defined them, and no role could
   // hold one.
   builder.Services.AddSingleton<IPermissionCatalogContributor, AttendancePermissionCatalogContributor>();
+  builder.Services.AddSingleton<IPermissionCatalogContributor, SSAS.HIS.Application.Permissions.HisPermissionCatalogContributor>();
 
   // ---- MODULE ENABLEMENT: THE SEAM NOW READS REAL DATA (FP-014, T-040).
   //
@@ -191,6 +195,7 @@ try
   // Attendance's surface (FP-013): twenty-five routes across the working calendar, attendance periods,
   // records and their adjustments, leave types, leave requests and administered balances.
   app.MapAttendanceEndpoints();
+  app.MapHisRegistrationEndpoints();
 
   app.Run();
 }

@@ -26,6 +26,8 @@ public static class ServiceCollectionExtensions
                 "his"));
         });
         
+        services.AddScoped<SSAS.HIS.Application.IHisDbContext>(sp => sp.GetRequiredService<HisDbContext>());
+
         return services;
     }
 }

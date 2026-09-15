@@ -101,6 +101,7 @@ public sealed class TenantPlaneCommercialPermissionTests(HostWebApplicationFacto
       [
         "AttendancePermissionCatalogContributor",
         "GlPermissionCatalogContributor",
+        "HisPermissionCatalogContributor",
         "HrPermissionCatalogContributor",
         "PayrollPermissionCatalogContributor"
       ],

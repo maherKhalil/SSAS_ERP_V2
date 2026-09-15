@@ -1,8 +1,8 @@
 # SSAS_ERP_V2 Macro-Roadmap & Task Plan
 
 ## Phase 1: ERP API Completion
-- [ ] **Task 1: FP-001 & FP-003 Unrouted Endpoints**
-  Wire up the 17 missing HTTP Minimal API endpoints for Custom Role Management, User Role Assignments, and Support-scoped Tenant User administration. These routes are marked [NOT ROUTED] in the API contracts but their MediatR handlers already exist. Write corresponding integration tests in 	ests/API.Tests to verify.
+- [x] **Task 1: FP-001 & FP-003 Unrouted Endpoints**
+  Wire up the 17 missing HTTP Minimal API endpoints for Custom Role Management, User Role Assignments, and Support-scoped Tenant User administration. These routes are marked `[NOT ROUTED]` in the API contracts but their MediatR handlers already exist. Write corresponding integration tests in `tests/API.Tests` to verify.
 
 ## Phase 2: ERP FrontEnd
 *(Tasks to be defined once Phase 1 is fully complete)*

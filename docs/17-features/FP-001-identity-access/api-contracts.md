@@ -64,8 +64,8 @@ POST /api/platform/users/invitations   [NOT ROUTED - handler: IssueTenantUserInv
 PUT /api/platform/users/{userId}   [NOT ROUTED - handler: UpdateTenantUserProfileCommandHandler]
 POST /api/platform/users/{userId}/deactivate   [BUILT as POST /api/platform/tenant-users/{tenantUserId}/deactivation]
 POST /api/platform/users/{userId}/reactivate   [BUILT as POST /api/platform/tenant-users/{tenantUserId}/reactivation]
-POST /api/platform/users/{userId}/roles   [NOT ROUTED - handler: AssignRoleToTenantUserCommandHandler]
-DELETE /api/platform/users/{userId}/roles/{roleId}   [NOT ROUTED - handler: RemoveRoleFromTenantUserCommandHandler]
+POST /api/platform/users/{userId}/roles   Platform.UserRoles.Assign
+POST /api/platform/users/{userId}/roles/{roleId}/remove   Platform.UserRoles.Remove
 ```
 
 Invitation draft:
@@ -106,13 +106,13 @@ When exactly one active membership exists, the client bypasses the selection vie
 
 ```http
 GET /api/platform/roles   [BUILT]
-GET /api/platform/roles/{roleId}   [NOT ROUTED - handler: GetRoleByIdQueryHandler]
-POST /api/platform/roles   [NOT ROUTED - handler: CreateCustomRoleCommandHandler]
-PUT /api/platform/roles/{roleId}   [NOT ROUTED - handler: UpdateCustomRoleCommandHandler]
-POST /api/platform/roles/{roleId}/request-retirement   [NOT ROUTED - handler: RequestRoleRetirementCommandHandler]
-POST /api/platform/roles/{roleId}/retire   [NOT ROUTED - handler: RetireRoleCommandHandler]
-POST /api/platform/roles/{roleId}/permissions   [NOT ROUTED - handler: AssignPermissionToRoleCommandHandler]
-DELETE /api/platform/roles/{roleId}/permissions/{permission}   [NOT ROUTED - handler: RemovePermissionFromRoleCommandHandler]
+GET /api/platform/roles/{roleId}   Platform.Roles.View
+POST /api/platform/roles   Platform.Roles.Create
+PUT /api/platform/roles/{roleId}   Platform.Roles.Update
+POST /api/platform/roles/{roleId}/request-retirement   Platform.Roles.RequestRetirement
+POST /api/platform/roles/{roleId}/retire   Platform.Roles.Retire
+POST /api/platform/roles/{roleId}/permissions   Platform.RolePermissions.Assign
+POST /api/platform/roles/{roleId}/permissions/{permission}/remove   Platform.RolePermissions.Remove
 ```
 
 Retirement fails while active-user assignments exist.
@@ -128,9 +128,9 @@ GET /api/platform/permissions   Platform.Permissions.View   [BUILT 2026-08-29, T
 Proposed support routes:
 
 ```http
-GET /api/platform/support/tenants/{tenantId}/users   [NOT ROUTED - handler: ListTenantUsersQueryHandler; no support-scoped route exists]
-POST /api/platform/support/tenants/{tenantId}/users/invitations   [NOT ROUTED - handler: IssueTenantUserInvitationCommandHandler; no support-scoped route]
-POST /api/platform/support/tenants/{tenantId}/users/{userId}/deactivate   [NOT ROUTED - handler: DeactivateTenantUserCommandHandler; no support-scoped route]
+GET /api/platform/support/tenants/{tenantId}/users   Platform.Support.Administer
+POST /api/platform/support/tenants/{tenantId}/users/invitations   Platform.Support.Administer
+POST /api/platform/support/tenants/{tenantId}/users/{userId}/deactivate   Platform.Support.Administer
 ```
 
 Each operation requires explicit platform-support permission, validates the target tenant through trusted server-side logic, and produces an audit record.

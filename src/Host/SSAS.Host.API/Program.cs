@@ -164,6 +164,7 @@ try
   // deactivation is what termination now invokes, reactivation is the repair for its one half-state.
   app.MapPlatformTenantUserEndpoints();
   app.MapPlatformSupportAuthorityEndpoints();
+  app.MapPlatformSupportTenantUserEndpoints();
   app.MapPlatformCompanyEndpoints();
   app.MapPlatformPlansEndpoints();
   app.MapPlatformTenantSubscriptionsEndpoints();

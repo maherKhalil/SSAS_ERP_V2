@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Mvc;
 using SSAS.BuildingBlocks.Api.Transport;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -34,6 +35,36 @@ public static class IdentityAccessEndpointRouteBuilderExtensions
     group.MapGet("/permissions", ListPermissionCatalogAsync)
       .RequirePermission(PlatformPermissionNames.ViewPermissions)
       .WithName("PlatformPermissionsList");
+    
+    group.MapGet("/roles/{roleId}", GetRoleByIdAsync)
+      .RequirePermission(PlatformPermissionNames.ViewRoles)
+      .WithName("PlatformRolesGetById");
+    group.MapPost("/roles", CreateRoleAsync)
+      .RequirePermission(PlatformPermissionNames.CreateRoles)
+      .WithName("PlatformRolesCreate");
+    group.MapPut("/roles/{roleId}", UpdateRoleAsync)
+      .RequirePermission(PlatformPermissionNames.UpdateRoles)
+      .WithName("PlatformRolesUpdate");
+    group.MapPost("/roles/{roleId}/request-retirement", RequestRoleRetirementAsync)
+      .RequirePermission(PlatformPermissionNames.RequestRoleRetirement)
+      .WithName("PlatformRolesRequestRetirement");
+    group.MapPost("/roles/{roleId}/retire", RetireRoleAsync)
+      .RequirePermission(PlatformPermissionNames.RetireRoles)
+      .WithName("PlatformRolesRetire");
+    group.MapPost("/roles/{roleId}/permissions", AssignPermissionAsync)
+      .RequirePermission(PlatformPermissionNames.AssignRolePermissions)
+      .WithName("PlatformRolesAssignPermission");
+    group.MapPost("/roles/{roleId}/permissions/{permission}/remove", RemovePermissionAsync)
+      .RequirePermission(PlatformPermissionNames.RemoveRolePermissions)
+      .WithName("PlatformRolesRemovePermission");
+
+    group.MapPost("/users/{userId}/roles", AssignRoleToUserAsync)
+      .RequirePermission(PlatformPermissionNames.AssignUserRoles)
+      .WithName("PlatformUsersAssignRole");
+    group.MapPost("/users/{userId}/roles/{roleId}/remove", RemoveRoleFromUserAsync)
+      .RequirePermission(PlatformPermissionNames.RemoveUserRoles)
+      .WithName("PlatformUsersRemoveRole");
+
     return endpoints;
   }
 
@@ -110,4 +141,94 @@ public static class IdentityAccessEndpointRouteBuilderExtensions
     role.Status.ToString(),
     role.ActivePermissions,
     RowVersionCodec.Encode(role.RowVersion));
+
+  // Role Endpoints
+  private static async Task<IResult> GetRoleByIdAsync(HttpContext context, long roleId, [FromServices] GetRoleByIdQueryHandler handler, CancellationToken cancellationToken)
+  {
+      ApiResponseSecurity.Apply(context);
+      var result = await handler.HandleAsync(new GetRoleByIdQuery(roleId), cancellationToken);
+      return result.IsFailure ? ProblemResults.Problem(context, IdentityAccessApiErrorMapper.Map(result.Error)) : Results.Ok(result.Value);
+  }
+
+  private static async Task<IResult> CreateRoleAsync(HttpContext context, [FromServices] CreateCustomRoleCommandHandler handler, CancellationToken cancellationToken)
+  {
+      ApiResponseSecurity.Apply(context);
+      var request = await context.Request.ReadFromJsonAsync<CreateCustomRoleCommand>(cancellationToken);
+      if (request is null) return ProblemResults.Problem(context, ProblemResults.RequestInvalid);
+      var result = await handler.HandleAsync(request, cancellationToken);
+      return result.IsFailure ? ProblemResults.Problem(context, IdentityAccessApiErrorMapper.Map(result.Error)) : Results.Created($"/api/platform/roles/{result.Value}", new { roleId = result.Value });
+  }
+
+  private static async Task<IResult> UpdateRoleAsync(HttpContext context, long roleId, [FromServices] UpdateCustomRoleCommandHandler handler, CancellationToken cancellationToken)
+  {
+      ApiResponseSecurity.Apply(context);
+      var request = await context.Request.ReadFromJsonAsync<UpdateCustomRoleRequest>(cancellationToken);
+      if (request is null || !RowVersionCodec.TryDecode(request.ExpectedRowVersion, out var rowVersion)) return ProblemResults.Problem(context, ProblemResults.RequestInvalid);
+      var command = new UpdateCustomRoleCommand(roleId, request.Name, request.Description, rowVersion);
+      var result = await handler.HandleAsync(command, cancellationToken);
+      return result.IsFailure ? ProblemResults.Problem(context, IdentityAccessApiErrorMapper.Map(result.Error)) : Results.NoContent();
+  }
+
+  public record UpdateCustomRoleRequest(string Name, string Description, string ExpectedRowVersion);
+
+  private static async Task<IResult> RequestRoleRetirementAsync(HttpContext context, long roleId, [FromServices] RequestRoleRetirementCommandHandler handler, CancellationToken cancellationToken)
+  {
+      ApiResponseSecurity.Apply(context);
+      var request = await context.Request.ReadFromJsonAsync<RoleLifecycleRequest>(cancellationToken);
+      if (request is null || !RowVersionCodec.TryDecode(request.ExpectedRowVersion, out var rowVersion)) return ProblemResults.Problem(context, ProblemResults.RequestInvalid);
+      var result = await handler.HandleAsync(new RequestRoleRetirementCommand(roleId, rowVersion), cancellationToken);
+      return result.IsFailure ? ProblemResults.Problem(context, IdentityAccessApiErrorMapper.Map(result.Error)) : Results.NoContent();
+  }
+
+  private static async Task<IResult> RetireRoleAsync(HttpContext context, long roleId, [FromServices] RetireRoleCommandHandler handler, CancellationToken cancellationToken)
+  {
+      ApiResponseSecurity.Apply(context);
+      var request = await context.Request.ReadFromJsonAsync<RoleLifecycleRequest>(cancellationToken);
+      if (request is null || !RowVersionCodec.TryDecode(request.ExpectedRowVersion, out var rowVersion)) return ProblemResults.Problem(context, ProblemResults.RequestInvalid);
+      var result = await handler.HandleAsync(new RetireRoleCommand(roleId, rowVersion), cancellationToken);
+      return result.IsFailure ? ProblemResults.Problem(context, IdentityAccessApiErrorMapper.Map(result.Error)) : Results.NoContent();
+  }
+
+  public record RoleLifecycleRequest(string ExpectedRowVersion);
+
+  private static async Task<IResult> AssignPermissionAsync(HttpContext context, long roleId, [FromServices] AssignPermissionToRoleCommandHandler handler, CancellationToken cancellationToken)
+  {
+      ApiResponseSecurity.Apply(context);
+      var request = await context.Request.ReadFromJsonAsync<AssignPermissionRequest>(cancellationToken);
+      if (request is null || string.IsNullOrWhiteSpace(request.PermissionName) || !RowVersionCodec.TryDecode(request.ExpectedRowVersion, out var rowVersion)) return ProblemResults.Problem(context, ProblemResults.RequestInvalid);
+      var result = await handler.HandleAsync(new AssignPermissionToRoleCommand(roleId, request.PermissionName, rowVersion), cancellationToken);
+      return result.IsFailure ? ProblemResults.Problem(context, IdentityAccessApiErrorMapper.Map(result.Error)) : Results.NoContent();
+  }
+  public record AssignPermissionRequest(string PermissionName, string ExpectedRowVersion);
+
+  private static async Task<IResult> RemovePermissionAsync(HttpContext context, long roleId, string permission, [FromServices] RemovePermissionFromRoleCommandHandler handler, CancellationToken cancellationToken)
+  {
+      ApiResponseSecurity.Apply(context);
+      var request = await context.Request.ReadFromJsonAsync<RemovePermissionRequest>(cancellationToken);
+      if (request is null || !RowVersionCodec.TryDecode(request.ExpectedRowVersion, out var rowVersion)) return ProblemResults.Problem(context, ProblemResults.RequestInvalid);
+      var result = await handler.HandleAsync(new RemovePermissionFromRoleCommand(roleId, permission, rowVersion), cancellationToken);
+      return result.IsFailure ? ProblemResults.Problem(context, IdentityAccessApiErrorMapper.Map(result.Error)) : Results.NoContent();
+  }
+  public record RemovePermissionRequest(string ExpectedRowVersion);
+
+  // User Roles
+  private static async Task<IResult> AssignRoleToUserAsync(HttpContext context, long userId, [FromServices] SSAS.Platform.Application.TenantUsers.AssignRoleToTenantUserCommandHandler handler, CancellationToken cancellationToken)
+  {
+      ApiResponseSecurity.Apply(context);
+      var request = await context.Request.ReadFromJsonAsync<AssignUserRoleRequest>(cancellationToken);
+      if (request is null || !RowVersionCodec.TryDecode(request.ExpectedRowVersion, out var rowVersion)) return ProblemResults.Problem(context, ProblemResults.RequestInvalid);
+      var result = await handler.HandleAsync(new SSAS.Platform.Application.TenantUsers.AssignRoleToTenantUserCommand(userId, request.RoleId, rowVersion), cancellationToken);
+      return result.IsFailure ? ProblemResults.Problem(context, IdentityAccessApiErrorMapper.Map(result.Error)) : Results.NoContent();
+  }
+  public record AssignUserRoleRequest(long RoleId, string ExpectedRowVersion);
+
+  private static async Task<IResult> RemoveRoleFromUserAsync(HttpContext context, long userId, long roleId, [FromServices] SSAS.Platform.Application.TenantUsers.RemoveRoleFromTenantUserCommandHandler handler, CancellationToken cancellationToken)
+  {
+      ApiResponseSecurity.Apply(context);
+      var request = await context.Request.ReadFromJsonAsync<RemoveUserRoleRequest>(cancellationToken);
+      if (request is null || !RowVersionCodec.TryDecode(request.ExpectedRowVersion, out var rowVersion)) return ProblemResults.Problem(context, ProblemResults.RequestInvalid);
+      var result = await handler.HandleAsync(new SSAS.Platform.Application.TenantUsers.RemoveRoleFromTenantUserCommand(userId, roleId, rowVersion), cancellationToken);
+      return result.IsFailure ? ProblemResults.Problem(context, IdentityAccessApiErrorMapper.Map(result.Error)) : Results.NoContent();
+  }
+  public record RemoveUserRoleRequest(string ExpectedRowVersion);
 }

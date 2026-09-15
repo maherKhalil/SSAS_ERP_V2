@@ -291,8 +291,8 @@ public sealed class ApiContractRowGuardTests(HostWebApplicationFactory factory)
     // this test and someone decides deliberately**; without it the covered fraction erodes while the
     // guard stays green — comprehensive over what it looks at, and unable to say its scope shrank.
     Assert.Equal(197, all.Length);
-    Assert.Equal(132, qualified);
-    Assert.Equal(65, all.Length - qualified);
+    Assert.Equal(144, qualified);
+    Assert.Equal(53, all.Length - qualified);
 
     // ---- ⚠ AND THE 66 ARE DECOMPOSED, BECAUSE A RESIDUAL HAS NO OPINION ABOUT ITS CONTENTS (T-196).
     //
@@ -309,12 +309,12 @@ public sealed class ApiContractRowGuardTests(HostWebApplicationFactory factory)
     // above would not move at all and these would.
     var unqualified = all.Where(row => QualifiedPermission.Match(row.Text).Value.Length == 0).ToArray();
 
-    Assert.Equal(65, unqualified.Length);
+    Assert.Equal(53, unqualified.Length);
 
     // A status marker standing where a permission belongs — `[BUILT]`, `[NOT ROUTED - handler: X]`. These
     // are the honest half: they document capability that has no route, and FP-001 holds 17 that name the
     // handler outright.
-    Assert.Equal(29, unqualified.Count(row => KindOf(row.Text) == RowKind.Marker));
+    Assert.Equal(17, unqualified.Count(row => KindOf(row.Text) == RowKind.Marker));
 
     // A bare `METHOD /path` with no columns at all. These document NOTHING.
     Assert.Equal(22, unqualified.Count(row => KindOf(row.Text) == RowKind.NoCell));
@@ -352,8 +352,8 @@ public sealed class ApiContractRowGuardTests(HostWebApplicationFactory factory)
 
     var absent = all.Where(row => !live.Contains($"{row.Method} {row.Path}")).ToArray();
 
-    Assert.Equal(155, all.Length - absent.Length);
-    Assert.Equal(42, absent.Length);
+    Assert.Equal(167, all.Length - absent.Length);
+    Assert.Equal(30, absent.Length);
 
     // ⚠ CAPABILITY THAT EXISTS UNDER ANOTHER PATH, AND THE ROW SAYS SO. `[BUILT as ...]` and
     // `[SERVED BY ...]` are used consistently across these documents and explained in their own legend.
@@ -376,7 +376,7 @@ public sealed class ApiContractRowGuardTests(HostWebApplicationFactory factory)
     Assert.Equal(0, absent.Count(row =>
       row.Text.Contains("[NOT BUILT", StringComparison.Ordinal)));
 
-    Assert.Equal(42, 10 + 15 + 0 + 17);
+    Assert.Equal(30, 10 + 15 + 0 + 5);
 
     // ---- ⚠ WHAT IS LEFT IS THE HONEST CAPABILITY GAP, AND IT IS ALMOST ENTIRELY THE OWNER'S.
     //
@@ -391,7 +391,7 @@ public sealed class ApiContractRowGuardTests(HostWebApplicationFactory factory)
       !row.Text.Contains("DEFERRED", StringComparison.Ordinal) &&
       !row.Text.Contains("SUPERSEDED", StringComparison.Ordinal)).ToArray();
 
-    Assert.Equal(17, undecided.Length);
+    Assert.Equal(5, undecided.Length);
   }
 
   // ================================================================================================

@@ -627,6 +627,7 @@ public static class PlatformInfrastructureServiceCollectionExtensions
     services.AddScoped<GetCurrentTenantSubscriptionQueryHandler>();
     services.AddScoped<GetAllSubscriptionsQueryHandler>();
     services.AddScoped<AppendTenantSubscriptionCommandHandler>();
+    services.AddScoped<SSAS.Platform.Application.Subscriptions.EnabledModules.GetEnabledModulesQueryHandler>();
 
     services.AddScoped<ITenantEntitlementGrantRepository, TenantEntitlementGrantRepository>();
     services.AddScoped<SSAS.Platform.Application.Subscriptions.EntitlementGrants.ITenantEntitlementGrantQueries, TenantEntitlementGrantQueries>();

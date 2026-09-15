@@ -40,7 +40,7 @@
   - `POST /api/platform/invoices/{invoiceId}/void`
   - `GET /api/platform/invoices/{invoiceId}/attempts`
 
-- [ ] **Task 6: FP-014 Tenant Enabled Modules Read API**
+- [x] **Task 6: FP-014 Tenant Enabled Modules Read API**
   Implement the handler and route for `GET /api/platform/modules/enabled`. This route must be exempt from module enablement checks and available to any authenticated tenant user.
 
 ## Phase 5: HIS (Health Information System) Integration

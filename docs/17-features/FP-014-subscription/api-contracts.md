@@ -148,7 +148,7 @@ modelled conflict. This is `JournalDraft` → `JournalEntry`, where posting is t
 ### The tenant-facing read — `REQ-SUB-0014`
 
 ```
-GET    /api/platform/modules/enabled                  authenticated tenant user, no permission  [NOT BUILT - capability exists, wrong shape]
+GET    /api/platform/modules/enabled                  authenticated tenant user, no permission
 ```
 
 Returns the module keys `EntitlementAt(tenant, now)` resolves — **and nothing else**. No price, no

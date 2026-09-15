@@ -284,6 +284,7 @@ public sealed class EndpointPermissionCatalogJoinTests(HostWebApplicationFactory
     string[] expectedAuthenticatedOnly =
     [
       "GET /api/platform/localization/effective/",
+      "GET /api/platform/modules/enabled",
       "POST /api/platform/auth/logout",
       "POST /api/platform/localization/effective/batch",
       "POST /api/platform/support/auth/logout"

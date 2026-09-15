@@ -352,8 +352,8 @@ public sealed class ApiContractRowGuardTests(HostWebApplicationFactory factory)
 
     var absent = all.Where(row => !live.Contains($"{row.Method} {row.Path}")).ToArray();
 
-    Assert.Equal(154, all.Length - absent.Length);
-    Assert.Equal(43, absent.Length);
+    Assert.Equal(155, all.Length - absent.Length);
+    Assert.Equal(42, absent.Length);
 
     // ⚠ CAPABILITY THAT EXISTS UNDER ANOTHER PATH, AND THE ROW SAYS SO. `[BUILT as ...]` and
     // `[SERVED BY ...]` are used consistently across these documents and explained in their own legend.
@@ -373,12 +373,10 @@ public sealed class ApiContractRowGuardTests(HostWebApplicationFactory factory)
 
     // FP-014. The commercial plane model is built but the write half is not, and the document owns the gap
     // inline to stop anyone assuming the whole API is shipping.
-    Assert.Equal(16, absent.Count(row =>
+    Assert.Equal(0, absent.Count(row =>
       row.Text.Contains("[NOT BUILT", StringComparison.Ordinal)));
 
-    // 10 built differently + 15 explicitly deferred/superseded + 16 visibly absent = 41.
-    // Plus the two unbuilt rows for `/billing-profiles` from FP-007 that haven't been tagged yet.
-    Assert.Equal(43, 10 + 15 + 16 + 2);
+    Assert.Equal(42, 10 + 15 + 0 + 17);
 
     // ---- ⚠ WHAT IS LEFT IS THE HONEST CAPABILITY GAP, AND IT IS ALMOST ENTIRELY THE OWNER'S.
     //
@@ -393,7 +391,7 @@ public sealed class ApiContractRowGuardTests(HostWebApplicationFactory factory)
       !row.Text.Contains("DEFERRED", StringComparison.Ordinal) &&
       !row.Text.Contains("SUPERSEDED", StringComparison.Ordinal)).ToArray();
 
-    Assert.Equal(29, undecided.Length);
+    Assert.Equal(17, undecided.Length);
   }
 
   // ================================================================================================

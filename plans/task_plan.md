@@ -8,6 +8,15 @@
 - [ ] **Task 1.3: FP-015 Employee Self-Service API**
   Build the MediatR Handlers and Minimal APIs for the Employee Self-Service module as specified in docs/17-features/FP-015-self-service.
 
+- [ ] **Task 1.4: FP-017 Inventory Management**
+  Build MediatR Handlers and Minimal APIs for warehouse management and stock tracking.
+- [ ] **Task 1.5: FP-018 Procurement**
+  Build MediatR Handlers and Minimal APIs for purchase orders and supplier management.
+- [ ] **Task 1.6: FP-019 Accounts Payable & Receivable**
+  Build MediatR Handlers and Minimal APIs for vendor billing, client invoicing, and payments.
+- [ ] **Task 1.7: FP-020 Fixed Assets**
+  Build MediatR Handlers and Minimal APIs for asset tracking and depreciation.
+
 ## Phase 2: All ERP FrontEnd (Angular + Tailwind)
 - [x] *(Initial shell completed, but will remain paused until Phase 1 is 100% finished)*
 
@@ -27,3 +36,4 @@
 
 ## Phase 5: Complete Data Migration Script
 - [ ] *(Locked)*
+

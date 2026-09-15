@@ -7,8 +7,8 @@
 ## Phase 2: ERP FrontEnd (Angular + Tailwind)
 - [x] **Task 2.1: Initialize Angular Workspace & Tailwind**
   Create a new `ui` directory in the repository root. Generate a new Angular application using the Angular CLI. Install and configure Tailwind CSS. Set up standard formatting and linting.
-- [ ] **Task 2.2: Global Auth & Permission Architecture**
-  Create an Authentication service, Auth Guards, and a Permission service. Ensure that pages (including dashboards) can be protected by specific permission keys (e.g., matching the backend's PlatformPermissionNames).
+- [x] **Task 2.2: Global Auth & Permission Architecture**
+  Create an Authentication service, Auth Guards, and a Permission service. Ensure that pages (including dashboards) can be protected by specific permission keys (e.g., matching the backend's `PlatformPermissionNames`).
 - [ ] **Task 2.3: Module Selector (Card Layout)**
   Implement the root landing page (/modules). It should display a grid of "Cards" representing every available ERP module (e.g., HR, Payroll, Finance, Subscription). These cards should only be visible if the user has permissions for the module.
 - [ ] **Task 2.4: Module Dashboards & Dynamic Menus**

@@ -196,6 +196,7 @@ try
   // records and their adjustments, leave types, leave requests and administered balances.
   app.MapAttendanceEndpoints();
   app.MapHisRegistrationEndpoints();
+  app.MapHisSetupEndpoints();
 
   app.Run();
 }

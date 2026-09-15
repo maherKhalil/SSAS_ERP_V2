@@ -16,7 +16,9 @@ public static class RegistrationEndpointRouteBuilderExtensions
     {
         var group = endpoints.MapGroup("/api/his/patients")
             .RequireAuthorization()
-            .WithTags("HIS Registration");
+            .WithTags("HIS Registration")
+            .RequireModule(HisModuleEnablement.Key)
+            .AddEndpointFilter<HisCompanyContextEndpointFilter>();
 
         group.MapPost("/", async (
             RegisterPatientCommand command,
@@ -31,7 +33,7 @@ public static class RegistrationEndpointRouteBuilderExtensions
         .RequirePermission(HisPermissionNames.ManageRegistration)
         .WithName("RegisterPatient");
 
-        group.MapGet("/{id:guid}", async (
+        group.MapGet("/{id}", async (
             Guid id,
             GetPatientByIdQueryHandler handler,
             CancellationToken cancellationToken) =>

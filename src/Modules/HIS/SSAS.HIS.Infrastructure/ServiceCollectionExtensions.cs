@@ -26,7 +26,9 @@ public static class ServiceCollectionExtensions
                 "his"));
         });
         
-        services.AddScoped<SSAS.HIS.Application.IHisDbContext>(sp => sp.GetRequiredService<HisDbContext>());
+        services.AddScoped<IHisDbContext>(sp => sp.GetRequiredService<HisDbContext>());
+        services.AddScoped<SSAS.HIS.Application.Registration.Patients.IPatientRepository, PatientRepository>();
+        services.AddScoped<SSAS.HIS.Application.IHisReadService, HisReadService>();
 
         return services;
     }

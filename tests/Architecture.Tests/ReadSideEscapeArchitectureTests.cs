@@ -48,7 +48,8 @@ public sealed class ReadSideEscapeArchitectureTests
     typeof(SSAS.GL.Application.Accounts.CreateAccountCommandHandler).Assembly,
     typeof(SSAS.Payroll.Application.Compensation.RecordCompensationCommandHandler).Assembly,
     typeof(SSAS.Platform.Application.Authentication.AuthenticationPolicy).Assembly,
-    typeof(SSAS.BuildingBlocks.Application.Abstractions.Identity.ICurrentUser).Assembly
+    typeof(SSAS.BuildingBlocks.Application.Abstractions.Identity.ICurrentUser).Assembly,
+    typeof(SSAS.HIS.Application.Registration.Patients.Commands.RegisterPatient.RegisterPatientCommandHandler).Assembly
   ];
 
   private static readonly string[] ReadSideSuffixes = ["ReadService", "DirectoryService", "RosterService"];

@@ -12,11 +12,12 @@ public partial class HisDbContext(
     ICurrentUser currentUser,
     ICurrentTenant currentTenant,
     IDateTimeProvider dateTimeProvider)
-    : PersistenceDbContext(options, currentUser, currentTenant, dateTimeProvider), SSAS.HIS.Application.IHisDbContext
+    : PersistenceDbContext(options, currentUser, currentTenant, dateTimeProvider), IHisDbContext
 {
     public DbSet<SSAS.HIS.Domain.Entities.Registration.Patient> Patients => Set<SSAS.HIS.Domain.Entities.Registration.Patient>();
     public DbSet<SSAS.HIS.Domain.Entities.Registration.Doctor> Doctors => Set<SSAS.HIS.Domain.Entities.Registration.Doctor>();
     public DbSet<SSAS.HIS.Domain.Entities.Registration.Specialty> Specialties => Set<SSAS.HIS.Domain.Entities.Registration.Specialty>();
+    public DbSet<SSAS.HIS.Domain.Entities.OutPatient.ClinicSetup> Clinics => Set<SSAS.HIS.Domain.Entities.OutPatient.ClinicSetup>();
     public DbSet<SSAS.HIS.Domain.Entities.BloodBank.BloodBankInventory> BloodBankInventorys_BloodBank => Set<SSAS.HIS.Domain.Entities.BloodBank.BloodBankInventory>();
     public DbSet<SSAS.HIS.Domain.Entities.BloodBank.BloodBankInventoryBloodGroup> BloodBankInventoryBloodGroups_BloodBank => Set<SSAS.HIS.Domain.Entities.BloodBank.BloodBankInventoryBloodGroup>();
     public DbSet<SSAS.HIS.Domain.Entities.BloodBank.BloodBankLPODetail> BloodBankLPODetails_BloodBank => Set<SSAS.HIS.Domain.Entities.BloodBank.BloodBankLPODetail>();

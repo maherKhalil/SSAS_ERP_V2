@@ -39,6 +39,7 @@ public sealed class ModuleEnablementArchitectureTests
     typeof(GlModuleEnablement).Assembly,
     typeof(PayrollModuleEnablement).Assembly,
     typeof(AttendanceModuleEnablement).Assembly,
+    typeof(SSAS.HIS.API.HisModuleEnablement).Assembly
   ];
 
   // ==================================================================================================

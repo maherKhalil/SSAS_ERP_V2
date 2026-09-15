@@ -14,7 +14,7 @@
 ## Phase 3: HIS API
 - [x] **Task 3.1: HIS Core Registration API**
   Build the MediatR Handlers and Minimal API REST controllers for Patient Registration (`Registration` schema). This includes endpoints to register patients, manage patient demographics, and list patients. Ensure `TenantId` isolation is properly enforced.
-- [ ] **Task 3.2: HIS Application Setup API**
+- [x] **Task 3.2: HIS Application Setup API**
   Build foundational lookup endpoints for HIS Application Setup (e.g., Doctors, Clinics, Specialties). These endpoints provide dropdown data for the clinical frontends.
 
 ## Phase 4: HIS Frontend

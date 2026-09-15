@@ -7,7 +7,9 @@ public sealed class HisPermissionCatalogContributor : IPermissionCatalogContribu
     private static readonly ModulePermissionDefinition[] Definitions =
     [
         new(HisPermissionNames.ManageRegistration,
-            "Manage patient registration.")
+            "Manage patient registration."),
+        new(HisPermissionNames.ViewSetup,
+            "View setup entities (Doctors, Specialties, Clinics).")
     ];
 
     public IReadOnlyCollection<ModulePermissionDefinition> Permissions => Definitions;

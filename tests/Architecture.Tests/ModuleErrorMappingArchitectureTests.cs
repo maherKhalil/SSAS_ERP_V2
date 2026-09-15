@@ -755,7 +755,8 @@ public sealed class ModuleErrorMappingArchitectureTests
         typeof(SSAS.Payroll.API.PayrollApiErrorMapper).Assembly,
         typeof(SSAS.Attendance.API.AttendanceApiErrorMapper).Assembly,
         typeof(SSAS.Platform.API.Companies.CompanyApiErrorMapper).Assembly,
-        typeof(SSAS.BuildingBlocks.Api.Transport.ApiErrors).Assembly
+        typeof(SSAS.BuildingBlocks.Api.Transport.ApiErrors).Assembly,
+        typeof(SSAS.HIS.API.HisApiErrorMapper).Assembly
       }
       .Distinct()
       .SelectMany(assembly => assembly.GetTypes())

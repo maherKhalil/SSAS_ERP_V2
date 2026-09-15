@@ -8,3 +8,5 @@ Builds on top of FP-011 (GL Foundation) to manage vendor bills, patient/client i
 - Client Invoice (AR)
 - Payment / Receipt
 - Payment Allocation
+
+**Status:** UNSTARTED

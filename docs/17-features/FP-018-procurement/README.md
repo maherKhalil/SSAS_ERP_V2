@@ -8,3 +8,5 @@ Manages the supplier lifecycle, purchase requisitions, purchase orders, and good
 - Purchase Requisition (PR)
 - Purchase Order (PO)
 - Goods Receipt Note (GRN)
+
+**Status:** UNSTARTED

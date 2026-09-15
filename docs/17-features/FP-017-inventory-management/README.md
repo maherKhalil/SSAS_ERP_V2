@@ -9,3 +9,5 @@ Crucial for integrating with the HIS Pharmacy and Laboratory modules to manage c
 - Item (Medical, Consumable, General)
 - Stock Transaction (In, Out, Transfer, Adjustment)
 - Stock Level
+
+**Status:** UNSTARTED

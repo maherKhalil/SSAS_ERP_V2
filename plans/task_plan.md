@@ -29,12 +29,26 @@
 *(Strict Rule: Must complete ALL clinical domains before Phase 4)*
 - [x] **Task 3.1: HIS Core Registration API**
 - [x] **Task 3.2: HIS Application Setup API**
-- [ ] **Task 3.3: Outpatient (OPD) & Inpatient (IPD) APIs**
-- [ ] **Task 3.4: Pharmacy & ClinicalPharmacy APIs**
-- [ ] **Task 3.5: Laboratory & Radiology APIs**
-- [ ] **Task 3.6: Emergency & BloodBank APIs**
-- [ ] **Task 3.7: Billing & Insurance APIs**
-- [ ] **Task 3.8: Remaining Ancillary Clinical APIs**
+- [ ] **Task 3.3: HIS-003 Outpatient (OPD)**
+- [ ] **Task 3.4: HIS-004 Inpatient (IPD)**
+- [ ] **Task 3.5: HIS-005 Pharmacy & Clinical Pharmacy**
+- [ ] **Task 3.6: HIS-006 Laboratory**
+- [ ] **Task 3.7: HIS-007 Radiology**
+- [ ] **Task 3.8: HIS-008 Emergency (ER)**
+- [ ] **Task 3.9: HIS-009 Blood Bank**
+- [ ] **Task 3.10: HIS-010 Clinical Billing & Insurance**
+- [ ] **Task 3.11: HIS-011 CSSD**
+- [ ] **Task 3.12: HIS-012 Chemotherapy**
+- [ ] **Task 3.13: HIS-013 Hotel Services & Laundry**
+- [ ] **Task 3.14: HIS-014 Infection Control**
+- [ ] **Task 3.15: HIS-015 Legal Affairs**
+- [ ] **Task 3.16: HIS-016 Maintenance**
+- [ ] **Task 3.17: HIS-017 Marketing**
+- [ ] **Task 3.18: HIS-018 Nutrition**
+- [ ] **Task 3.19: HIS-019 Nursing**
+- [ ] **Task 3.20: HIS-020 Operations**
+- [ ] **Task 3.21: HIS-021 PF Education**
+- [ ] **Task 3.22: HIS-022 Patient Portal**
 
 ## Phase 4: All HIS Frontend
 - [ ] *(Locked)*

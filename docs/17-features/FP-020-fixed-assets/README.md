@@ -8,3 +8,5 @@ Tracks capital assets (like medical imaging machines, hospital beds, IT equipmen
 - Asset Category
 - Depreciation Schedule
 - Asset Transaction (Acquisition, Depreciation, Disposal)
+
+**Status:** UNSTARTED

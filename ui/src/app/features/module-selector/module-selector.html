@@ -1,0 +1,22 @@
+<div class="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-12">
+      <h1 class="text-4xl font-extrabold text-gray-900 mb-4">Select Module</h1>
+      <p class="text-xl text-gray-600">Choose an ERP module to get started.</p>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
+      <div *ngFor="let module of visibleModules" 
+           [routerLink]="module.route"
+           class="bg-white rounded-lg shadow-md hover:shadow-xl transition-shadow duration-300 cursor-pointer overflow-hidden border border-gray-100 flex flex-col items-center p-6 text-center group">
+        <div class="text-5xl mb-4 group-hover:scale-110 transition-transform duration-300">{{module.icon}}</div>
+        <h2 class="text-xl font-bold text-gray-800 mb-2">{{module.title}}</h2>
+        <p class="text-sm text-gray-500">{{module.description}}</p>
+      </div>
+    </div>
+
+    <div *ngIf="visibleModules.length === 0" class="text-center py-12 text-gray-500">
+      You don't have access to any modules. Please contact your administrator.
+    </div>
+  </div>
+</div>

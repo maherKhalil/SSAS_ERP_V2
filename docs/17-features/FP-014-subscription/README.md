@@ -372,3 +372,5 @@ ratification rather than skipped:
 2. [`decisions-open.md`](decisions-open.md) — **`OD-SUB-0001` first.** Everything else is conditional
    on the scope ruling, and the requirements are written in conditional voice because of it.
 3. [`requirements.md`](requirements.md) — the requirements each scope would put in force.
+
+status: UNSTARTED

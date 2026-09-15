@@ -250,7 +250,8 @@ public sealed class EmployeeReadScopeArchitectureTests
         permission.StartsWith("HR.Departments.", StringComparison.Ordinal) ||
         permission.StartsWith("HR.Positions.", StringComparison.Ordinal) ||
         permission.StartsWith("HR.JobGrades.", StringComparison.Ordinal) ||
-        permission.StartsWith("HR.SalaryGrades.", StringComparison.Ordinal),
+        permission.StartsWith("HR.SalaryGrades.", StringComparison.Ordinal) ||
+        permission.StartsWith("HR.EmployeeDocuments.", StringComparison.Ordinal),
         $"Unexpected HR permission resource: {permission}"));
   }
 

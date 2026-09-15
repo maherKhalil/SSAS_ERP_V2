@@ -57,3 +57,5 @@ This package defines the approved business and functional scope for tenant-aware
 - JWT authorization uses validated subject, tenant, role, and permission claims.
 - Trusted tenant context cannot be overridden by request input.
 - Roles and permissions remain distinct.
+
+status: UNSTARTED

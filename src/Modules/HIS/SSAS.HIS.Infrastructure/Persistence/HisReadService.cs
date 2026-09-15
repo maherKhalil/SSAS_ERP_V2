@@ -60,4 +60,38 @@ public sealed class HisReadService(IHisDbContext context) : IHisReadService
             .Select(c => new ClinicLookupDto(c.ID, c.Code, c.NameArabic, c.NameEnglish))
             .ToListAsync(cancellationToken);
     }
+
+    public async Task<IEnumerable<ClinicScheduleDto>> GetClinicSchedulesAsync(int clinicId, CancellationToken cancellationToken = default)
+    {
+        return await context.ClinicSchedules_OutPatient
+            .AsNoTracking()
+            .Where(x => x.ClinicID == clinicId)
+            .Select(x => new ClinicScheduleDto(x.ID, x.ClinicID, x.DoctorID, x.StartTime))
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IEnumerable<AdmittedPatientDto>> GetAdmittedPatientsAsync(CancellationToken cancellationToken = default)
+    {
+        return await context.AdmitPatientss_InPatient
+            .AsNoTracking()
+            .Select(x => new AdmittedPatientDto(x.Id, x.PatientID, x.DoctorID, x.AdmissionDate, x.BedNO))
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IEnumerable<BedDto>> GetBedsAsync(CancellationToken cancellationToken = default)
+    {
+        return await context.Beds_InPatient
+            .AsNoTracking()
+            .Select(x => new BedDto(x.Id, x.BedNumber, x.Description, x.BedStatusId))
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IEnumerable<MedicalObservationDto>> GetMedicalObservationsAsync(int patientId, CancellationToken cancellationToken = default)
+    {
+        return await context.MedicalObservations_InPatient
+            .AsNoTracking()
+            .Where(x => x.PatientID == patientId)
+            .Select(x => new MedicalObservationDto(x.Id, x.PatientID, x.BP, x.Pulse))
+            .ToListAsync(cancellationToken);
+    }
 }

@@ -35,12 +35,13 @@ namespace SSAS.API.Tests.Infrastructure;
 [Collection(HostIntegrationTestGroup.Name)]
 public sealed class ModuleEnablementCoverageTests(HostWebApplicationFactory factory)
 {
-  private static readonly HashSet<Assembly> ModuleApiAssemblies =
+  private static readonly IReadOnlyList<Assembly> ModuleApiAssemblies =
   [
     typeof(HrModuleEnablement).Assembly,
     typeof(GlModuleEnablement).Assembly,
     typeof(PayrollModuleEnablement).Assembly,
     typeof(AttendanceModuleEnablement).Assembly,
+    typeof(SSAS.HIS.API.HisModuleEnablement).Assembly,
   ];
 
   private IReadOnlyList<Endpoint> Endpoints() =>
@@ -72,7 +73,7 @@ public sealed class ModuleEnablementCoverageTests(HostWebApplicationFactory fact
       .Distinct()
       .ToList();
 
-    Assert.Equal(4, owners.Count);
+    Assert.Equal(5, owners.Count);
   }
 
   // ---- EVERY MODULE-OWNED ROUTE CARRIES THE GATE.

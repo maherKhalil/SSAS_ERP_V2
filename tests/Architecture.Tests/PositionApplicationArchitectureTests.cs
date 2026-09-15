@@ -399,7 +399,7 @@ public sealed class PositionApplicationArchitectureTests
     // the module that moves data outside the system's control.
     //
     // This count is what would have gone red if they had been added quietly, which is why it is here.
-    Assert.Equal(23, offered.Length);
+    Assert.Equal(27, offered.Length);
 
     Assert.Contains(HrPermissionNames.ImportEmployees, offered);
     Assert.Contains(HrPermissionNames.ExportEmployees, offered);

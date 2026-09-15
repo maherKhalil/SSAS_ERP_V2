@@ -19,6 +19,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<GetDoctorsLookupQueryHandler>();
         services.AddScoped<GetSpecialtiesLookupQueryHandler>();
         services.AddScoped<GetClinicsLookupQueryHandler>();
+        
+        services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(SSAS.HIS.Application.OutPatient.CreateClinicScheduleCommand).Assembly));
 
         return services;
     }

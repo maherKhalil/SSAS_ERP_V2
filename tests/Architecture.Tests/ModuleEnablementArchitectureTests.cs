@@ -101,7 +101,7 @@ public sealed class ModuleEnablementArchitectureTests
       .Select(type => ((IModuleEnablementDescriptor)Activator.CreateInstance(type)!).ModuleKey)
       .ToList();
 
-    Assert.Equal(4, keys.Count);
+    Assert.Equal(5, keys.Count);
     Assert.All(keys, key => Assert.False(string.IsNullOrWhiteSpace(key)));
     Assert.Equal(keys.Count, keys.Distinct(StringComparer.Ordinal).Count());
   }

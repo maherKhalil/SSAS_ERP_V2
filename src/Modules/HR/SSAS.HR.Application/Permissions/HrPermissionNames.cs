@@ -1,4 +1,4 @@
-﻿namespace SSAS.HR.Application.Permissions;
+namespace SSAS.HR.Application.Permissions;
 
 // THE CODE-OWNED HR EMPLOYEE PERMISSION SET (FP-006 authorization-model, DEC-EMP-0030).
 //
@@ -123,4 +123,12 @@ public static class HrPermissionNames
   public const string UpdateSalaryGrades = "HR.SalaryGrades.Update";
 
   public const string DeactivateSalaryGrades = "HR.SalaryGrades.Deactivate";
+
+  // ---- EMPLOYEE DOCUMENTS (FP-010, FR-DOC-0301 through 0304).
+  //
+  // View is metadata only; Download is the bytes. Separated by DEC-DOC-0013.
+  public const string ViewEmployeeDocuments = "HR.EmployeeDocuments.View";
+  public const string DownloadEmployeeDocuments = "HR.EmployeeDocuments.Download";
+  public const string UploadEmployeeDocuments = "HR.EmployeeDocuments.Upload";
+  public const string WithdrawEmployeeDocuments = "HR.EmployeeDocuments.Withdraw";
 }

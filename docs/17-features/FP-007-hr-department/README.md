@@ -329,3 +329,5 @@ It does not claim to be approved. It does not claim `BR-HR-0005` is satisfied â€
 `OD-DEP-001`. It does not claim `BR-HR-0007` is fully discharged â€” that depends on `OD-DEP-003`, and under
 every reading part of it transfers onward. Those are stated in
 [`traceability-matrix.md`](traceability-matrix.md) as open, not as covered.
+
+status: UNSTARTED

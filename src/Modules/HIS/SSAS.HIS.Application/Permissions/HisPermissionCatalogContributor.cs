@@ -9,7 +9,11 @@ public sealed class HisPermissionCatalogContributor : IPermissionCatalogContribu
         new(HisPermissionNames.ManageRegistration,
             "Manage patient registration."),
         new(HisPermissionNames.ViewSetup,
-            "View setup entities (Doctors, Specialties, Clinics).")
+            "View setup entities (Doctors, Specialties, Clinics)."),
+        new(HisPermissionNames.ManageOutpatient,
+            "Manage outpatient workflows."),
+        new(HisPermissionNames.ManageInpatient,
+            "Manage inpatient workflows.")
     ];
 
     public IReadOnlyCollection<ModulePermissionDefinition> Permissions => Definitions;

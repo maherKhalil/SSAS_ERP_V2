@@ -162,6 +162,7 @@ public sealed class CutoverManifestArchitectureTests
         "EmployeeBranchAssignment",
         "EmployeeCompensation",
         nameof(EmployeeDepartmentAssignment),
+        nameof(SSAS.HR.Domain.EmployeeDocuments.EmployeeDocument),
         nameof(EmployeeExportRun),
         nameof(EmployeeImportRun),
         nameof(EmployeePositionAssignment),
@@ -365,7 +366,7 @@ public sealed class CutoverManifestArchitectureTests
     // rather than as a literal so the two halves cannot drift: if a module adds a table and forgets this
     // test, the count on the left moves and the assertion fails, which is the whole point of the guard.
     Assert.Equal(
-      composed.Value.Count - 33,
+      composed.Value.Count - 34,
       contributorFree.Value.Count);
     Assert.Equal(2, contributorFree.Value.Count);
   }

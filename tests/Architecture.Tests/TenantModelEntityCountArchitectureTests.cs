@@ -69,7 +69,7 @@ public sealed class TenantModelEntityCountArchitectureTests
   // filters `!entity.IsOwned()` and requires a table name, so the copied-table count EXCLUDES what this
   // counts. **Do not "reconcile" them: a change that made them equal would mean an owned type had
   // become a table, which is a real event and not a tidy-up.**
-  private const int ExpectedEntityCount = 36;
+  private const int ExpectedEntityCount = 38;
 
   [Fact]
   public void The_composed_tenant_model_has_exactly_the_expected_number_of_entities()

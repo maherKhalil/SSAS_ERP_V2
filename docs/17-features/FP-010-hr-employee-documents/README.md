@@ -113,3 +113,5 @@ imply a guarantee it does not carry.
 
 `ADR-028`'s scope — what it owns and what stays in this feature package — is stated in
 [`decisions-open.md`](decisions-open.md#dec-doc-0010--adr-028-is-required).
+
+status: UNSTARTED

@@ -86,3 +86,5 @@ Physical Company deletion is prohibited. Archive is the terminal lifecycle opera
 ## Source requirements
 
 FP-005 realizes `REQ-PLT-0010` (support multiple companies) and `REQ-PLT-0011` (independent company activation/deactivation). `REQ-PLT-0012` states a company maintains independent fiscal settings, currencies, language, and numbering; FP-005 realizes only the **base-currency configuration** portion of that requirement now. That a base currency is *required at creation* and *immutable in Milestone 1* are FP-005 design decisions (`DEC-CMP-0009`), not direct wording of `REQ-PLT-0012`. Fiscal calendar, additional currencies, language, and numbering sequences are acknowledged and deferred to later milestones.
+
+status: UNSTARTED

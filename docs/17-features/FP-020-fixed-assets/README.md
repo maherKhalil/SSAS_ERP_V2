@@ -10,3 +10,5 @@ Tracks capital assets (like medical imaging machines, hospital beds, IT equipmen
 - Asset Transaction (Acquisition, Depreciation, Disposal)
 
 **Status:** UNSTARTED
+
+status: UNSTARTED

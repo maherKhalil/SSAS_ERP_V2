@@ -180,6 +180,7 @@ try
   app.MapHrDepartmentEndpoints();
   app.MapHrEmployeeDepartmentEndpoints();
   app.MapHrPositionEndpoints();
+  app.MapHrEmployeeDocumentEndpoints();
   app.MapHrJobGradeEndpoints();
   app.MapHrSalaryGradeEndpoints();
   app.MapHrEmployeePositionEndpoints();
@@ -197,6 +198,8 @@ try
   app.MapAttendanceEndpoints();
   app.MapHisRegistrationEndpoints();
   app.MapHisSetupEndpoints();
+  app.MapOutPatientEndpoints();
+  app.MapInPatientEndpoints();
 
   app.Run();
 }

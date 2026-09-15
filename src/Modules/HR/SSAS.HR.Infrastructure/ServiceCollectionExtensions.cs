@@ -1,7 +1,10 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
 using SSAS.BuildingBlocks.Infrastructure.Persistence;
 using SSAS.HR.Application.Departments;
 using SSAS.HR.Application.Departments.Reads;
+using SSAS.HR.Application.EmployeeDocuments;
+using SSAS.HR.Application.EmployeeDocuments.Commands;
+using SSAS.HR.Application.EmployeeDocuments.Queries;
 using SSAS.HR.Application.Employees;
 using SSAS.HR.Application.ImportExport;
 using SSAS.HR.Application.Employees.Reads;
@@ -167,6 +170,14 @@ services.AddScoped<IEmployeeRepository, EmployeeRepository>();
     services.AddScoped<SearchImportRunsQueryHandler>();
     services.AddScoped<SearchExportRunsQueryHandler>();
 
+    // ---- FP-010 EMPLOYEE DOCUMENTS
+    services.AddScoped<IEmployeeDocumentRepository, EmployeeDocumentRepository>();
+    services.AddScoped<IEmployeeDocumentScopeResolver, EmployeeDocumentScopeResolver>();
+    services.AddScoped<UploadEmployeeDocumentCommandHandler>();
+    services.AddScoped<WithdrawEmployeeDocumentCommandHandler>();
+    services.AddScoped<GetEmployeeDocumentsQueryHandler>();
+    services.AddScoped<GetEmployeeDocumentContentQueryHandler>();
+    
     return services;
   }
 }

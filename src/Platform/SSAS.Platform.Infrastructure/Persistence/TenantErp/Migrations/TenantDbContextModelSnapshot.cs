@@ -17,7 +17,7 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "8.0.0")
+                .HasAnnotation("ProductVersion", "8.0.8")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
@@ -1058,6 +1058,104 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp.Migrations
                         {
                             t.HasCheckConstraint("CK_EmployeeDepartmentAssignments_SourceDiffersFromDestination", "[SourceDepartmentId] IS NULL OR [SourceDepartmentId] <> [DestinationDepartmentId]");
                         });
+                });
+
+            modelBuilder.Entity("SSAS.HR.Domain.EmployeeDocuments.EmployeeDocument", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("DocumentId");
+
+                    b.Property<long>("ByteCount")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("ContentHash")
+                        .IsRequired()
+                        .HasColumnType("binary(32)");
+
+                    b.Property<string>("ContentLocation")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset>("CreatedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DocumentType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(260)
+                        .HasColumnType("nvarchar(260)");
+
+                    b.Property<string>("ModifiedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset>("ModifiedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("NormalizedFileName")
+                        .IsRequired()
+                        .HasMaxLength(260)
+                        .HasColumnType("nvarchar(260)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId");
+
+                    b.HasIndex("EmployeeId");
+
+                    b.HasIndex("TenantId", "CompanyId", "EmployeeId", "Status")
+                        .HasDatabaseName("IX_EmployeeDocuments_Employee");
+
+                    b.ToTable("EmployeeDocuments", "tenant");
+                });
+
+            modelBuilder.Entity("SSAS.HR.Domain.EmployeeDocuments.EmployeeDocumentContent", b =>
+                {
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("Content")
+                        .IsRequired()
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("DocumentId");
+
+                    b.ToTable("EmployeeDocumentContents", "tenant");
                 });
 
             modelBuilder.Entity("SSAS.HR.Domain.Employees.Employee", b =>
@@ -2570,6 +2668,30 @@ namespace SSAS.Platform.Infrastructure.Persistence.TenantErp.Migrations
                         .WithMany()
                         .HasForeignKey("SourceDepartmentId")
                         .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("SSAS.HR.Domain.EmployeeDocuments.EmployeeDocument", b =>
+                {
+                    b.HasOne("SSAS.Platform.Domain.Companies.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SSAS.HR.Domain.Employees.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SSAS.HR.Domain.EmployeeDocuments.EmployeeDocumentContent", b =>
+                {
+                    b.HasOne("SSAS.HR.Domain.EmployeeDocuments.EmployeeDocument", null)
+                        .WithMany()
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("SSAS.HR.Domain.Employees.Employee", b =>

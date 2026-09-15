@@ -251,6 +251,7 @@ public sealed class EmployeeHostCompositionTests
         "Employee",
         "EmployeeBranchAssignment",
         "EmployeeDepartmentAssignment",
+        "EmployeeDocument",
         "EmployeeExportRun",
         "EmployeeImportRun",
         "EmployeePositionAssignment",
@@ -365,7 +366,11 @@ public sealed class EmployeeHostCompositionTests
       // They break the "four per family" shape on purpose (`OD-DOC-005`): bulk in and bulk out are not a
       // CRUD quartet over a new aggregate, they are two operations over an existing one whose risk differs.
       HrPermissionNames.ImportEmployees,
-      HrPermissionNames.ExportEmployees
+      HrPermissionNames.ExportEmployees,
+      HrPermissionNames.ViewEmployeeDocuments,
+      HrPermissionNames.UploadEmployeeDocuments,
+      HrPermissionNames.DownloadEmployeeDocuments,
+      HrPermissionNames.WithdrawEmployeeDocuments
     ];
 
     Assert.Equal(

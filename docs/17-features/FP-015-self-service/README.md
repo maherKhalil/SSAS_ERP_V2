@@ -154,3 +154,5 @@ pre-answered:
 - **`REQ-ATT-0023`** — blocked and unauthored; this package authors its criteria.
 - **`BR-PLT-0008`** — every mounted route group is gated. Applies here unchanged.
 - **`DEC-L-058`** — this package is developed on `ClaudeBranch`.
+
+status: UNSTARTED

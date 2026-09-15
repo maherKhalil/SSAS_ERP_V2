@@ -173,3 +173,5 @@ sequence from `DEC-DOC-0014`.
   and are not smuggled in through a file format.
 * **Scheduled or recurring exports**, or any delivery channel other than the response to the request.
 * **Employee-number generation.** `DEC-EMP-0011` deferred it entirely; an import file carries the numbers.
+
+status: UNSTARTED

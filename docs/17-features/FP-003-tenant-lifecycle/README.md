@@ -113,3 +113,5 @@ Physical tenant deletion is prohibited. Archive is the terminal lifecycle operat
 The first implementation milestone is an internal Domain/Application/SQL Server slice containing the Tenant aggregate; TenantCode and TenantName value objects; TenantStatus and TenantStatusChangeReasonCode; lifecycle transitions; the authentication-eligibility contract; an aggregate-specific repository; CreateTenantCommand, ActivateTenantCommand, SuspendTenantCommand, ReactivateTenantCommand, and ArchiveTenantCommand; GetTenantQuery, ListTenantsQuery, and GetTenantAuthenticationEligibilityQuery; persistence through the existing PlatformDbContext and IPlatformUnitOfWork; the `platform.Tenants` table; the `AddTenantLifecycle` migration; and Domain, Application, SQL Server integration, and architecture tests.
 
 Tenant HTTP endpoints, authentication sessions, refresh tokens, and JWT work remain outside that milestone.
+
+status: UNSTARTED

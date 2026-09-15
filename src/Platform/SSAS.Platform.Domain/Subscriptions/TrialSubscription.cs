@@ -77,7 +77,7 @@ public static class TrialSubscription
   // array equals the set the four `IModuleEnablementDescriptor` implementations declare. A fifth module
   // added to the product fails that test until it is added here, which is the drift that would otherwise
   // hand new tenants a trial silently missing a module.
-  public static readonly string[] ModuleKeys = ["HR", "Finance.GL", "Payroll", "Attendance"];
+  public static readonly string[] ModuleKeys = ["HR", "Finance.GL", "Payroll", "Attendance", "HIS"];
 
   // Display names for the module catalog. The descriptors carry a key and nothing else -- deliberately, so
   // that a rename in a menu cannot un-entitle a tenant -- so the human-facing text is written here.
@@ -87,6 +87,7 @@ public static class TrialSubscription
     ("Finance.GL", "Finance - General Ledger"),
     ("Payroll", "Payroll"),
     ("Attendance", "Attendance and Leave"),
+    ("HIS", "Hospital Information System"),
   ];
 
   // The term a trial issued at `startUtc` runs for. One expression, so the migration's `DATEADD` and the

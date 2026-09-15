@@ -3,7 +3,7 @@
 ## Phase 1: All ERP Backend
 *(Strict Rule: Must complete ALL ERP modules before Phase 2)*
 - [x] **Task 1.1: FP-001 & FP-003 Unrouted Endpoints**
-- [ ] **Task 1.2: FP-010 HR Employee Documents**
+- [x] **Task 1.2: FP-010 HR Employee Documents**
 - [ ] **Task 1.3: FP-015 Employee Self-Service**
 - [ ] **Task 1.4: FP-017 Inventory Management**
 - [ ] **Task 1.5: FP-018 Procurement**

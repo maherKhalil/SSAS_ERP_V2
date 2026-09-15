@@ -45,7 +45,7 @@
 
 ## Phase 5: HIS (Health Information System) Integration
 
-- [ ] **Task 7: HIS Entity Scaffolding (Core Schemas)**
+- [x] **Task 7: HIS Entity Scaffolding (Core Schemas)**
   Generate the EF Core entities for core clinical schemas (e.g., `BloodBank`, `Emergency`, `Pharmacy`) as outlined in `docs/15-Tasks/HIS-Tables-Specification.md`. Ensure `ITenantOwnedEntity` is implemented for all tables to strictly enforce the new `TenantId` requirement.
 
 - [ ] **Task 8: HIS Entity Scaffolding (Supporting Schemas)**

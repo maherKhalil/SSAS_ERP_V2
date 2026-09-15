@@ -5,6 +5,7 @@ import { permissionGuard } from './core/guards/permission-guard';
 import { Shell } from './layout/shell/shell';
 
 export const routes: Routes = [
+  { path: '', redirectTo: 'modules', pathMatch: 'full' },
   { path: 'modules', component: ModuleSelectorComponent, canActivate: [authGuard] },
   {
     path: '',
@@ -24,6 +25,5 @@ export const routes: Routes = [
         data: { permission: 'Payroll.Runs.View' }
       }
     ]
-  },
-  { path: '', redirectTo: 'modules', pathMatch: 'full' }
+  }
 ];

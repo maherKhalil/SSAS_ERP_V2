@@ -1,8 +1,25 @@
-import { Service } from '@angular/core';
+import { Injectable } from '@angular/core';
 
-@Service()
+@Injectable({ providedIn: 'root' })
 export class Permission {
-  private _permissions: string[] = ['Platform.HR.View', 'Payroll.Runs.View', 'Platform.GL.View', 'Platform.Subscriptions.View', 'HIS.Registration.Manage']; // Mock state
+  private _permissions: string[] = [
+    'Platform.Tenants.View',
+    'Platform.Identity.View',
+    'Platform.HR.View', 
+    'Platform.Attendance.View',
+    'Payroll.Runs.View', 
+    'Platform.SelfService.View',
+    'Platform.GL.View', 
+    'Platform.Subscriptions.View', 
+    'HIS.Registration.Manage',
+    'HIS.Outpatient.View',
+    'HIS.Inpatient.View',
+    'HIS.Pharmacy.View',
+    'HIS.Laboratory.View',
+    'HIS.Radiology.View',
+    'HIS.Emergency.View',
+    'HIS.BloodBank.View'
+  ];
 
   getPermissions(): string[] {
     return this._permissions;
